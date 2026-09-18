@@ -84,7 +84,8 @@ Forbids free-form `{topic}` generation.
 
 ## Alignment deltas D1–D7
 
-See Architect memo §8 / D034. Implemented: `coverage_by_query` + `page_coverage`; extended `gap_type`; `edit_ops`; `unsupported_claims`; readiness vs queryset; anti-pattern caveats; C1–C10 tests.
+Accepted (D034). Full checklist + test map: [`PHASE5_ALIGNMENT_DELTAS.md`](./PHASE5_ALIGNMENT_DELTAS.md)  
+Architect memo §8. Implemented: `coverage_by_query` + `page_coverage`; extended `gap_type`; `edit_ops`; `unsupported_claims`; readiness vs queryset; anti-pattern caveats; C1–C10 tests.
 
 ## Formal VERIFY
 

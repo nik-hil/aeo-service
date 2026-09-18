@@ -227,7 +227,8 @@ coverage_by_query field; extended gap_type taxonomy; edit_ops under brief;
 unsupported_claims + generated provenance; readiness vs queryset gap split;
 anti-pattern caveats; C1–C10 testable gates. Package/protocol locks unchanged.
 **Rationale:** Reconcile Optimizer types with Architect package without forks.
-**Doc:** `PHASE5_PAGE_INTELLIGENCE.md` §8, `PHASE5_RECONCILED_CONTRACTS.md`.
+**Doc:** `PHASE5_PAGE_INTELLIGENCE.md` §8, `PHASE5_ALIGNMENT_DELTAS.md`,
+`PHASE5_RECONCILED_CONTRACTS.md`.
 
 ## D035 — Evaluator content-optimization-v1 gates C1–C10 (2026-09-18)
 **Decision:** Binding Evaluator methodology `content-optimization-v1`. Honesty:

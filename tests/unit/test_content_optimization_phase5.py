@@ -878,3 +878,98 @@ def test_optimizer_domain_contracts_reconciled():
     assert result.draft.unsupported_claims
     assert result.draft.unsupported_claim_warnings
 
+
+def test_d1_d7_alignment_deltas():
+    """D1–D7 checklist (PHASE5_ALIGNMENT_DELTAS.md / D034) — package lock held."""
+    from typing import get_args
+
+    from aeo_mvp.api.schemas import JobOptions
+    from aeo_mvp.content.models import ChangeAction, GapType
+
+    # D6–D7: alignment notes present
+    align = (
+        Path(__file__).resolve().parents[2]
+        / "docs"
+        / "architecture"
+        / "PHASE5_ALIGNMENT_DELTAS.md"
+    )
+    assert align.is_file()
+    text = align.read_text(encoding="utf-8")
+    for marker in ("D1", "D2", "D3", "D4", "D5", "D6", "D7"):
+        assert marker in text
+
+    page = extract_page_intelligence(
+        _html("saas_product.html"), url="https://acme.example/"
+    )
+    qs = _queryset(
+        ("q1", "AcmeFlow project management", "informational", None),
+        ("q2", "quantum knitting tutorial", "informational", None),
+    )
+    result = run_content_optimization(
+        html=_html("saas_product.html"),
+        url="https://acme.example/",
+        queryset=qs,
+        generate_draft=True,
+        draft_paid=False,
+    )
+    report = result.gap_report
+    brief = result.brief
+    draft = result.draft
+
+    # D1: coverage_by_query + page_coverage; not visibility/health; no cite_miss bare
+    assert report.coverage_by_query
+    assert all(r.page_coverage for r in report.coverage_by_query)
+    d = report.to_dict()
+    assert d["coverage_is_not_ai_visibility"] is True
+    assert d["coverage_is_not_health_v1"] is True
+    bare = assess_coverage_by_query(page, qs, visibility_observations=None)
+    assert all(
+        not (r.visibility_enrichment and r.visibility_enrichment.get("cite_miss"))
+        for r in bare
+    )
+
+    # D2: extended gap_type taxonomy includes page readiness + mismatch types
+    types = set(get_args(GapType))
+    for required in (
+        "structure",
+        "format",
+        "evidence",
+        "intent_mismatch",
+        "false_coverage_nav",
+        "qa_coverage",
+        "genre_mismatch",
+    ):
+        assert required in types
+    assert any(g.gap_type in types for g in report.gaps)
+
+    # D3: edit_ops retain|rewrite|expand|remove|add; no thin-page-farm ops
+    allowed = set(get_args(ChangeAction))
+    assert allowed == {"retain", "rewrite", "expand", "remove", "add"}
+    assert brief.edit_ops
+    assert {e.action for e in brief.edit_ops} <= allowed
+    assert not any("farm" in (e.reason or "").lower() for e in brief.edit_ops)
+
+    # D4: unsupported_claims; generated never observed; paid=false
+    assert draft.unsupported_claims
+    assert draft.content_provenance == "generated"
+    assert draft.content_provenance != "observed"
+    assert draft.paid_llm is False
+
+    # D5: readiness vs queryset split + anti-pattern caveats
+    assert isinstance(report.readiness_gaps, list)
+    assert isinstance(report.queryset_gaps, list)
+    assert report.anti_pattern_caveats
+    assert brief.anti_patterns
+
+    # Job options defaults (AUTHORITATIVE sheet)
+    opts = JobOptions()
+    assert opts.content_optimization is False
+    assert opts.generate_draft is False
+    assert opts.draft_paid is False
+
+    # Package / versions unchanged (Architect lock)
+    assert PAGE_INTEL_VERSION == "page-intel-v1"
+    assert GAP_VERSION == "content-gap-v1"
+    assert BRIEF_VERSION == "opt-brief-v1"
+    assert DRAFT_VERSION == "opt-draft-v1"
+

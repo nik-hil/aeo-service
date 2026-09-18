@@ -2,6 +2,9 @@
 
 Authoritative impl sheet (Architect + Content Optimizer + D1–D7).
 
+Alignment checklist: [`PHASE5_ALIGNMENT_DELTAS.md`](./PHASE5_ALIGNMENT_DELTAS.md)  
+Contract summary: [`PHASE5_CONTENT_OPTIMIZATION.md`](./PHASE5_CONTENT_OPTIMIZATION.md)
+
 ## Package
 
 `aeo_mvp.content` — `{page_intel, gaps, brief, draft}`

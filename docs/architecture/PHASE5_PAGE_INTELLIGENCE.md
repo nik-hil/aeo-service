@@ -83,6 +83,8 @@ Options: `generate_draft=false`, `draft_paid=false`. Forbids `{topic}` generate.
 
 ## 8. Alignment deltas D1–D7 (accepted)
 
+Checklist + pytest map: [`PHASE5_ALIGNMENT_DELTAS.md`](./PHASE5_ALIGNMENT_DELTAS.md)
+
 1. `coverage_by_query` with `page_coverage`; coverage ≠ visibility ≠ health; no cite_miss without observations  
 2. Extended `gap_type` page taxonomy  
 3. Additive `edit_ops` under brief  
