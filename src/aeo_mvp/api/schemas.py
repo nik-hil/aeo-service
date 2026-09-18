@@ -4,15 +4,35 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class JobOptions(BaseModel):
+    """Job options. Extra keys are preserved for Phase 4 discovery / seeds."""
+
+    model_config = ConfigDict(extra="allow")
+
     max_pages: int = Field(default=25, ge=1, le=25)
     max_depth: int = Field(default=2, ge=0, le=2)
     runs_per_prompt: int = Field(default=3, ge=1, le=5)
-    provider: Literal["auto", "demo", "openai_compatible"] = "auto"
+    provider: Literal[
+        "auto", "demo", "openai_compatible", "digitalocean_web_search", "digitalocean"
+    ] = "auto"
     category: str | None = None
+    # Phase 4 query intelligence
+    selection_seed: int | str | None = None
+    query_selection_seed: int | str | None = None
+    experiment_seed: int | str | None = None
+    query_discovery_version: Literal["v1", "v2", "query-discovery-v1", "query-discovery-v2"] | None = (
+        "v2"
+    )
+    discovery_only: bool = False
+    dry_run: bool = False
+    paid_retrieval_opt_in: bool = False
+    query_top_n: int | None = Field(default=None, ge=8, le=30)
+    semantic_dedup: Literal["lexical", "simhash", "simhash_v1"] | None = "lexical"
+    mmr_lambda: float | None = None
+    max_per_topic: int | None = None
 
 
 class CreateJobRequest(BaseModel):

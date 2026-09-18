@@ -152,3 +152,24 @@ Genre-gated templates. Gate includes `WEAK_INDUSTRY_LEAK`. No new opaque AEO sco
 `QuerySet` + explicit `paid_retrieval_opt_in` / `AEO_PAID_RETRIEVAL_OPT_IN`.
 **Rationale:** Cost control; discovery quality independent of paid retrieval.
 **Doc:** ADR-026.
+
+## D027 — Query discovery v2 / query-set-v3 (2026-09-18)
+**Decision:** Default pipeline `query-discovery-v2` → `query-quality-v1` →
+coverage/MMR selection → `query-set-v3`. Keep `query-discovery-v1` selectable.
+Seed aliases `selection_seed`|`query_selection_seed`|`experiment_seed` with
+persisted `root_seed`/`effective_seed`. Persist full candidates + rejected.
+**Rationale:** Fix Phase 3 seed/gate/diversity defects; generic ANY-site generation.
+**Doc:** ADR-027, `docs/architecture/PHASE4_QUERY_INTELLIGENCE.md`.
+
+## D028 — Query quality diagnostics ≠ site grade (2026-09-18)
+**Decision:** `query-quality-v1` decomposable pass/warn/fail dimensions including
+grammaticality lint. Set-level QSQ-* panels. Forbidden: opaque AEO/site score;
+folding diagnostics into `health-v1`.
+**Rationale:** Measurement integrity; reject title-wrap garbage without gaming Health.
+**Doc:** ADR-028, `docs/methodology/QUERY_SET_QUALITY.md`.
+
+## D029 — Intent budgets + dry-run reproducibility (2026-09-18)
+**Decision:** `intent-budget-v1` hard min/max; MMR λ≈0.65; max-per-topic caps;
+`discovery_only`/`dry_run` with fingerprint replay and zero paid calls.
+**Rationale:** Stop PS/topic monopoly; require offline replay before paid live.
+**Doc:** ADR-029.
