@@ -1,57 +1,76 @@
-# Query discovery methodology (`query-discovery-v1`)
+# Query discovery methodology
 
-**Version:** query-discovery-v1 / query-set-v2  
-**Doc status:** Binding for Phase 3
+**Versions:**  
+- Phase 3: `query-discovery-v1` / `query-set-v2`  
+- Phase 4 (default): `query-discovery-v2` / `query-set-v3` / `query-quality-v1` / `intent-budget-v1`
 
 ## Goals
 
-Produce a reproducible, evidence-grounded query set for AI visibility experiments without fabricating topics or leaking unrelated industry language.
+Produce **representative, high-quality, non-redundant, reproducible, explainable**
+query sets for AI-search visibility experiments on **arbitrary websites**.
 
-## SiteProfile rules
+Diagnostics judge the **query set**, not website quality. Never fold into `health-v1`.
+Do **not** optimize queries to raise visibility %.
 
-| Rule | Detail |
-| --- | --- |
-| Field wrapping | Every assertive field is a `SiteProfileField` with confidence ≤ 0.40 for heuristics |
-| Industry omit | `industry_category` omitted unless ≥3 strong votes, lead ≥2, ≥2 evidence classes |
-| Weak tokens | Bare `roadmap` / `kanban` alone never assert `project_management` |
-| Genre gate | `Blog`+`Person`, no Product/pricing → `personal_tech_blog` before SaaS industry |
-| Evidence priority | titles/H1 → tags/series (topics) → About → JSON-LD → og:* → body; chrome capped |
-| Tags | Topics only — never `products_services` |
-| Brand | Never multi-tenant platform apex (`hashnode`, …) |
+## Freezes
 
-## Candidate generation
+SSRF, TargetSiteIdentity / domain-match-v1, health-v1, LLM-mention vs AI-search split,
+DigitalOcean provider honesty, paid retrieval opt-in default OFF.
 
-- Volume: 30–50 candidates.
-- Each query: `query_id`, `text`, `intent`, `topic`, `entity`, `audience`, `funnel_stage`, `source_evidence`, `rationale`, `confidence`, `query_version`.
-- Personal tech blog mix (approx): informational 35–40%, problem_solving 25–30%, recommendation 10–15%, comparison 8–12%, navigational 8–10%, commercial ≤5% (omit if no monetization).
-- Forbidden for personal blogs: “cost of {blog}”, “alternatives to {blog}”, “best {PM} tool for teams”.
-- ≥2 evidence classes required to seed.
+## Pipeline (v2)
+
+```
+crawl snapshot → SiteProfile → candidate-gen-v2 (30–50 or small-site grace)
+  → normalize + lexical near-dup (Jaccard / 3-gram / optional simhash)
+  → query-quality-v1 gate → coverage selection (intent budgets → MMR → topic caps)
+  → query-set-v3 + representativeness-v1
+  → [discovery_only stop] OR [paid opt-in → visibility]
+```
+
+## Seeds
+
+Accept aliases: `selection_seed` | `query_selection_seed` | `experiment_seed`.  
+Persist `root_seed`, `effective_seed`, `seed_resolution` (source + alias).
+
+## Candidate generation (v2)
+
+- Generic template families from SiteProfile topics/entities/products/genre.
+- **No** niche regex packs or hostname special-cases in core (`candidate-gen-v2`).
+- Small-site grace: adaptive pool 12–25 with `grace_mode` — never fabricate topics.
+- Reject double-interrogative wraps at generation time.
 
 ## Dedup
 
-1. NFKC → lower → collapse whitespace.  
-2. Exact norm match or Jaccard ≥ 0.85 → keep higher confidence, then lower `query_id`.  
-3. At most one per `(topic, intent)`.
+1. NFKC → lower → collapse whitespace (display normalize).  
+2. Equality: strip trailing `?/.` + optional lead-in strip.  
+3. Token Jaccard ≥ 0.85; char 3-gram Dice ≥ 0.80; sorted token signature.  
+4. Optional `simhash_v1` (local CPU). **No paid embeddings required.**
 
-## Quality gate (diagnostic)
+## Quality gate (`query-quality-v1`)
 
-Dimensions (pass/fail/warn) → `accept` | `reject` | `accept_with_warning`:
+Decomposable dimensions → accept | reject | accept_with_warning.  
+Includes grammaticality lint (title-wrap / double-interrogative → fail).  
+See `QUERY_SET_QUALITY.md`. **Not** a website ranking score.
 
-- relevance, specificity, answerability, entity_alignment, evidence_support, duplication  
-- **WEAK_INDUSTRY_LEAK** — PM/SaaS language without assertive industry / wrong genre  
+## Selection (`query-set-v3`)
 
-This is **not** a website ranking score and must not be marketed as one.
+1. Hard intent budgets (`intent-budget-v1`, genre-conditioned).  
+2. Prefer uncovered (topic × intent) cells.  
+3. Lexical MMR λ ≈ 0.65.  
+4. Max-per-topic ≤ 3–4 for k ≈ 20.  
+5. Deterministic tie-break: effective_seed ordering via stable sort on confidence + `query_id`.
 
-## Selection
+## Dry-run / reproducibility
 
-- Default top_k ≈ 20 (`AEO_QUERY_TOP_N`).
-- Stratified by intent/topic; deterministic `selection_seed`; `query_set_version=query-set-v2`.
-- Explainability: `query_set_id`, profile snapshot, target_site audit, warnings, `frozen_at`, evidence hash.
+- `discovery_only` / `dry_run`: persist full candidates + gate decisions + fingerprint;
+  **zero** paid provider calls.
+- Same snapshot + seed + versions → identical ordered query_id/text (`fingerprint`).
+- Paid path requires ready QuerySet + opt-in (+ content_hash binding).
 
-## Metrics (descriptive only)
+## Select prior version
 
-Intent / topic / entity breakdowns on the QuerySet; per-query mention/citation/appearance/coverage remain existing visibility metrics — **no new opaque AEO score**.
+`options.query_discovery_version=v1` keeps Phase 3 generate/gate/select interpretable.
 
-## Cost
+## Metrics
 
-Paid DO `web_search` only after ready QuerySet + explicit opt-in (ADR-026).
+Intent / topic / entity breakdowns + representativeness report — descriptive only.

@@ -250,13 +250,22 @@ class JobOrchestrator:
             )
             p1_sections["site_understanding"] = understanding.to_dict()
 
-            # P1-C / Phase 3 query discovery (generate→gate→select).
+            # P1-C / Phase 3–4 query discovery (generate→gate→select).
             # Paid DO retrieval is NEVER auto-started here — requires explicit opt-in
             # after a ready QuerySet (options.paid_retrieval_opt_in / settings).
-            top_n = int(options.get("query_top_n", self.settings.query_top_n))
+            top_n = int(
+                options.get("query_top_n")
+                if options.get("query_top_n") is not None
+                else self.settings.query_top_n
+            )
+            discovery_only = bool(
+                options.get("discovery_only") or options.get("dry_run")
+            )
             paid_opt_in = bool(
                 options.get("paid_retrieval_opt_in", self.settings.paid_retrieval_opt_in)
             )
+            if discovery_only:
+                paid_opt_in = False
             early_identity = resolve_target_site_identity(job.base_url)
             target_audit = early_identity.to_audit_dict()
             p1_sections["target_site"] = target_audit
@@ -264,9 +273,11 @@ class JobOrchestrator:
                 understanding,
                 top_n=top_n,
                 provenance=provenance,
-                selection_seed=options.get("query_selection_seed"),
+                options=options,
                 paid_retrieval_opt_in=paid_opt_in,
                 target_site_audit=target_audit,
+                discovery_only=discovery_only,
+                page_count=len(pages),
             )
             p1_sections["discovered_queries"] = discovery.to_dict()
             if paid_opt_in and not discovery.paid_retrieval_ready:
@@ -298,187 +309,229 @@ class JobOrchestrator:
 
             # 7–8. Experiment
             self._set_status(job, "experimenting")
-            provider, model_id, used_demo_fallback = self._select_provider(job, options)
-            brand = (
-                understanding.organization_brand
-                or (entity.brand_tokens[0] if entity.brand_tokens else None)
-                or domain_label(job.base_url)
-            )
-            prompts, prompt_set_id = self._build_prompts(
-                job,
-                options,
-                brand,
-                discovered=discovery.as_prompts() if not discovery.fallback_used else None,
-            )
-            runs_per_prompt = int(options.get("runs_per_prompt", 3))
-            runs_per_prompt = max(1, min(runs_per_prompt, 5))
-
-            caps = getattr(provider, "capabilities", None)
-            retrieval_enabled = (
-                bool(getattr(caps, "retrieval_enabled", False)) if caps else False
-            )
-            experiment_kind = (
-                "ai_search_visibility" if retrieval_enabled else "llm_mention"
-            )
-            protocol_version = (
-                LLM_MENTION_PROTOCOL_VERSION
-                if not retrieval_enabled
-                else AI_SEARCH_PROTOCOL_VERSION
-            )
-            job.experiment_protocol_version = protocol_version
-
-            exp_cfg = ExperimentConfig(
-                id=new_id(),
-                job_id=job.id,
-                protocol_version=protocol_version,
-                provider_name=provider.name,
-                model_id=model_id,
-                prompt_set_id=prompt_set_id,
-                prompts_json=json.dumps(prompts, sort_keys=True),
-                runs_per_prompt=runs_per_prompt,
-                experiment_kind=experiment_kind,
-                retrieval_enabled=1 if retrieval_enabled else 0,
-                discovered_queries_json=json.dumps(discovery.to_dict(), sort_keys=True),
-                created_at=utc_now_iso(),
-            )
-            self.session.add(exp_cfg)
-            self.session.flush()
-
-            brand_tokens = filter_brand_tokens(entity.brand_tokens)
-            # Never use multi-tenant platform apex (e.g. "hashnode") as brand token.
-            target_identity = resolve_target_site_identity(job.base_url)
-            site_domain = target_identity.registrable_domain
-            if (
-                target_identity.multi_tenant_host
-                and target_identity.identity_kind != "platform_apex"
-            ):
-                platform_label = site_domain.split(".")[0] if site_domain else ""
-                brand_tokens = [
-                    t
-                    for t in brand_tokens
-                    if t.lower() != platform_label.lower()
-                ]
-            observations = []
-            for prompt in prompts:
-                for run_index in range(runs_per_prompt):
-                    ctx = VisibilityContext(
-                        job_id=job.id,
-                        base_url=job.base_url,
-                        brand_tokens=brand_tokens,
-                        site_registrable_domain=site_domain,
-                        prompt_id=prompt["id"],
-                        run_index=run_index,
-                        protocol_version=protocol_version,
-                        target_hostname=target_identity.hostname,
-                        target_origin=target_identity.origin,
-                        target_domain_scope=target_identity.target_domain_scope,
-                        multi_tenant_host=target_identity.multi_tenant_host,
-                        match_rule_version=MATCH_RULE_VERSION,
-                        target_site=target_identity.to_audit_dict(),
-                    )
-                    obs = await provider.run_query(prompt["query"], context=ctx)
-                    observations.append(obs)
-                    row = VisObsRow(
-                        id=new_id(),
-                        job_id=job.id,
-                        experiment_config_id=exp_cfg.id,
-                        provider_name=obs.provider_name,
-                        engine_label=obs.engine_label,
-                        query=obs.query,
-                        prompt_id=obs.prompt_id,
-                        run_index=obs.run_index,
-                        observed_at=obs.observed_at.replace(microsecond=0).isoformat(),
-                        raw_response=obs.raw_response if obs.raw_storage_permitted else None,
-                        raw_storage_permitted=1 if obs.raw_storage_permitted else 0,
-                        detected_mention=1 if obs.detected_mention else 0,
-                        detected_citation=1 if obs.detected_citation else 0,
-                        cited_urls_json=json.dumps(obs.cited_urls),
-                        extraction_methodology=obs.extraction_methodology,
-                        provenance=obs.provenance,
-                        meta_json=json.dumps(obs.meta, sort_keys=True),
-                        model_id=obs.model_id,
-                        retrieval_enabled=1 if obs.retrieval_enabled else 0,
-                        experiment_kind=obs.experiment_kind,
-                        search_queries_json=json.dumps(obs.search_queries or []),
-                        source_urls_json=json.dumps(obs.source_urls or []),
-                        target_domain_appeared=(
-                            None
-                            if obs.target_domain_appeared is None
-                            else (1 if obs.target_domain_appeared else 0)
-                        ),
-                        target_domain_cited=(
-                            None
-                            if obs.target_domain_cited is None
-                            else (1 if obs.target_domain_cited else 0)
-                        ),
-                    )
-                    self.session.add(row)
-            self.session.flush()
-
-            rates_llm = None
-            rates_ai = None
-            if retrieval_enabled:
-                rates_ai = aggregate_ai_search_metrics(observations)
-                metric_prov = (
-                    "synthetic_demo" if provider.name == "demo" else "estimate"
+            target_identity = early_identity
+            if discovery_only:
+                # Persist QuerySet only — zero visibility / paid provider calls.
+                used_demo_fallback = False
+                prompts = (
+                    discovery.as_prompts()
+                    if not discovery.fallback_used
+                    else []
                 )
-                metric_rows = [
-                    (
-                        "ai_search_mention_rate",
-                        rates_ai.ai_search_mention_rate,
-                        rates_ai.mention_numerator,
-                        rates_ai.denominator_runs,
+                prompt_set_id = "discovered-queries-dry-run"
+                runs_per_prompt = 0
+                retrieval_enabled = False
+                experiment_kind = "discovery_only"
+                protocol_version = LLM_MENTION_PROTOCOL_VERSION
+                job.experiment_protocol_version = protocol_version
+                exp_cfg = ExperimentConfig(
+                    id=new_id(),
+                    job_id=job.id,
+                    protocol_version=protocol_version,
+                    provider_name="discovery_only",
+                    model_id="none",
+                    prompt_set_id=prompt_set_id,
+                    prompts_json=json.dumps(prompts, sort_keys=True),
+                    runs_per_prompt=0,
+                    experiment_kind=experiment_kind,
+                    retrieval_enabled=0,
+                    discovered_queries_json=json.dumps(
+                        discovery.to_dict(), sort_keys=True
                     ),
-                    (
-                        "ai_search_citation_rate",
-                        rates_ai.ai_search_citation_rate,
-                        rates_ai.citation_numerator,
-                        rates_ai.denominator_runs,
-                    ),
-                    (
-                        "target_domain_appearance_rate",
-                        rates_ai.target_domain_appearance_rate,
-                        rates_ai.appearance_numerator,
-                        rates_ai.denominator_runs,
-                    ),
-                    (
-                        "query_coverage",
-                        rates_ai.query_coverage,
-                        rates_ai.coverage_numerator,
-                        rates_ai.denominator_prompts,
-                    ),
-                ]
-                mention_for_recs = rates_ai.ai_search_mention_rate
-                citation_for_recs = rates_ai.ai_search_citation_rate
-                log_rate = rates_ai.ai_search_mention_rate
+                    created_at=utc_now_iso(),
+                )
+                self.session.add(exp_cfg)
+                self.session.flush()
+                observations = []
+                rates_llm = None
+                rates_ai = None
+                mention_for_recs = 0.0
+                citation_for_recs = 0.0
+                log_rate = 0.0
+                metric_prov = "derived_metric"
+                metric_rows = []
             else:
-                rates_llm = aggregate_llm_metrics(observations)
-                metric_prov = (
-                    "synthetic_demo" if provider.name == "demo" else "estimate"
+                provider, model_id, used_demo_fallback = self._select_provider(job, options)
+                brand = (
+                    understanding.organization_brand
+                    or (entity.brand_tokens[0] if entity.brand_tokens else None)
+                    or domain_label(job.base_url)
                 )
-                metric_rows = [
-                    (
-                        "llm_mention_rate",
-                        rates_llm.llm_mention_rate,
-                        rates_llm.mention_numerator,
-                        rates_llm.denominator_runs,
-                    ),
-                    (
-                        "llm_url_mention_rate",
-                        rates_llm.llm_url_mention_rate,
-                        rates_llm.url_mention_numerator,
-                        rates_llm.denominator_runs,
-                    ),
-                    (
-                        "query_coverage",
-                        rates_llm.query_coverage,
-                        rates_llm.coverage_numerator,
-                        rates_llm.denominator_prompts,
-                    ),
-                ]
-                mention_for_recs = rates_llm.llm_mention_rate
-                citation_for_recs = rates_llm.llm_url_mention_rate
-                log_rate = rates_llm.llm_mention_rate
+                prompts, prompt_set_id = self._build_prompts(
+                    job,
+                    options,
+                    brand,
+                    discovered=discovery.as_prompts() if not discovery.fallback_used else None,
+                )
+                runs_per_prompt = int(options.get("runs_per_prompt", 3))
+                runs_per_prompt = max(1, min(runs_per_prompt, 5))
+
+                caps = getattr(provider, "capabilities", None)
+                retrieval_enabled = (
+                    bool(getattr(caps, "retrieval_enabled", False)) if caps else False
+                )
+                experiment_kind = (
+                    "ai_search_visibility" if retrieval_enabled else "llm_mention"
+                )
+                protocol_version = (
+                    LLM_MENTION_PROTOCOL_VERSION
+                    if not retrieval_enabled
+                    else AI_SEARCH_PROTOCOL_VERSION
+                )
+                job.experiment_protocol_version = protocol_version
+
+                exp_cfg = ExperimentConfig(
+                    id=new_id(),
+                    job_id=job.id,
+                    protocol_version=protocol_version,
+                    provider_name=provider.name,
+                    model_id=model_id,
+                    prompt_set_id=prompt_set_id,
+                    prompts_json=json.dumps(prompts, sort_keys=True),
+                    runs_per_prompt=runs_per_prompt,
+                    experiment_kind=experiment_kind,
+                    retrieval_enabled=1 if retrieval_enabled else 0,
+                    discovered_queries_json=json.dumps(discovery.to_dict(), sort_keys=True),
+                    created_at=utc_now_iso(),
+                )
+                self.session.add(exp_cfg)
+                self.session.flush()
+
+                brand_tokens = filter_brand_tokens(entity.brand_tokens)
+                # Never use multi-tenant platform apex (e.g. "hashnode") as brand token.
+                target_identity = resolve_target_site_identity(job.base_url)
+                site_domain = target_identity.registrable_domain
+                if (
+                    target_identity.multi_tenant_host
+                    and target_identity.identity_kind != "platform_apex"
+                ):
+                    platform_label = site_domain.split(".")[0] if site_domain else ""
+                    brand_tokens = [
+                        t
+                        for t in brand_tokens
+                        if t.lower() != platform_label.lower()
+                    ]
+                observations = []
+                for prompt in prompts:
+                    for run_index in range(runs_per_prompt):
+                        ctx = VisibilityContext(
+                            job_id=job.id,
+                            base_url=job.base_url,
+                            brand_tokens=brand_tokens,
+                            site_registrable_domain=site_domain,
+                            prompt_id=prompt["id"],
+                            run_index=run_index,
+                            protocol_version=protocol_version,
+                            target_hostname=target_identity.hostname,
+                            target_origin=target_identity.origin,
+                            target_domain_scope=target_identity.target_domain_scope,
+                            multi_tenant_host=target_identity.multi_tenant_host,
+                            match_rule_version=MATCH_RULE_VERSION,
+                            target_site=target_identity.to_audit_dict(),
+                        )
+                        obs = await provider.run_query(prompt["query"], context=ctx)
+                        observations.append(obs)
+                        row = VisObsRow(
+                            id=new_id(),
+                            job_id=job.id,
+                            experiment_config_id=exp_cfg.id,
+                            provider_name=obs.provider_name,
+                            engine_label=obs.engine_label,
+                            query=obs.query,
+                            prompt_id=obs.prompt_id,
+                            run_index=obs.run_index,
+                            observed_at=obs.observed_at.replace(microsecond=0).isoformat(),
+                            raw_response=obs.raw_response if obs.raw_storage_permitted else None,
+                            raw_storage_permitted=1 if obs.raw_storage_permitted else 0,
+                            detected_mention=1 if obs.detected_mention else 0,
+                            detected_citation=1 if obs.detected_citation else 0,
+                            cited_urls_json=json.dumps(obs.cited_urls),
+                            extraction_methodology=obs.extraction_methodology,
+                            provenance=obs.provenance,
+                            meta_json=json.dumps(obs.meta, sort_keys=True),
+                            model_id=obs.model_id,
+                            retrieval_enabled=1 if obs.retrieval_enabled else 0,
+                            experiment_kind=obs.experiment_kind,
+                            search_queries_json=json.dumps(obs.search_queries or []),
+                            source_urls_json=json.dumps(obs.source_urls or []),
+                            target_domain_appeared=(
+                                None
+                                if obs.target_domain_appeared is None
+                                else (1 if obs.target_domain_appeared else 0)
+                            ),
+                            target_domain_cited=(
+                                None
+                                if obs.target_domain_cited is None
+                                else (1 if obs.target_domain_cited else 0)
+                            ),
+                        )
+                        self.session.add(row)
+                self.session.flush()
+
+                rates_llm = None
+                rates_ai = None
+                if retrieval_enabled:
+                    rates_ai = aggregate_ai_search_metrics(observations)
+                    metric_prov = (
+                        "synthetic_demo" if provider.name == "demo" else "estimate"
+                    )
+                    metric_rows = [
+                        (
+                            "ai_search_mention_rate",
+                            rates_ai.ai_search_mention_rate,
+                            rates_ai.mention_numerator,
+                            rates_ai.denominator_runs,
+                        ),
+                        (
+                            "ai_search_citation_rate",
+                            rates_ai.ai_search_citation_rate,
+                            rates_ai.citation_numerator,
+                            rates_ai.denominator_runs,
+                        ),
+                        (
+                            "target_domain_appearance_rate",
+                            rates_ai.target_domain_appearance_rate,
+                            rates_ai.appearance_numerator,
+                            rates_ai.denominator_runs,
+                        ),
+                        (
+                            "query_coverage",
+                            rates_ai.query_coverage,
+                            rates_ai.coverage_numerator,
+                            rates_ai.denominator_prompts,
+                        ),
+                    ]
+                    mention_for_recs = rates_ai.ai_search_mention_rate
+                    citation_for_recs = rates_ai.ai_search_citation_rate
+                    log_rate = rates_ai.ai_search_mention_rate
+                else:
+                    rates_llm = aggregate_llm_metrics(observations)
+                    metric_prov = (
+                        "synthetic_demo" if provider.name == "demo" else "estimate"
+                    )
+                    metric_rows = [
+                        (
+                            "llm_mention_rate",
+                            rates_llm.llm_mention_rate,
+                            rates_llm.mention_numerator,
+                            rates_llm.denominator_runs,
+                        ),
+                        (
+                            "llm_url_mention_rate",
+                            rates_llm.llm_url_mention_rate,
+                            rates_llm.url_mention_numerator,
+                            rates_llm.denominator_runs,
+                        ),
+                        (
+                            "query_coverage",
+                            rates_llm.query_coverage,
+                            rates_llm.coverage_numerator,
+                            rates_llm.denominator_prompts,
+                        ),
+                    ]
+                    mention_for_recs = rates_llm.llm_mention_rate
+                    citation_for_recs = rates_llm.llm_url_mention_rate
+                    log_rate = rates_llm.llm_mention_rate
 
             for name, value, num, den in metric_rows:
                 self.session.add(

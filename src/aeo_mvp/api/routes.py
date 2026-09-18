@@ -54,7 +54,7 @@ def create_job(
     body: CreateJobRequest,
     background_tasks: BackgroundTasks,
 ) -> JobCreatedResponse:
-    options = body.options.model_dump() if body.options else {}
+    options = body.options.model_dump(exclude_none=True) if body.options else {}
     if not body.demo_mode and is_obviously_unsafe_url(body.url):
         raise HTTPException(
             status_code=400,

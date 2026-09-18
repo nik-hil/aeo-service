@@ -141,15 +141,15 @@ def test_deterministic_selection_seed_reproducible():
         },
         evidence_hash="seed-hash-1",
     )
-    r1 = discover_queries(u, top_n=20, selection_seed=42)
-    r2 = discover_queries(u, top_n=20, selection_seed=42)
+    r1 = discover_queries(u, top_n=20, selection_seed=42, discovery_version="v1")
+    r2 = discover_queries(u, top_n=20, selection_seed=42, discovery_version="v1")
     assert r1.fallback_used is False
     assert r1.selected_count == r2.selected_count
     assert [q.query for q in r1.queries] == [q.query for q in r2.queries]
     assert r1.query_set["selection_seed"] == 42
     assert r1.query_set["query_set_version"] == "query-set-v2"
     # Different seed may differ but both ready
-    r3 = discover_queries(u, top_n=20, selection_seed=99)
+    r3 = discover_queries(u, top_n=20, selection_seed=99, discovery_version="v1")
     assert r3.selected_count >= 8
     assert r1.paid_retrieval_ready is False  # default opt-in false
 
@@ -176,7 +176,7 @@ def test_evidence_provenance_on_queries():
         },
         evidence_hash="saas1",
     )
-    result = discover_queries(u, top_n=20)
+    result = discover_queries(u, top_n=20, discovery_version="v1")
     assert result.selected_count >= 8
     for q in result.queries:
         assert q.source_evidence or q.rationale
@@ -200,9 +200,9 @@ def test_paid_retrieval_requires_opt_in():
         },
         evidence_hash="pay1",
     )
-    off = discover_queries(u, top_n=20, paid_retrieval_opt_in=False)
+    off = discover_queries(u, top_n=20, paid_retrieval_opt_in=False, discovery_version="v1")
     assert off.paid_retrieval_ready is False
-    on = discover_queries(u, top_n=20, paid_retrieval_opt_in=True)
+    on = discover_queries(u, top_n=20, paid_retrieval_opt_in=True, discovery_version="v1")
     assert on.paid_retrieval_opt_in is True
     assert on.paid_retrieval_ready is True  # ready set + opt-in
 
@@ -242,7 +242,7 @@ def test_hashnode_offline_full_pipeline(db_session):
         pages.append(p)
     db_session.flush()
     u = infer_site_understanding(db_session, job.id, pages, job.base_url)
-    result = discover_queries(u, top_n=20, selection_seed=7)
+    result = discover_queries(u, top_n=20, selection_seed=7, discovery_version="v1")
     assert u.industry_category_guess != "project_management"
     assert result.candidates_count >= 30 or result.candidates_count >= 10
     assert result.selected_count >= 8
@@ -279,7 +279,7 @@ def test_legacy_discover_and_dedupe_still_work():
         },
         evidence_hash="legacy",
     )
-    result = discover_queries(u, top_n=10)
+    result = discover_queries(u, top_n=10, discovery_version="v1")
     assert result.fallback_used is False
     assert result.selected_count >= 8
     cands = [
