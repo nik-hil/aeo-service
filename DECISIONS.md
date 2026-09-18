@@ -109,3 +109,23 @@ Assumptions and decisions made without asking the user. Update when overturned.
 **Rationale:** First real retrieval-enabled visibility path without claiming consumer UI rankings; builds on D019/D021 abstractions.
 **Doc:** `docs/methodology/AI_SEARCH_VISIBILITY_DO.md`.
 **Alternatives considered:** Perplexity Sonar live path first (still stub); OpenAI Responses web_search (deferred); scraping consumer UIs (forbidden).
+
+## D023 — Target site identity vs PSL (2026-09-18)
+**Decision:** Keep `registrable_domain()` as true PSL eTLD+1 with
+`include_psl_private_domains=True`. Introduce `TargetSiteIdentity` +
+`target_match()` (`domain-match-v1`) for AI-search appeared/cited. Default
+`match_scope=hostname` for supplemental multi-tenant platforms not on PSL
+PRIVATE (`hashnode.dev`, `wordpress.com`, `medium.com`, `substack.com`,
+`ghost.io`, `tumblr.com`). Ordinary sites default to `registrable_domain`
+scope. www: strip one leading `www.` for compare only. Ban naive endswith.
+Competitors use the same `site_key()`; omit target via `target_match`; do not
+aggregate hosted tenants to platform apex. LLM-mention and health-v1 unchanged.
+**Rationale:** Phase 2 Hashnode run incorrectly credited `hashnode.dev` /
+sibling pubs when matching on PSL alone. True PSL of `nik-hil.hashnode.dev`
+**is** `hashnode.dev` (not a bug to “fix”); product isolation is hostname
+scope + supplemental allowlist. Private PSL fixes `alice.github.io` →
+`alice.github.io`.
+**Doc:** `docs/methodology/DOMAIN_MATCHING.md`, `AI_SEARCH_VISIBILITY_DO.md`.
+**Alternatives considered:** Rewriting PSL to treat `nik-hil.hashnode.dev` as
+eTLD+1 — rejected (false PSL). Using label-count alone for multi-tenant —
+rejected. Suffix/endswith host match — rejected (lookalike hazard).

@@ -18,6 +18,7 @@ from aeo_mvp.visibility.metrics import (
     aggregate_metrics,
     detect_citation,
     detect_mention,
+    domain_matches_target,
     extract_urls,
 )
 from aeo_mvp.visibility.openai_compatible import OpenAICompatibleProvider
@@ -26,6 +27,13 @@ from aeo_mvp.visibility.retrieval_base import (
     RETRIEVAL_REQUIRED_FIELDS,
     RetrievalEnabledVisibilityProvider,
     retrieval_capabilities,
+)
+from aeo_mvp.target_site import (
+    MATCH_RULE_VERSION,
+    TargetSiteIdentity,
+    resolve_target_site_identity,
+    site_key,
+    target_match,
 )
 
 __all__ = [
@@ -47,5 +55,11 @@ __all__ = [
     "aggregate_ai_search_metrics",
     "detect_mention",
     "detect_citation",
+    "domain_matches_target",
     "extract_urls",
+    "MATCH_RULE_VERSION",
+    "TargetSiteIdentity",
+    "resolve_target_site_identity",
+    "site_key",
+    "target_match",
 ]

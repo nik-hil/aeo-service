@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from aeo_mvp.analyzers.ai_crawlers import analyze_ai_crawlers
+from aeo_mvp.analyzers.base import domain_label
 from aeo_mvp.analyzers.content import analyze_content
 from aeo_mvp.analyzers.entities import analyze_entities
 from aeo_mvp.analyzers.structured_data import analyze_structured_data
@@ -34,6 +35,7 @@ from aeo_mvp.db.models import (
     utc_now_iso,
 )
 from aeo_mvp.demo.loader import load_prompt_set_fixture
+from aeo_mvp.domains import registrable_domain
 from aeo_mvp.queries.discovery import discover_queries
 from aeo_mvp.recommendations.engine import (
     TriggerContext,
@@ -43,6 +45,7 @@ from aeo_mvp.recommendations.engine import (
 from aeo_mvp.report.builder import build_report
 from aeo_mvp.scoring.health import compute_health
 from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url
+from aeo_mvp.target_site import MATCH_RULE_VERSION, resolve_target_site_identity
 from aeo_mvp.understanding.site import infer_site_understanding
 from aeo_mvp.visibility.base import VisibilityContext
 from aeo_mvp.visibility.competitors import extract_competitor_domains
@@ -55,7 +58,6 @@ from aeo_mvp.visibility.metrics import (
     aggregate_ai_search_metrics,
     aggregate_llm_metrics,
     filter_brand_tokens,
-    registrable_domain,
 )
 from aeo_mvp.visibility.openai_compatible import OpenAICompatibleProvider
 
@@ -282,7 +284,7 @@ class JobOrchestrator:
             brand = (
                 understanding.organization_brand
                 or (entity.brand_tokens[0] if entity.brand_tokens else None)
-                or registrable_domain(job.base_url).split(".")[0]
+                or domain_label(job.base_url)
             )
             prompts, prompt_set_id = self._build_prompts(
                 job,
@@ -325,7 +327,19 @@ class JobOrchestrator:
             self.session.flush()
 
             brand_tokens = filter_brand_tokens(entity.brand_tokens)
-            site_domain = registrable_domain(job.base_url)
+            # Never use multi-tenant platform apex (e.g. "hashnode") as brand token.
+            target_identity = resolve_target_site_identity(job.base_url)
+            site_domain = target_identity.registrable_domain
+            if (
+                target_identity.multi_tenant_host
+                and target_identity.identity_kind != "platform_apex"
+            ):
+                platform_label = site_domain.split(".")[0] if site_domain else ""
+                brand_tokens = [
+                    t
+                    for t in brand_tokens
+                    if t.lower() != platform_label.lower()
+                ]
             observations = []
             for prompt in prompts:
                 for run_index in range(runs_per_prompt):
@@ -337,6 +351,12 @@ class JobOrchestrator:
                         prompt_id=prompt["id"],
                         run_index=run_index,
                         protocol_version=protocol_version,
+                        target_hostname=target_identity.hostname,
+                        target_origin=target_identity.origin,
+                        target_domain_scope=target_identity.target_domain_scope,
+                        multi_tenant_host=target_identity.multi_tenant_host,
+                        match_rule_version=MATCH_RULE_VERSION,
+                        target_site=target_identity.to_audit_dict(),
                     )
                     obs = await provider.run_query(prompt["query"], context=ctx)
                     observations.append(obs)
@@ -459,10 +479,13 @@ class JobOrchestrator:
 
             # P1-D competitors only when retrieval_enabled
             competitors = extract_competitor_domains(
-                observations, target_domain=site_domain
+                observations,
+                target_identity=target_identity,
             )
             if retrieval_enabled and competitors.get("applicable"):
                 p1_sections["competitors"] = competitors
+            if retrieval_enabled:
+                p1_sections["target_site"] = target_identity.to_audit_dict()
 
             # Stash P1 sections into job options for report builder
             options["_p1_sections"] = p1_sections

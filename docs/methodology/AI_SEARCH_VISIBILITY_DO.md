@@ -20,9 +20,9 @@ Each run records:
 | `search_queries` | `web_search_call.action.queries` / `query` |
 | `source_urls` | tool sources/results + citation URLs |
 | `citations` | message `annotations` with `type=url_citation` |
-| `target_domain_appeared` | target registrable domain in `source_urls` (PSL) |
-| `target_domain_cited` | target domain in **structured** `url_citation` annotations only |
-| `detected_mention` | brand-token mention rule on answer text |
+| `target_domain_appeared` | target **site** matched in `source_urls` under `match_scope` (`domain-match-v1`) |
+| `target_domain_cited` | target **site** matched in structured `url_citation` under the **same** `match_scope` |
+| `detected_mention` | brand-token mention rule on answer text (does **not** set appeared/cited) |
 
 **Provenance:** `api_observation` for rows; aggregate rates use `estimate`.
 
@@ -47,15 +47,19 @@ Let \(R\) = observation runs, \(P\) = distinct prompts.
 | Metric | Formula | Notes |
 | --- | --- | --- |
 | `ai_search_mention_rate` | \(M / R\) | Brand mention in answer text |
-| `ai_search_citation_rate` | \(K / R\) | Structured `url_citation` to target domain |
-| `target_domain_appearance_rate` | \(A / R\) | Target domain in sources/results |
+| `ai_search_citation_rate` | \(K / R\) | Structured `url_citation` to **target site** |
+| `target_domain_appearance_rate` | \(A / R\) | Target **site** in sources/results |
 | `query_coverage` | \(Q_c / P\) | Prompts with ≥1 mention **or** appearance **or** citation |
+
+Matching uses `TargetSiteIdentity` / `target_match` (`domain-match-v1`) — **not**
+bare PSL equality. See `DOMAIN_MATCHING.md`. Report emits `target_site`; each
+observation stores `meta.target_site_match`.
 
 These keys are emitted **only** for `experiment_kind=ai_search_visibility`.
 `llm_mention_rate` / `llm_url_mention_rate` stay on non-retrieval runs.
 
 Competitor domains from sources are **descriptive co-appearance counts only** —
-no winner ranking.
+`site_key()` buckets; target omitted via `target_match`; no winner ranking.
 
 ---
 
