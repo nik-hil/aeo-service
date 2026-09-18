@@ -201,3 +201,20 @@ QSQ-EVD unchanged: ≥2 distinct observed. Kept query-set-v3 (no v4).
 SiteProfile evidence lacking provenance, inconsistent with EvidenceRecord.from_dict.
 **Doc:** `docs/architecture/PHASE4_1_1_PROVENANCE_LOCK.md`,
 `docs/methodology/QUERY_DISCOVERY.md`.
+
+## D032 — Phase 5 content optimization contracts (2026-09-18)
+**Decision:** Add grounded content optimization as `aeo_mvp.optimization` with
+versioned contracts `page-intelligence-v1`, `content-gap-v1`, `content-brief-v1`,
+`optimized-content-v1`. Pipeline: page intelligence → content gaps → brief →
+draft. Coverage levels `direct|partial|mention|none` are page-content overlap
+only (≠ AI visibility). Pure functions for coverage/gaps/brief/change-plan;
+LLM behind interface with heuristic default; `paid_llm_opt_in=false` by default;
+tests never call paid DO/LLM. API `POST /api/v1/content-optimization` accepts
+SSRF-safe `source_url` or `job_id`/`page_id` or offline `html` — forbids free-form
+`{topic}` generation. Keep freezes: ssrf, target_site, domains, health-v1,
+digitalocean_*, query-set-v3, query-quality-v1, provenance 4.1.1, paid OFF.
+No query-set-v4. No CMS publish.
+**Rationale:** Product needs optimization grounded in crawled page + QuerySet,
+not a generic writer.
+**Doc:** `docs/architecture/PHASE5_CONTENT_OPTIMIZATION.md`,
+`docs/methodology/CONTENT_OPTIMIZATION.md`.

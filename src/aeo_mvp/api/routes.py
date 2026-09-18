@@ -11,6 +11,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from aeo_mvp.api.schemas import (
+    ContentOptimizationRequest,
+    ContentOptimizationResponse,
     CreateJobRequest,
     HealthResponse,
     JobCreatedResponse,
@@ -19,8 +21,17 @@ from aeo_mvp.api.schemas import (
     PageItem,
     PagesResponse,
 )
+from aeo_mvp.config import get_settings
 from aeo_mvp.db.models import Job, Page, Report, ScoreComponent
 from aeo_mvp.db.session import get_session_factory
+from aeo_mvp.optimization.service import (
+    OptimizationRequestError,
+    fetch_html_ssrf_safe,
+    load_site_profile,
+    prepare_queryset,
+    resolve_page_html,
+    run_from_resolved,
+)
 from aeo_mvp.pipeline.orchestrator import JobOrchestrator, create_job_record
 from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url
 
@@ -186,6 +197,73 @@ def get_pages(job_id: str) -> PagesResponse:
                 )
                 for p in pages
             ],
+        )
+    finally:
+        session.close()
+
+
+@api_router.post(
+    "/content-optimization",
+    response_model=ContentOptimizationResponse,
+    status_code=200,
+)
+async def content_optimization(body: ContentOptimizationRequest) -> dict[str, Any]:
+    """Grounded page optimization: intelligence → gaps → brief → draft.
+
+    Accepts SSRF-safe ``source_url``, or existing ``job_id``/``page_id`` (+ queryset),
+    or offline ``html``. Rejects free-form topic generation payloads (extra fields forbidden).
+    Paid LLM default OFF; never auto-runs DigitalOcean web_search.
+    """
+    factory = get_session_factory()
+    session = factory()
+    try:
+        try:
+            html, url, title_hint = resolve_page_html(
+                session,
+                job_id=body.job_id,
+                page_id=body.page_id,
+                source_url=body.source_url,
+                html=body.html,
+                url_hint=body.url,
+            )
+        except OptimizationRequestError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except SSRFError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsafe URL rejected by SSRF policy: {exc}",
+            ) from exc
+
+        if body.source_url and html is None:
+            try:
+                html, url, title_hint = await fetch_html_ssrf_safe(body.source_url)
+            except SSRFError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsafe URL rejected by SSRF policy: {exc}",
+                ) from exc
+            except OptimizationRequestError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        job = session.get(Job, body.job_id) if body.job_id else None
+        queryset = prepare_queryset(session, job, body.queryset)
+        site_profile = body.site_profile
+        if site_profile is None and job is not None:
+            site_profile = load_site_profile(session, job)
+
+        settings = get_settings()
+        paid = bool(body.paid_llm_opt_in)
+        api_key = settings.openai_api_key if paid else None
+
+        return run_from_resolved(
+            html=html,
+            url=url,
+            title_hint=title_hint,
+            queryset=queryset,
+            site_profile=site_profile,
+            config=body.config,
+            paid_llm_opt_in=paid,
+            llm_api_key=api_key,
         )
     finally:
         session.close()

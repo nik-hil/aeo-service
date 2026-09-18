@@ -26,6 +26,8 @@
 | P1-E Enriched recommendations | Done | problem/action/pattern/validation + evidence snippets |
 | P1-F Executive summary | Done | `executive_summary` + `page_findings` on report |
 | P1-G Signal classification | Done | `docs/methodology/SIGNAL_CLASSIFICATION.md` (health-v1 immutable) |
+| Phase 3–4.1.1 Query intelligence | Done | `query-discovery-v2` / `query-quality-v1` / `query-set-v3`; provenance trust boundary |
+| Phase 5 Content optimization | Done | `page-intelligence-v1` → gaps → brief → draft; `POST /api/v1/content-optimization`; paid LLM/DO default OFF |
 
 ### Demo E2E (verified locally)
 

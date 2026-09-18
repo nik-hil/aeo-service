@@ -101,3 +101,46 @@ class HealthResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class ContentOptimizationRequest(BaseModel):
+    """Grounded optimization input — not a free-form topic generator.
+
+    Provide one of:
+    - ``job_id`` (+ optional ``page_id``) to reuse crawled HTML / queryset
+    - ``source_url`` (SSRF-validated live fetch)
+    - ``html`` (+ optional ``url``) for offline / fixture analysis
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str | None = None
+    page_id: str | None = None
+    source_url: str | None = None
+    html: str | None = None
+    url: str | None = None
+    queryset: dict[str, Any] | list[Any] | None = None
+    site_profile: dict[str, Any] | None = None
+    config: dict[str, Any] | None = None
+    paid_llm_opt_in: bool = False
+
+    @field_validator("source_url", "url")
+    @classmethod
+    def validate_optional_url(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("url must be http(s)")
+        return v
+
+
+class ContentOptimizationResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    page_intelligence: dict[str, Any]
+    gap_report: dict[str, Any]
+    brief: dict[str, Any]
+    draft: dict[str, Any]
+    paid_retrieval: bool = False
+    paid_llm: bool = False
