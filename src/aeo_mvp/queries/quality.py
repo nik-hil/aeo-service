@@ -21,6 +21,8 @@ from aeo_mvp.queries.quality_policy import industry_leak_detail
 from aeo_mvp.understanding.site import SiteUnderstanding
 
 QUALITY_VERSION = "query-quality-v1"
+# Methodology patch for Phase 4.1.1 provenance honesty (does NOT bump QUALITY_VERSION)
+QUERY_SET_QUALITY_METHODOLOGY = "query-set-quality-v1.1.1"
 # Set-level diagnostic IDs (methodology QUERY_SET_QUALITY)
 QSQ_IDS = (
     "QSQ-SPEC",

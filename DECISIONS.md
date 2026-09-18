@@ -187,3 +187,17 @@ counts for strongest QSQ-EVD. Genre policies in `quality_policy.py`.
 Kept `query-set-v3` (additive fields; no v4).
 **Rationale:** Phase 4 persisted seeds but ignored them; fingerprint/evidence gaps.
 **Doc:** `docs/methodology/QUERY_DISCOVERY.md`, `QUERY_SET_QUALITY.md`.
+
+## D031 — Phase 4.1.1 evidence provenance trust boundary (2026-09-18)
+**Decision:** Corrective only (no Phase 5). Binding lock:
+`docs/architecture/PHASE4_1_1_PROVENANCE_LOCK.md`. Single
+`normalize_provenance(raw)` → observed|derived|compatibility used by
+`EvidenceRecord.from_dict` + generate_v2/generate. Missing/unknown →
+compatibility ONLY. SiteProfile heuristic/derived_metric/llm_assist → derived.
+Shims/fillers → compatibility. Never promote identity/origin/structured presence
+to observed. Crawl EvidenceRef stamps observed only at explicit construction.
+QSQ-EVD unchanged: ≥2 distinct observed. Kept query-set-v3 (no v4).
+**Rationale:** generate_v2 previously manufactured observed from unstructured
+SiteProfile evidence lacking provenance, inconsistent with EvidenceRecord.from_dict.
+**Doc:** `docs/architecture/PHASE4_1_1_PROVENANCE_LOCK.md`,
+`docs/methodology/QUERY_DISCOVERY.md`.

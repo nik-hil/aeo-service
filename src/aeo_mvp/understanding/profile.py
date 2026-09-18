@@ -38,6 +38,13 @@ QUERY_DISCOVERY_METHOD = "query-discovery-v1"
 
 @dataclass
 class EvidenceRef:
+    """Page-signal evidence reference.
+
+    ``provenance`` here is EvidenceRecord provenance (observed|derived|compatibility),
+    distinct from SiteProfileField.origin/field provenance. Crawl-extracted refs
+    must stamp ``observed`` explicitly at construction — never inferred later.
+    """
+
     evidence_id: str
     url: str | None = None
     snippet: str | None = None
@@ -45,6 +52,8 @@ class EvidenceRef:
     page_id: str | None = None
     evidence_class: EvidenceClass | None = None
     weight: float = 1.0
+    # Explicit EvidenceRecord provenance; None/missing → compatibility at boundary
+    provenance: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v is not None}

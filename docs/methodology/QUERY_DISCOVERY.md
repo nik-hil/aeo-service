@@ -63,7 +63,17 @@ and `selection_seed_method=sha256_seeded_tiebreak_v1`.
 | --- | --- | --- |
 | `observed` | Crawl/page signal | **Yes** (≥2 distinct classes) |
 | `derived` | Inferred / projected | No |
-| `compatibility` | Legacy SiteUnderstanding fillers | No |
+| `compatibility` | Legacy SiteUnderstanding fillers / missing / unknown | No |
+
+**Trust boundary (Phase 4.1.1):** Binding lock in
+`docs/architecture/PHASE4_1_1_PROVENANCE_LOCK.md`.
+`normalize_provenance(raw)` preserves explicit `observed|derived|compatibility`;
+SiteProfile `heuristic|derived_metric|llm_assist` → `derived`; missing/unknown /
+shims → `compatibility`. Never invent `observed` from identity/origin/structured
+presence. One helper shared by `from_dict` + `generate_v2`. Crawl `EvidenceRef`
+stamps `observed` only as an explicit hard contract at construction. Generation
+may use weak signals for viability; QSQ-EVD / `gate_candidates_v2` remains
+authoritative (≥2 distinct observed).
 
 ## Dedup
 

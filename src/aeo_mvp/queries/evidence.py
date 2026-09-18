@@ -1,4 +1,4 @@
-"""Evidence provenance for query-quality / QSQ-EVD (Phase 4.1).
+"""Evidence provenance for query-quality / QSQ-EVD (Phase 4.1 / 4.1.1).
 
 Provenance values:
 - ``observed`` — extracted from crawled page signals (counts for strongest QSQ-EVD)
@@ -6,6 +6,12 @@ Provenance values:
 - ``compatibility`` — legacy SiteUnderstanding synthetic fillers (does **not** count)
 
 Only ``observed`` evidence classes count for the strongest QSQ-EVD gate (≥2 classes).
+
+Trust boundary (Phase 4.1.1) — see ``docs/architecture/PHASE4_1_1_PROVENANCE_LOCK.md``:
+- missing/unknown → ``compatibility`` ONLY (never invent ``observed``)
+- SiteProfile ``heuristic`` / ``derived_metric`` / ``llm_assist`` → ``derived``
+- legacy shims / fillers → ``compatibility``
+- identity/origin/structured-profile presence alone never → ``observed``
 """
 
 from __future__ import annotations
@@ -18,6 +24,26 @@ EvidenceProvenance = Literal["observed", "derived", "compatibility"]
 VALID_PROVENANCE: frozenset[str] = frozenset(
     {"observed", "derived", "compatibility"}
 )
+
+# SiteProfile field / origin labels → EvidenceRecord.derived (not observed)
+_SITEPROFILE_TO_DERIVED: frozenset[str] = frozenset(
+    {"heuristic", "derived_metric", "llm_assist"}
+)
+
+
+def normalize_provenance(raw: Any) -> EvidenceProvenance:
+    """Canonical trust-boundary helper (single entry for from_dict + generate_v2).
+
+    - Explicit ``observed`` | ``derived`` | ``compatibility`` are preserved.
+    - SiteProfile ``heuristic`` | ``derived_metric`` | ``llm_assist`` → ``derived``.
+    - Missing, empty, shims, and any other unknown → ``compatibility``.
+    - Never invents ``observed`` from absence or structured-profile presence.
+    """
+    if raw in VALID_PROVENANCE:
+        return raw  # type: ignore[return-value]
+    if isinstance(raw, str) and raw in _SITEPROFILE_TO_DERIVED:
+        return "derived"
+    return "compatibility"
 
 
 @dataclass
@@ -60,12 +86,8 @@ class EvidenceRecord:
         if not raw or not isinstance(raw, dict):
             return None
         cls_name = raw.get("evidence_class") or raw.get("class") or "metadata"
-        prov_raw = raw.get("provenance")
-        if prov_raw in VALID_PROVENANCE:
-            provenance: EvidenceProvenance = prov_raw  # type: ignore[assignment]
-        else:
-            # Missing/unknown → compatibility (SiteUnderstanding legacy path)
-            provenance = "compatibility"
+        # Missing/unknown → compatibility (never promote to observed)
+        provenance = normalize_provenance(raw.get("provenance"))
         known = {
             "evidence_class",
             "class",
@@ -99,6 +121,8 @@ def normalize_evidence_list(
     out: list[EvidenceRecord] = []
     for item in items or []:
         if isinstance(item, EvidenceRecord):
+            # Re-normalize in case a caller constructed an invalid value
+            item.provenance = normalize_provenance(item.provenance)
             out.append(item)
             continue
         if not isinstance(item, dict):
@@ -107,9 +131,30 @@ def normalize_evidence_list(
         if rec is None:
             continue
         if "provenance" not in item:
-            rec.provenance = default_provenance
+            rec.provenance = normalize_provenance(default_provenance)
         out.append(rec)
     return out
+
+
+def stamp_evidence_dict(
+    raw: dict[str, Any],
+    *,
+    field_provenance: Any = None,
+) -> dict[str, Any]:
+    """Copy an evidence dict and normalize provenance at the trust boundary.
+
+    If the evidence item lacks provenance, inherit ``field_provenance`` (SiteProfile
+    field/origin) and map via ``normalize_provenance`` (heuristic→derived).
+    Never invents ``observed`` from structured-profile presence alone.
+    """
+    item = dict(raw)
+    raw_prov = item.get("provenance")
+    if raw_prov in (None, ""):
+        raw_prov = field_provenance
+    item["provenance"] = normalize_provenance(raw_prov)
+    if "evidence_class" not in item and item.get("class"):
+        item["evidence_class"] = item["class"]
+    return item
 
 
 def observed_evidence_classes(
