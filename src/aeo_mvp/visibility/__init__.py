@@ -8,6 +8,10 @@ from aeo_mvp.visibility.base import (
 )
 from aeo_mvp.visibility.competitors import extract_competitor_domains
 from aeo_mvp.visibility.demo import DemoProvider
+from aeo_mvp.visibility.digitalocean_web_search import (
+    DigitalOceanWebSearchError,
+    DigitalOceanWebSearchProvider,
+)
 from aeo_mvp.visibility.metrics import (
     aggregate_ai_search_metrics,
     aggregate_llm_metrics,
@@ -30,6 +34,8 @@ __all__ = [
     "VisibilityContext",
     "VisibilityObservation",
     "DemoProvider",
+    "DigitalOceanWebSearchError",
+    "DigitalOceanWebSearchProvider",
     "OpenAICompatibleProvider",
     "PerplexitySonarProvider",
     "RetrievalEnabledVisibilityProvider",
