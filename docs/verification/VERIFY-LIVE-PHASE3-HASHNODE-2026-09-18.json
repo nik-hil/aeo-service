@@ -1,0 +1,198 @@
+{
+  "overall": "PASS",
+  "verifier": "independent_aeo_verifier",
+  "verified_at": "2026-09-18 16:11:44 IST",
+  "job_id": "970aefc3-7d5a-4465-b0a8-79cb3e885458",
+  "commit_claimed": "7ac08ef",
+  "commit_observed_HEAD": "7ac08ef102eb34f9998c8078155fe7072e87c18b",
+  "commit_match": true,
+  "url": "https://nik-hil.hashnode.dev/",
+  "status": "completed",
+  "demo_mode": false,
+  "new_paid_do_run": false,
+  "new_paid_do_run_reason": "Artifacts + DB sufficient; recomputed counts consistent across summary/report/DB",
+  "gates": {
+    "A": {
+      "name": "SiteProfile genre + industry omit-by-default",
+      "result": "PASS",
+      "site_genre": "personal_tech_blog",
+      "not_project_management": true,
+      "industry_category_guess": "ai_ml",
+      "industry_omitted": false,
+      "industry_evidence_backed": true,
+      "industry_chrome_driven_pm": false,
+      "industry_evidence_classes": [
+        "article_body",
+        "title_h1"
+      ],
+      "notes": "Genre personal_tech_blog (NOT project_management). Industry ai_ml present with article_body/title_h1 AI-agent evidence (omitted=false, confidence=0.4); zero PM chrome hits. Omit-by-default respected via evidence-backed path."
+    },
+    "B": {
+      "name": "Query discovery 29\u219220 via query-discovery-v1 + explicit paid opt-in",
+      "result": "PASS",
+      "candidates_count": 29,
+      "selected_count": 20,
+      "accepted_count": 29,
+      "rejected_count": 0,
+      "queries_list_len": 20,
+      "discovery_method": "query-discovery-v1",
+      "query_set_version": "query-set-v2",
+      "paid_retrieval_opt_in": true,
+      "paid_retrieval_opt_in_source": "jobs.options_json.paid_retrieval_opt_in=true (also mirrored in discovered_queries / query_set)",
+      "fallback_used": false,
+      "intent_breakdown": {
+        "comparison": 3,
+        "informational": 4,
+        "navigational": 1,
+        "problem_solving": 8,
+        "recommendation": 4
+      },
+      "notes": "Explicit job option paid_retrieval_opt_in=true; default is false (config AEO_PAID_RETRIEVAL_OPT_IN / Field default False)."
+    },
+    "C": {
+      "name": "TargetSiteIdentity unchanged",
+      "result": "PASS",
+      "hostname": "nik-hil.hashnode.dev",
+      "match_scope": "hostname",
+      "registrable_domain": "hashnode.dev",
+      "identity_kind": "supplemental_multi_tenant",
+      "match_rule_version": "domain-match-v1",
+      "multi_tenant_host": true,
+      "site_key": "nik-hil.hashnode.dev",
+      "target_domain_scope": "hostname",
+      "supplemental_allowlist_version": "multi-tenant-supplemental-v1"
+    },
+    "D": {
+      "name": "Visibility host scope (matched only nik-hil)",
+      "result": "PASS",
+      "obs": 20,
+      "appeared": 15,
+      "cited": 15,
+      "matched_appeared_hosts": {
+        "nik-hil.hashnode.dev": 43
+      },
+      "matched_cited_hosts": {
+        "nik-hil.hashnode.dev": 43
+      },
+      "bad_platform_or_sibling_credits": [],
+      "apex_or_sibling_matched_credits": 0,
+      "raw_provider_sibling_sources_not_credited": {
+        "xbstack.hashnode.dev": 1,
+        "pragmatic-engineer.hashnode.dev": 1,
+        "quokkalabs.hashnode.dev": 1,
+        "hashnode.com": 3
+      },
+      "notes": "Recomputed from visibility_obs.audits (20) and DB observation metas. Matched appeared/cited URL hosts are exclusively nik-hil.hashnode.dev. Raw DO sources include sibling hashnode.dev tenants + hashnode.com but domain-match-v1 did not credit them."
+    },
+    "E": {
+      "name": "Experiment kind ai_search_visibility / retrieval_enabled",
+      "result": "PASS",
+      "experiment_kind": "ai_search_visibility",
+      "retrieval_enabled": true,
+      "protocol_version": "ai-search-vis-v1",
+      "provider_name": "digitalocean_web_search",
+      "model_id": "openai-gpt-4o",
+      "llm_mention_rate_emitted_in_report": false,
+      "demo_mode": false,
+      "status": "completed"
+    },
+    "F": {
+      "name": "Freeze intact (SSRF, domain-match-v1, health-v1, llm-mention semantics)",
+      "result": "PASS",
+      "health": {
+        "formula_version": "health-v1",
+        "reported": 76.4,
+        "recomputed": 76.40625,
+        "components": {
+          "technical": 95.0,
+          "content": 69.625,
+          "entity": 52.5,
+          "structured_data": 90.0,
+          "answerability": 75.0
+        },
+        "weights": {
+          "technical": 0.25,
+          "content": 0.25,
+          "entity": 0.2,
+          "structured_data": 0.15,
+          "answerability": 0.15
+        },
+        "match": true
+      },
+      "ssrf_module_present": true,
+      "domain_match_version": "domain-match-v1",
+      "identity_not_regressed": true,
+      "llm_mention_not_used_for_this_job": true,
+      "spot_checks": [
+        "src/aeo_mvp/security/ssrf.py present; crawler/fetch+discover import assert_safe_public_url",
+        "src/aeo_mvp/target_site.py MATCH_RULE_VERSION=domain-match-v1; hashnode.dev in SUPPLEMENTAL_MULTI_TENANT_PLATFORMS",
+        "src/aeo_mvp/scoring/health.py WEIGHTS unchanged; recomputed H=76.40625 matches DB",
+        "Report omits llm_mention_rate for retrieval-enabled ai_search_visibility (correct semantic separation)",
+        "Job meta match_rule_version=domain-match-v1; siblings in raw sources not matched"
+      ]
+    }
+  },
+  "counts": {
+    "candidates": 29,
+    "selected": 20,
+    "obs": 20,
+    "appeared": 15,
+    "cited": 15,
+    "matched_hosts": {
+      "nik-hil.hashnode.dev": 43
+    },
+    "matched_appeared_hosts": {
+      "nik-hil.hashnode.dev": 43
+    },
+    "matched_cited_hosts": {
+      "nik-hil.hashnode.dev": 43
+    },
+    "competitor_site_keys": [
+      "arxiv.org",
+      "hashnode.com",
+      "github.com",
+      "dev.to",
+      "towardsdatascience.com"
+    ],
+    "pages_crawled": 20,
+    "mention_detected_raw": 18
+  },
+  "health": {
+    "formula_version": "health-v1",
+    "reported": 76.4,
+    "recomputed": 76.40625,
+    "components": {
+      "technical": 95.0,
+      "content": 69.625,
+      "entity": 52.5,
+      "structured_data": 90.0,
+      "answerability": 75.0
+    },
+    "weights": {
+      "technical": 0.25,
+      "content": 0.25,
+      "entity": 0.2,
+      "structured_data": 0.15,
+      "answerability": 0.15
+    },
+    "match": true
+  },
+  "artifacts": {
+    "summary": "/tmp/aeo_live_phase3_summary.json",
+    "report": "/tmp/aeo_live_phase3_report.json",
+    "docs_live": "/workspace/aeo-service/docs/verification/LIVE_PHASE3_HASHNODE_2026-09-18.json",
+    "db": "/workspace/aeo-service/aeo_mvp.db"
+  },
+  "limitations": [
+    "Candidate pool of 29 is taken from job artifacts/DB counters; full candidate member list beyond the selected 20 is not fully expanded in summary (accepted_count=29, rejected=0).",
+    "options.selection_seed=42 vs query_set.selection_seed=11607312 (derived/internal); not a gate failure.",
+    "Content component stored as 69.625; report/summary display may round to 69.6.",
+    "Did not re-invoke DigitalOcean paid retrieval; verified existing observations only.",
+    "SSRF/domain-match/health freeze checked via code spot-check + job outputs, not full pytest re-run in this verify pass."
+  ],
+  "notes": [
+    "summary JSON byte-identical to docs LIVE_PHASE3 artifact (sha256 prefix c6e1a80cbad9b73f).",
+    "competitors.include_platform_siblings=false; 5 competitor keys none are hashnode.dev apex tenants credited as target.",
+    "Industry ai_ml is evidence-backed from AI agent article titles/body \u2014 not chrome/nav PM misclassification."
+  ]
+}
