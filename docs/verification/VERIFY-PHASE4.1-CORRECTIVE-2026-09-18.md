@@ -2,31 +2,62 @@
 
 **Date:** 2026-09-18  
 **PR under review:** https://github.com/nik-hil/aeo-service/pull/12  
-**Verified SHA:** `303b6d03940891c93864e7c9eea004382e1dfa73` (`cursor/phase41-query-intelligence-corrective-d9f1`)  
+**Verified SHA (MUST):** `303b6d03940891c93864e7c9eea004382e1dfa73`  
+**Branch tip verified:** `cursor/phase41-query-intelligence-corrective-d9f1` @ same SHA  
 **Base:** `main` @ `dc4abfe23c25d547158fd7bb04186334b5db36b2`  
-**Method:** independent read of code + full pytest + offline probes; Engineering claims not trusted a priori  
-**Paid DigitalOcean APIs:** **no**
+**Method:** independent code read + full pytest + independent Python probes; Engineering/PR claims not trusted a priori  
+**Paid DigitalOcean APIs:** not run  
+**Product code changed by Verifier:** none (docs only)
 
 ## Overall: **PASS**
 
-| Gate | Result |
-| --- | --- |
-| C1 Same-seed replay + fingerprint; `sha256_seeded_tiebreak_v1` (no PRNG) | **PASS** |
-| C2 Different-seed validity (change not required) | **PASS** |
-| C3 Canonical fingerprint / content hash | **PASS** |
-| C4 Intent / topic caps | **PASS** |
-| C5 Quality gates seed-immune | **PASS** |
-| C6 Evidence provenance observed\|derived\|compatibility; shim-only cannot accept | **PASS** |
-| C7 Hashnode + synthetic site; no hostname special-case | **PASS** |
-| C8 No paid DO | **PASS** |
+Gate table rows are **assert-intent** labels (what is proven). Test function names are evidence paths only, not the gate identity.
 
-**Pytest (independent):** `142 passed, 1 skipped, 0 failed` (143 collected)  
-**Skipped:** `tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional` (live paid DO; gated)  
-**Phase 4.1 suite:** `tests/unit/test_query_discovery_phase41.py` → 20 passed  
+| Gate (assert intent) | Result | Blocks merge? |
+| --- | --- | --- |
+| **C1:** deterministic SHA tie-break only; no PRNG on v2 select path | **PASS** | yes if FAIL |
+| **C2:** same snapshot+seed → identical ordered query_id/text/fingerprint | **PASS** | no |
+| **C3:** one shared fingerprint preimage; unstable fields excluded; replay matches | **PASS** | yes if FAIL |
+| **C4:** different seeds MAY change ordered set; both seeds remain valid (≥8) | **PASS** | no |
+| **C5:** observed-only EVD strength — accepts never slip without ≥2 observed classes | **PASS** | yes if FAIL |
+| **C6:** query diagnostics ≠ health-v1; seed ≠ site quality; WEIGHTS unchanged | **PASS** | yes if FAIL |
+| **C7:** intent/topic budgets hold; quality gate not seed-bypassed; Hashnode + SaaS fixtures | **PASS** | no |
+| **C8:** freezes intact; discovery_only/dry-run zero paid DO / no httpx | **PASS** | yes if FAIL |
+
+**Merge recommendation:** **PASS** — blocking intents C1/C3/C5/C6/C8 all PASS; C2/C4/C7 PASS.
+
+**`different_seed_changed_fixture_set`:** **true**  
+(blog and saas fixtures both changed ordered ids + fingerprint for seed 42 vs 99; both remain ≥8 selected)
+
+**Pytest (independent):** `142 passed, 1 skipped, 0 failed`  
+**Phase41 file:** `20 passed` (`tests/unit/test_query_discovery_phase41.py`)  
+**Skipped:** `tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional` (live paid DO; not run)
 
 **Sibling JSON:** `docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.json`
 
-**Paid DO:** no.
+---
+
+## CoS methodology notes (non-blocking)
+
+### Note 1 — Accepts never slip without ≥2 observed (QSQ-EVD)
+
+**Assert intent:** Even if `generate_v2` / the candidate pool includes derived or compatibility-seeded evidence, **no accept and no selected member** may pass without ≥2 distinct `provenance=observed` evidence classes. Derived-only / compatibility-only / one-observed+derived reject paths must still hold.
+
+**Independent probe (SHA `303b6d0`, no paid DO):**
+
+| Fixture | Natural pool | Injected weak (derived-only, compat-only, 1-obs+derived) | Injected accepted | Accepted obs_min | Selected obs_min | All accepted EVD pass | All selected EVD pass |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| blog | 38 | 3 | **0** | **2** | **2** | true | true |
+| saas | 41 | 3 | **0** | **2** | **2** | true | true |
+
+- Injected high-confidence weak-provenance candidates were **all rejected** (`injected_rejected_count=3` each fixture).
+- Standalone `evaluate_query_v2` on derived+compatibility → `evidence_support=fail`, status `reject`.
+- Discovery members: every selected gate `evidence_support=pass` with `observed_evidence_classes` length ≥2.
+- Code path: `_dim_evidence` counts only `observed`; discovery orders `gate_candidates_v2` before `select_query_set_v2`.
+
+### Note 2 — Gate rows labeled by assert intent
+
+C1–C8 in this report are identified by **what is proven**, not by unit test names (`test_c5`, `test_c6`, …). Test names may appear under Evidence as paths.
 
 ---
 
@@ -37,165 +68,143 @@ git rev-parse HEAD
 # 303b6d03940891c93864e7c9eea004382e1dfa73
 
 python3 -m pip install -e ".[dev]"
-python3 -m pytest tests/ -v --tb=line
-# → 142 passed, 1 skipped, 2 warnings in ~3.3s
+pytest -q
+# → 142 passed, 1 skipped, 2 warnings in 2.98s
 
-python3 -m pytest tests/unit/test_query_discovery_phase41.py -v --tb=line
+pytest tests/unit/test_query_discovery_phase41.py -v
 # → 20 passed
 
-# Freeze paths vs main (empty diffs):
 git diff origin/main...HEAD -- \
   src/aeo_mvp/security/ssrf.py \
   src/aeo_mvp/target_site.py \
   src/aeo_mvp/domains.py \
   src/aeo_mvp/scoring/health.py \
   src/aeo_mvp/visibility/digitalocean_web_search.py
-# → empty (0 lines each)
+# → empty (DIFF_BYTES=0)
+
+rg -n 'random|Random|shuffle' src/aeo_mvp/queries/select_v2.py
+# → only docstring prohibition; no import/call
+
+# Independent probes: same-seed replay; seed 42 vs 99; QSQ-EVD accept/select + inject
 ```
 
-Offline gate probes (no network / no DO key) re-ran C1–C8 against production modules.
+---
 
-**Live keys present:** `DO_MODEL_ACCESS_KEY=false`, `OPENAI_API_KEY=false`, `PERPLEXITY_API_KEY=false`, `AEO_PAID_RETRIEVAL_OPT_IN=false`.
+## C1 — deterministic SHA tie-break only; no PRNG on v2 select path — **PASS**
+
+**Assert intent:** `selection_seed_method == sha256_seeded_tiebreak_v1`; seed applies only on ties via `sha256(f"{effective_seed}|{query_id}").hexdigest()`; v2 select path has no `random.Random` / shuffle.
+
+### Evidence
+
+- `SELECTION_SEED_METHOD == "sha256_seeded_tiebreak_v1"` in `src/aeo_mvp/queries/select_v2.py`.
+- Probe: `seeded_tiebreak_key(42, "q_abc") == hashlib.sha256(b"42|q_abc").hexdigest()`.
+- `rg` on `select_v2.py`: no import/call of `random` / `Random` / `shuffle` (comment-only).
+- Evidence path: `tests/unit/test_query_discovery_phase41.py::test_c1_seed_sha256_tiebreak_no_prng` PASSED.
+- Legacy `select.py` still uses PRNG — out of v2 path scope.
 
 ---
 
-## Seed method hard check — **PASS** (FAIL would fail overall)
+## C2 — same snapshot+seed → identical ordered query_id/text/fingerprint — **PASS**
 
-Architect binding: `selection_seed_method=sha256_seeded_tiebreak_v1` =
-`sha256(f"{effective_seed}|{query_id}").hexdigest()`.
+**Assert intent:** Replay identity under identical understanding + seed.
 
-| Check | Evidence |
+### Evidence
+
+Blog/saas seed 42 twice: ordered ids, texts, fingerprint, and `content_hash` identical; `replay_discovery_fingerprint` matches.  
+Evidence paths: `test_c_selection_deterministic_same_seed`, `test_d_same_seed_identical_different_may_differ`.
+
+---
+
+## C3 — one shared fingerprint preimage; unstable fields excluded; replay matches — **PASS**
+
+**Assert intent:** Selection and replay share one preimage; members are stable fields only; audit includes `selection_seed_method`; no `frozen_at`/UUIDs/unstable evidence ids.
+
+### Evidence
+
+- Builders: `canonical_member_payload`, `fingerprint_audit_block`, `canonical_fingerprint_preimage`, `fingerprint_query_set`, `replay_discovery_fingerprint`.
+- Probe: `frozen_at="WALL"` absent from preimage; replay equals stored fingerprint.
+- Evidence paths: `test_canonical_fingerprint_shared_by_members_and_replay`, `test_c3_fingerprint_excludes_unstable_fields`.
+
+---
+
+## C4 — different seeds MAY change ordered set; both seeds remain valid (≥8) — **PASS**
+
+**Assert intent:** Seed is a real control when ties exist; change is allowed but not required; validity floor ≥8.
+
+### Evidence
+
+| Fixture | selected 42/99 | ordered ids changed | set changed | fingerprint changed |
+| --- | --- | --- | --- | --- |
+| blog | 20/20 | true | true | true |
+| saas | 20/20 | true | true | true |
+
+**`different_seed_changed_fixture_set`: true**
+
+---
+
+## C5 — observed-only EVD strength — accepts never slip without ≥2 observed classes — **PASS**
+
+**Assert intent:** Strongest QSQ-EVD requires ≥2 **observed** classes. Derived/compatibility alone (or one observed + derived) cannot satisfy accept. Selected members inherit the same floor. Pool contamination with weak provenance must not slip into accept/select.
+
+### Evidence
+
+- Code: `quality._dim_evidence` / `observed_evidence_classes` — only `provenance=observed` counts.
+- CoS Note 1 probe: blog+saas all accepted/selected `obs_min=2` and `evidence_support=pass`; 3/3 injected weak candidates rejected; derived+compat evaluate → fail.
+- Evidence paths: `test_c5_provenance_cannot_satisfy_with_derived_alone`, `test_evidence_provenance_observed_vs_derived`, `test_siteunderstanding_compat_missing_provenance`.
+- Discovery order: gate then select — seed cannot bypass EVD.
+
+---
+
+## C6 — query diagnostics ≠ health-v1; seed ≠ site quality; WEIGHTS unchanged — **PASS**
+
+**Assert intent:** Query-set diagnostics are not folded into site health; changing selection seed is not a site-quality delta; health WEIGHTS remain frozen.
+
+### Evidence
+
+- `HEALTH_FORMULA_VERSION == "health-v1"`; WEIGHTS vs `origin/main` empty diff (0.25/0.25/0.20/0.15/0.15).
+- `"query"` / `"diagnostic"` absent from WEIGHTS.
+- Evidence paths: `test_c6_diagnostics_not_health_and_seed_not_site_quality`, `test_health_v1_frozen_and_no_paid_do`.
+
+---
+
+## C7 — intent/topic budgets hold; quality gate not seed-bypassed; Hashnode + SaaS fixtures — **PASS**
+
+**Assert intent:** Intent maxima and max-per-topic constrain the set; seed does not admit quality rejects; generic SaaS + Hashnode regression hold.
+
+### Evidence
+
+- Blog seed 42: problem_solving=6 (≤6), commercial=0 (≤1); `max_per_topic=4`.
+- SaaS observability: SignalWatch/tracing/OTel; no Hashnode/PM hardcode.
+- Evidence paths: `test_g_intent_budgets_personal_blog`, `test_h_topic_cap_diversity`, `test_a_generic_generation_saas_observability`, `test_i_hashnode_regression_no_overfit`, `test_f_quality_reject_not_mere_selection`.
+
+---
+
+## C8 — freezes intact; discovery_only/dry-run zero paid DO / no httpx — **PASS**
+
+**Assert intent:** SSRF, domain-match-v1/`TargetSiteIdentity`, health-v1, LLM≠AI-search, DO opt-in default OFF remain unchanged; discovery_only/dry-run never calls paid DO / httpx.
+
+### Evidence
+
+| Freeze path | `git diff origin/main...303b6d0` |
 | --- | --- |
-| Constant | `SELECTION_SEED_METHOD == "sha256_seeded_tiebreak_v1"` in `select_v2.py` |
-| Formula | `seeded_tiebreak_key(42,"q_abc")` == `c47104dcec2c011b7cf17f83420f31240c2a11aaf81136ad2aef9bbae3289556` |
-| No `random` import / `Random` / `shuffle` | AST walk of `select_v2.py` clean |
-| MMR uses SHA tie-break | `_mmr_pick` calls `seeded_tiebreak_key`; no `ord()` path |
-| Primary path seed-independent | budgets → coverage → MMR score; seed only on `math.isclose` ties |
+| `security/ssrf.py` | empty |
+| `target_site.py` | empty |
+| `domains.py` | empty |
+| `scoring/health.py` | empty |
+| `visibility/digitalocean_web_search.py` | empty |
+
+- Defaults: `paid_retrieval_opt_in=False`, `site_understanding_llm=False`.
+- Evidence paths: `test_c8_freezes_and_no_paid_do_in_discovery`, `test_health_v1_frozen_and_no_paid_do`.
+- Verifier ran no paid DigitalOcean APIs.
 
 ---
 
-## C1 — Same-seed replay identical ordered set + fingerprint — **PASS**
+## content_hash
 
-### Evidence
-
-- Fixture: personal_tech_blog understanding; `selection_seed=42`; `frozen_at=2026-09-18T00:00:00Z` twice.
-- Ordered query ids identical (20 members).
-- Ordered texts identical.
-- Fingerprint identical: `c40aa380a12bc1cbc6a4bba521a0e2c5f4460453087336d3d78379488c86908d`
-- `replay_discovery_fingerprint(a) == a.fingerprint == replay_discovery_fingerprint(b)`
-- Persisted `selection_seed_method=sha256_seeded_tiebreak_v1`
-- Seed method hard check PASS (above)
-
----
-
-## C2 — Different-seed validity — **PASS**
-
-### Evidence
-
-- Synthetic SaaS observability fixture; seeds 42 vs 99; both `selected_count=20`, both fingerprints non-empty.
-- Tie-break keys differ by seed for same `query_id`.
-- **Fixture set actually changed:** **yes** (ordered ids and fingerprints differ).
-  - seed 42 fingerprint: `d4dab5d034ce3167fa5247f8974e985863779c62f48b6a76acc1b2037402625e`
-  - seed 99 fingerprint: `a7529225b5827f1f98599624792d3ffc66c90abda566ed58416e6f794d291666`
-- Change is **not required** for PASS; reported for Evaluator transparency.
-
----
-
-## C3 — Canonical fingerprint / content hash — **PASS**
-
-### Evidence
-
-- ONE shared preimage via `fingerprint_query_set` / `canonical_fingerprint_preimage` / `replay_discovery_fingerprint`.
-- Member fields: `query_id, text, intent, topic, entity` only.
-- Audit includes `selection_seed_method`, versions, `effective_seed`, `top_k`, `dedup_method`, `mmr_lambda`.
-- `frozen_at` excluded from audit and preimage (ISO wall clock not in preimage JSON).
-- Members-only digest ≠ full fingerprint (audit tags material).
-- `content_hash` present: `e1aefd1528626b8e561c580d`
-- Fingerprint from recomputed preimage matches discovery fingerprint.
-
----
-
-## C4 — Intent / topic caps — **PASS**
-
-### Evidence
-
-- Blog seed=42 intent breakdown: informational 5, problem_solving 6, recommendation 4, comparison 3, navigational 2; commercial ≤ 1; PS ≤ 6 hard max.
-- SaaS seed=7: `max_per_topic=4`; topic_breakdown max = 3 ≤ cap.
-- `intent_budget_id=intent-budget-v1`, `mmr_lambda=0.65`.
-
----
-
-## C5 — Quality gates seed-immune — **PASS**
-
-### Evidence
-
-- `HEALTH_FORMULA_VERSION=health-v1`; WEIGHTS unchanged (`technical/content/entity/structured_data/answerability`).
-- Seed / query / diagnostic keys absent from WEIGHTS.
-- Title-wrap garbage still `reject` via `evaluate_query_v2` independent of selection seed.
-- Genre policy (`quality_policy.py`) forbids commercial templates on personal_tech_blog.
-- Diagnostics remain query-set quality (`query-quality-v1`), not folded into health-v1.
-
----
-
-## C6 — Evidence provenance; shim-only cannot accept — **PASS**
-
-### Evidence
-
-- Enum: `observed | derived | compatibility` (`evidence.py`).
-- Strongest QSQ-EVD: only `provenance=observed` classes count (≥2).
-- Probe matrix:
-  - two observed → evidence_support **pass**
-  - one observed + one derived → **fail**
-  - derived-only → **fail**
-  - compatibility-only → **fail**
-  - missing provenance (shim / legacy) → treated as compatibility → **fail** (cannot accept)
-
----
-
-## C7 — Hashnode + synthetic site; no hostname special-case — **PASS**
-
-### Evidence
-
-- Synthetic SignalWatch SaaS: 41 candidates; contains SignalWatch/tracing topics; no AI-agent pack phrases; no `hashnode` string in generated text.
-- Hashnode offline fixtures (`nik-hil.hashnode.dev`): discovery_only → 14 selected; method `query-discovery-v2` (no hostname in method); no PM overfit; no `"how do i build an ai agent with tool calling?"` pack phrase; `selection_seed_method=sha256_seeded_tiebreak_v1`; paid off.
-- `generate_v2.py`: no `hashnode.dev` / hostname gate branches (docstring negative only).
-
----
-
-## C8 — No paid DO — **PASS**
-
-### Evidence
-
-- Paid DigitalOcean APIs **not run**.
-- `discovery_only=True` + `paid_retrieval_opt_in=True` → result `paid_retrieval_opt_in=False`, `paid_retrieval_ready=False`; `httpx.Client` / `AsyncClient` not called.
-- Live DO optional test skipped (not executed).
-- No `DO_MODEL_ACCESS_KEY` in environment.
-
----
-
-## Freezes — **PASS**
-
-| Freeze surface | Evidence |
+| Property | Result |
 | --- | --- |
-| health-v1 | 0-line diff vs main; VERSION + WEIGHTS unchanged |
-| domain-match-v1 | 0-line diff `target_site.py`/`domains.py`; Hashnode identity `match_rule_version=domain-match-v1`, `match_scope=hostname`, `registrable_domain=hashnode.dev`, `multi_tenant_host=true` |
-| SSRF | 0-line diff `ssrf.py`; `test_ssrf.py` green in full suite |
-| LLM-mention vs AI-search | DO caps: `retrieval_enabled=True`, `experiment_kinds=['ai_search_visibility']`, `measures_consumer_ui=False`; OpenAI-compatible / Demo = `llm_mention` only |
-| DO opt-in | provider file 0-line diff; discovery_only forces paid false |
+| Present on QuerySetV3 / discovery query_set | **yes** |
+| Stable under same snapshot+seed | **yes** |
+| Changes when fingerprint/seed changes | **yes** (42 vs 99 both fixtures) |
 
----
-
-## Pytest inventory (independent)
-
-| Suite | Result |
-| --- | --- |
-| Full `tests/` | 142 passed, 1 skipped, 0 failed (143 collected) |
-| Phase 4.1 `test_query_discovery_phase41.py` | 20 passed |
-
-**Engineering claim cross-check:** PR claimed 142 passed, 1 skipped @ `303b6d0` — **matches** independent run.
-
----
-
-## Diff scope note
-
-Phase 4.1 touches discovery/select/quality/evidence/quality_policy + tests + methodology docs. Freeze paths listed above are untouched relative to `main` @ `dc4abfe`. No product-code changes in this verifier commit (docs only).
+Formula: `sha256(f"{evidence_hash}|{effective_seed}|{version}|{fingerprint}")[:24]`.
