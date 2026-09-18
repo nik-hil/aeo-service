@@ -129,3 +129,26 @@ scope + supplemental allowlist. Private PSL fixes `alice.github.io` →
 **Alternatives considered:** Rewriting PSL to treat `nik-hil.hashnode.dev` as
 eTLD+1 — rejected (false PSL). Using label-count alone for multi-tenant —
 rejected. Suffix/endswith host match — rejected (lookalike hazard).
+
+## D024 — Structured SiteProfile (Phase 3) (2026-09-18)
+**Decision:** Wrap every assertive site-understanding field in `SiteProfileField`
+(confidence ≤ 0.40 for heuristics, provenance, evidence refs). Split `site_genre`
+from `industry_category`; industry defaults to omit unless strong-vote thresholds
+(≥3, lead ≥2, ≥2 evidence classes). Bare `roadmap`/`kanban` never assert
+`project_management`. Tags → topics only. Method `deterministic_html_v1+site-profile-v1`.
+**Rationale:** Hashnode chrome “roadmap” bleed misclassified the publication as PM.
+**Doc:** ADR-024, `docs/architecture/PHASE3_QUERY_DISCOVERY.md`.
+
+## D025 — Query discovery v1 / query-set-v2 (2026-09-18)
+**Decision:** Pipeline generate 30–50 → normalize/dedupe → diagnostic gate →
+select ~20 with deterministic seed. Intents:
+informational|problem_solving|comparison|recommendation|navigational|commercial.
+Genre-gated templates. Gate includes `WEAK_INDUSTRY_LEAK`. No new opaque AEO score.
+**Rationale:** Stop industry-leak query templates; make sets reproducible and explainable.
+**Doc:** ADR-025, `docs/methodology/QUERY_DISCOVERY.md`.
+
+## D026 — Paid retrieval opt-in (2026-09-18)
+**Decision:** Never auto-run DO `web_search` from discovery. Require ready
+`QuerySet` + explicit `paid_retrieval_opt_in` / `AEO_PAID_RETRIEVAL_OPT_IN`.
+**Rationale:** Cost control; discovery quality independent of paid retrieval.
+**Doc:** ADR-026.

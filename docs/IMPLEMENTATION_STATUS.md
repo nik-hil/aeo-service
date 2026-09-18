@@ -22,6 +22,7 @@
 | P1-C Query discovery | Done | `queries/discovery.py`; demo keeps fixture prompts for bit-stability |
 | P1-D Retrieval interface | Done | `retrieval_base.py`, Perplexity stub (no fake metrics), competitors |
 | P2 DigitalOcean web_search | Done | `DigitalOceanWebSearchProvider`; PSL `registrable_domain` (private domains ON); `TargetSiteIdentity` / `domain-match-v1`; ai-search metrics/report; mocked tests |
+| P3 SiteProfile + query discovery | Done | Evidence-first `site-profile-v1`; genre vs industry; `query-discovery-v1` / `query-set-v2`; diagnostic gate; paid retrieval opt-in; Hashnode offline fixtures; ADRs 024–026 |
 | P1-E Enriched recommendations | Done | problem/action/pattern/validation + evidence snippets |
 | P1-F Executive summary | Done | `executive_summary` + `page_findings` on report |
 | P1-G Signal classification | Done | `docs/methodology/SIGNAL_CLASSIFICATION.md` (health-v1 immutable) |
