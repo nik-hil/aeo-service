@@ -33,6 +33,10 @@ class JobOptions(BaseModel):
     semantic_dedup: Literal["lexical", "simhash", "simhash_v1"] | None = "lexical"
     mmr_lambda: float | None = None
     max_per_topic: int | None = None
+    # Phase 5 content optimization (Architect / Optimizer)
+    content_optimization: bool = False
+    generate_draft: bool = False
+    draft_paid: bool = False
 
 
 class CreateJobRequest(BaseModel):

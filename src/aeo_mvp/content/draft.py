@@ -201,6 +201,20 @@ class DeterministicSkeletonDraftGenerator:
                     )
                 )
 
+        # Optimizer rule: unsupported_claims[] required on drafts
+        if not claims:
+            claims.append(
+                UnsupportedClaim(
+                    claim="skeleton_ungrounded",
+                    support="unsupported",
+                    reason=(
+                        "Deterministic skeleton is generated — verify all claims "
+                        "against observed page evidence before publish"
+                    ),
+                    provenance="generated",
+                )
+            )
+
         return GeneratorResult(
             title=title,
             meta_description=brief.proposed_meta_description,
@@ -261,7 +275,13 @@ def resolve_draft_generator(
     api_key: str | None = None,
     model: str | None = None,
 ) -> DraftGenerator:
-    """Default Null. Skeleton when generate_draft and not paid. Paid only if opted in."""
+    """Resolve draft writer (Architect + Optimizer reconciled).
+
+    - ``generate_draft=false`` (job default) → ``NullDraftGenerator`` (no body).
+    - ``generate_draft=true`` + ``draft_paid=false`` → ``DeterministicSkeletonDraftGenerator``
+      (Optimizer default implementation when drafting).
+    - ``draft_paid=true`` + api_key → paid stub (refuses live calls in MVP).
+    """
     if draft_paid and api_key:
         return PaidLLMDraftGenerator(draft_paid=True, api_key=api_key, model=model)
     if generate_draft:
@@ -277,7 +297,12 @@ def build_optimized_draft(
     generator: DraftGenerator | None = None,
     source_excerpts: list[str] | None = None,
 ) -> OptimizedContentDraft:
-    """Build opt-draft-v1. content_provenance=generated — never observed."""
+    """Build opt-draft-v1. content_provenance=generated — never observed.
+
+    If ``generator`` is omitted, uses ``NullDraftGenerator`` (safe default matching
+    ``generate_draft=false``). Callers that opt into drafting should pass
+    ``DeterministicSkeletonDraftGenerator`` via ``resolve_draft_generator``.
+    """
     gen = generator or NullDraftGenerator()
     result = gen.generate(page, brief, source_excerpts=source_excerpts)
     plan = list(brief.edit_ops)
@@ -285,8 +310,6 @@ def build_optimized_draft(
     warnings_from_claims = [
         f"{u.support}:{u.claim} — {u.reason}" for u in result.unsupported_claims
     ]
-    # Hard rule: draft never observed
-    assert result.paid_llm is False or True  # paid path may exist but stub refuses
     return OptimizedContentDraft(
         schema_version=DRAFT_VERSION,
         page_url=page.url,

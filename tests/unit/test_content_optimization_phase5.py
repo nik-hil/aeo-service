@@ -798,3 +798,83 @@ def test_genre_lean_same_taxonomy_docs_ecommerce():
     assert set(docs.gap_report.gap_catalog_by_taxonomy) == set(
         ecom.gap_report.gap_catalog_by_taxonomy
     )
+
+
+def test_optimizer_domain_contracts_reconciled():
+    """Content Optimizer types + Architect package/versions reconciled."""
+    import aeo_mvp.content as content
+    from typing import get_args
+
+    assert not (
+        Path(__file__).resolve().parents[2] / "src" / "aeo_mvp" / "optimization"
+    ).exists()
+    assert content.PAGE_INTEL_VERSION == "page-intel-v1"
+    assert content.GAP_VERSION == "content-gap-v1"
+    assert content.BRIEF_VERSION == "opt-brief-v1"
+    assert content.DRAFT_VERSION == "opt-draft-v1"
+
+    assert set(get_args(content.CoverageStatus)) == {
+        "full",
+        "partial",
+        "thin",
+        "absent",
+        "mismatched",
+        "unknown",
+    }
+    assert set(get_args(content.GapKind)) == {
+        "missing_answer",
+        "thin_passage",
+        "wrong_intent",
+        "missing_faq",
+        "missing_steps",
+        "entity_unclear",
+        "outdated_claim",
+        "unstructured",
+        "unsupported_claim",
+    }
+    assert set(get_args(content.ChangeAction)) == {
+        "retain",
+        "rewrite",
+        "expand",
+        "remove",
+        "add",
+    }
+    assert set(get_args(content.ClaimSupport)) == {
+        "supported",
+        "derived",
+        "unsupported",
+        "compatibility",
+    }
+
+    assert content.PageIntelligence and content.ContentGap and content.ContentGapReport
+    assert content.ContentChange and content.ContentOptimizationBrief
+    assert content.OptimizedContentDraft
+
+    assert isinstance(
+        content.resolve_draft_generator(generate_draft=False), content.NullDraftGenerator
+    )
+    assert isinstance(
+        content.resolve_draft_generator(generate_draft=True, draft_paid=False),
+        content.DeterministicSkeletonDraftGenerator,
+    )
+
+    result = run_content_optimization(
+        html=_html("saas_product.html"),
+        url="https://acme.example/",
+        generate_draft=True,
+        draft_paid=False,
+    )
+    sev = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    ids = [g.id for g in result.gap_report.gaps]
+    assert ids == [
+        g.id
+        for g in sorted(
+            result.gap_report.gaps,
+            key=lambda g: (sev[g.severity], g.gap_type, g.id),
+        )
+    ]
+    assert result.draft.paid_llm is False
+    assert result.draft.content_provenance == "generated"
+    assert result.draft.unsupported_claims
+    assert result.draft.unsupported_claim_warnings
+
