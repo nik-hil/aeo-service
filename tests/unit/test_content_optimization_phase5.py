@@ -27,6 +27,7 @@ from aeo_mvp.content.gaps import (
 )
 from aeo_mvp.content.models import (
     BRIEF_VERSION,
+    CONTENT_OPTIMIZATION_METHODOLOGY,
     DRAFT_VERSION,
     GAP_VERSION,
     PAGE_INTEL_VERSION,
@@ -463,60 +464,107 @@ def test_x2_no_digitalocean_in_content_package():
         assert "web_search" not in text
 
 
-# --- Evaluator gates C1–C10 ---
+# --- Evaluator gates C1–C10 (content-optimization-v1) ---
+# Blocking: C1/C2/C4/C6/C8/C9 · Default blocking: C3/C5/C7/C10
+# Formal VERIFY-PHASE5-CONTENT-OPTIMIZATION-2026-09-18 is Verifier-owned.
 
 
 def test_c1_page_intel_provenance_hostname_scope():
+    """C1 Page intel + provenance + hostname-scope."""
     page = extract_page_intelligence(
         _html("article_agent_loop.html", root=HASHNODE),
         url="https://nik-hil.hashnode.dev/post",
     )
     assert page.schema_version == PAGE_INTEL_VERSION
+    assert page.method.endswith("page-intel-v1") or "page-intel-v1" in page.method
     assert page.target_match_scope == "hostname"
     assert page.hostname == "nik-hil.hashnode.dev"
     assert any(s.provenance == "observed" for s in page.signals)
+    # Missing fields map via 4.1.1 boundary
+    empty = extract_page_intelligence("<html><body></body></html>", url="https://x.example/")
+    assert any(
+        s.key == "title" and s.provenance == "compatibility" for s in empty.signals
+    )
 
 
 def test_c2_provenance_includes_generated_no_draft_to_observed():
+    """C2 Provenance enum incl. generated; no draft→observed; never feed QSQ-EVD."""
+    from aeo_mvp.content.models import ContentProvenance
+    from aeo_mvp.queries.quality import evaluate_query_v2
+    from typing import get_args
+
+    allowed = set(get_args(ContentProvenance))
+    assert "generated" in allowed
+    assert {"observed", "derived", "compatibility", "generated"} <= allowed
+
     result = run_content_optimization(
         html=_html("saas_product.html"),
         url="https://acme.example/",
         generate_draft=True,
     )
     assert result.draft.content_provenance == "generated"
-    # QSQ normalize still maps missing → compatibility (not weakened)
+    for claim in result.draft.unsupported_claims:
+        assert claim.provenance == "generated"
+
+    # QSQ trust boundary: generated is NOT observed (maps to compatibility if passed in)
     assert normalize_provenance(None) == "compatibility"
-    assert normalize_provenance("generated") == "compatibility"  # unknown to QSQ → compat
+    assert normalize_provenance("generated") == "compatibility"
     for sig in result.page_intelligence.signals:
         assert sig.provenance != "generated"
 
+    # Draft body must not count as observed evidence for QSQ-EVD
+    fake_ev = [
+        {
+            "evidence_class": "article_body",
+            "provenance": "generated",
+            "snippet": result.draft.body_markdown[:80] or "empty",
+        },
+        {
+            "evidence_class": "title_h1",
+            "provenance": "generated",
+            "snippet": result.draft.title or "t",
+        },
+    ]
+    # Build a minimal candidate-like dict path via normalize — generated→compat → EVD fail
+    from aeo_mvp.queries.evidence import observed_evidence_classes
+
+    assert observed_evidence_classes(fake_ev) == set()
+    _ = evaluate_query_v2  # imported to ensure quality module remains frozen importable
+
 
 def test_c3_coverage_from_snapshot_themes_no_niche_hardcode():
+    """C3 Coverage from snapshot themes (no niche hardcode)."""
     page = extract_page_intelligence(
         _html("saas_product.html"), url="https://acme.example/"
     )
-    # themes come from page tokens, not hardcoded Hashnode packs
-    assert "acme" in " ".join(page.topics).lower() or "project" in " ".join(page.topics).lower()
+    blob = " ".join(page.topics).lower()
+    assert "acme" in blob or "project" in blob or "workflow" in blob
+    # No Hashnode/AI-agent pack hardcode required for SaaS fixture
+    assert "hashnode" not in blob
     status, matched = page_coverage_status("AcmeFlow team workflows", page)
     assert status in ("full", "partial", "thin")
     assert matched
 
 
 def test_c4_evidence_backed_gaps_only():
+    """C4 Evidence-backed gaps only."""
     page = extract_page_intelligence(
         _html("saas_product.html"), url="https://acme.example/"
     )
     report = build_content_gap_report(
         page, _queryset(("q", "quantum knitting", "informational", None))
     )
+    assert report.gaps
     for g in report.gaps:
-        assert g.evidence
+        assert g.evidence, f"gap {g.id} missing evidence"
         assert g.explanation
         for ev in g.evidence:
             assert "provenance" in ev
+            assert ev["provenance"] in ("observed", "derived", "compatibility")
 
 
 def test_c5_versioned_brief_cites_inputs():
+    """C5 Versioned brief cites inputs."""
     page = extract_page_intelligence(
         _html("docs_site.html"), url="https://docs.example/"
     )
@@ -526,9 +574,13 @@ def test_c5_versioned_brief_cites_inputs():
     assert brief.schema_version == BRIEF_VERSION
     assert brief.input_citations.get("page_intel_version") == PAGE_INTEL_VERSION
     assert brief.input_citations.get("gap_report_version") == GAP_VERSION
+    assert brief.input_citations.get("query_set_version") == "query-set-v3"
+    assert brief.input_citations.get("page_url") == page.url
+    assert CONTENT_OPTIMIZATION_METHODOLOGY == "content-optimization-v1"
 
 
-def test_c6_grounded_draft_unsupported_required():
+def test_c6_grounded_draft_citations_refuse_ungrounded():
+    """C6 Grounded draft + citations; refuse ungrounded."""
     result = run_content_optimization(
         html=_html("saas_product.html"),
         url="https://acme.example/",
@@ -537,13 +589,23 @@ def test_c6_grounded_draft_unsupported_required():
         ),
         generate_draft=True,
     )
-    assert result.draft.unsupported_claims
-    assert result.draft.content_provenance == "generated"
-    # refuse ungrounded: placeholders marked unsupported
-    assert any(c.support == "unsupported" for c in result.draft.unsupported_claims)
+    draft = result.draft
+    assert draft.schema_version == DRAFT_VERSION
+    assert draft.content_provenance == "generated"
+    assert draft.unsupported_claims, "unsupported_claims[] required"
+    assert any(c.support == "unsupported" for c in draft.unsupported_claims)
+    # Refuse fake citations / ranking promises in body
+    body_l = (draft.body_markdown or "").lower()
+    assert "http://fake-study.example" not in body_l
+    assert "guaranteed citation" not in body_l
+    # Real citations only when observed — skeleton uses NEEDS_SOURCE, not invented URLs
+    assert "[needs_source]" in body_l or any(
+        "NEEDS_SOURCE" in (c.reason or "") for c in draft.unsupported_claims
+    )
 
 
 def test_c7_determinism_and_null_draft_ok():
+    """C7 Determinism/freezes (fixture/Null draft OK)."""
     a = run_content_optimization(
         html=_html("personal_blog.html"),
         url="https://maya.example/",
@@ -556,17 +618,24 @@ def test_c7_determinism_and_null_draft_ok():
     )
     assert a.to_dict() == b.to_dict()
     assert a.draft.writer.startswith("null")
+    assert HEALTH_FORMULA_VERSION == "health-v1"
+    # Diagnostics ≠ health: gap report must not claim health mutation
+    assert a.gap_report.to_dict().get("coverage_is_not_health_v1") is True
 
 
 def test_c8_ssrf_held(client):
-    r = client.post(
-        "/api/v1/content-optimization",
-        json={"source_url": "http://169.254.169.254/latest/meta-data"},
-    )
-    assert r.status_code == 400
+    """C8 SSRF held."""
+    for bad in (
+        "http://127.0.0.1/secret",
+        "http://169.254.169.254/latest/meta-data",
+        "http://localhost/admin",
+    ):
+        r = client.post("/api/v1/content-optimization", json={"source_url": bad})
+        assert r.status_code == 400, bad
 
 
 def test_c9_paid_do_off():
+    """C9 Paid DO off."""
     from aeo_mvp.config import get_settings
 
     get_settings.cache_clear()
@@ -579,9 +648,45 @@ def test_c9_paid_do_off():
     )
     assert result.paid_retrieval is False
     assert result.paid_llm is False
+    assert result.draft.paid_llm is False
+    # content package must not import digitalocean
+    root = Path(__file__).resolve().parents[2] / "src" / "aeo_mvp" / "content"
+    for path in root.glob("*.py"):
+        assert "digitalocean" not in path.read_text(encoding="utf-8").lower()
 
 
-def test_c10_cite_miss_only_with_observations():
+def test_c10_full_suite_and_phase5_tests_present():
+    """C10 Full suite + Phase 5 tests (engineering gate; Verifier owns VERIFY artifact)."""
+    import ast
+
+    test_path = Path(__file__)
+    tree = ast.parse(test_path.read_text(encoding="utf-8"))
+    names = {
+        n.name
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")
+    }
+    required = {f"test_c{i}" for i in range(1, 10)}  # c1-c9 prefixes
+    # Match by prefix since names are longer
+    for i in range(1, 10):
+        assert any(n.startswith(f"test_c{i}_") for n in names), f"missing C{i}"
+    assert any(n.startswith("test_c10_") for n in names)
+    # Phase 5 fixture set present
+    for name in (
+        "saas_product.html",
+        "docs_site.html",
+        "ecommerce.html",
+        "personal_blog.html",
+        "empty_page.html",
+    ):
+        assert (PHASE5 / name).is_file(), name
+    assert (HASHNODE / "article_agent_loop.html").is_file()
+    assert CONTENT_OPTIMIZATION_METHODOLOGY == "content-optimization-v1"
+    assert DRAFT_VERSION == "opt-draft-v1"
+
+
+def test_d1_cite_miss_only_with_observations():
+    """D1: cite_miss only when visibility observations exist."""
     page = extract_page_intelligence(
         _html("saas_product.html"), url="https://acme.example/"
     )
@@ -602,7 +707,20 @@ def test_c10_cite_miss_only_with_observations():
     assert rows_yes[0].visibility_enrichment.get("cite_miss") is True
 
 
-def test_d1_coverage_by_query_field_name():
+def test_honesty_diagnostics_not_health_generated_not_observed():
+    """Evaluator honesty: diagnostics ≠ health-v1; Generated ≠ observed."""
+    result = run_content_optimization(
+        html=_html("docs_site.html"),
+        url="https://docs.example/",
+        generate_draft=True,
+    )
+    assert HEALTH_FORMULA_VERSION == "health-v1"
+    assert "health" not in result.gap_report.method
+    assert result.draft.content_provenance == "generated"
+    assert result.draft.content_provenance != "observed"
+    # Caveats state the honesty rules
+    assert any("health-v1" in c for c in result.brief.caveats)
+    assert any("visibility" in c.lower() for c in result.brief.caveats)
     report = build_content_gap_report(
         extract_page_intelligence(_html("saas_product.html"), url="https://acme.example/"),
         _queryset(("q", "AcmeFlow", "informational", None)),

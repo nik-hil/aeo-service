@@ -228,3 +228,15 @@ unsupported_claims + generated provenance; readiness vs queryset gap split;
 anti-pattern caveats; C1–C10 testable gates. Package/protocol locks unchanged.
 **Rationale:** Reconcile Optimizer types with Architect package without forks.
 **Doc:** `PHASE5_PAGE_INTELLIGENCE.md` §8, `PHASE5_RECONCILED_CONTRACTS.md`.
+
+## D035 — Evaluator content-optimization-v1 gates C1–C10 (2026-09-18)
+**Decision:** Binding Evaluator methodology `content-optimization-v1`. Honesty:
+diagnostics ≠ health-v1; Generated ≠ observed; drafts never feed QSQ-EVD /
+crawl observed / visibility raw. Gates C1–C10 testable in
+`test_content_optimization_phase5.py`. Block merge on C1/C2/C4/C6/C8/C9
+(and C3/C5/C7/C10 by default). Formal
+`VERIFY-PHASE5-CONTENT-OPTIMIZATION-2026-09-18` is Verifier-owned after
+product SHA — engineering ships gate tests + methodology docs only.
+**Rationale:** Measurement integrity for Phase 5.
+**Doc:** `docs/methodology/CONTENT_OPTIMIZATION_V1.md`,
+`docs/architecture/PHASE5_EVALUATOR_GATES.md`.

@@ -6,6 +6,8 @@ from typing import Any
 
 from aeo_mvp.content.models import (
     BRIEF_VERSION,
+    CONTENT_OPTIMIZATION_METHODOLOGY,
+    DRAFT_VERSION,
     GAP_VERSION,
     PAGE_INTEL_VERSION,
     RESEARCHER_GAP_TAXONOMY,
@@ -382,6 +384,7 @@ def build_optimization_brief(
         schema_version=BRIEF_VERSION,
         page_url=page.url,
         scope={
+            "methodology": CONTENT_OPTIMIZATION_METHODOLOGY,
             "page_intel_version": PAGE_INTEL_VERSION,
             "gap_version": GAP_VERSION,
             "brief_version": BRIEF_VERSION,

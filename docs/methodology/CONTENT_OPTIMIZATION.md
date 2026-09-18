@@ -1,16 +1,9 @@
-# Phase 5 Content Optimization — contracts summary
+# Content optimization methodology (`content-optimization-v1`)
 
-See binding memo: [`PHASE5_PAGE_INTELLIGENCE.md`](../architecture/PHASE5_PAGE_INTELLIGENCE.md)  
-Reconciled sheet: [`PHASE5_RECONCILED_CONTRACTS.md`](../architecture/PHASE5_RECONCILED_CONTRACTS.md)  
-ADR: [`ADR-032-content-optimization.md`](../architecture/ADR-032-content-optimization.md)
+See binding Evaluator methodology: [`CONTENT_OPTIMIZATION_V1.md`](./CONTENT_OPTIMIZATION_V1.md).
 
-## Versions
-
-`page-intel-v1` → `content-gap-v1` → `opt-brief-v1` → `opt-draft-v1`
-
-## Package
-
-`aeo_mvp.content` — page_intel · gaps · brief · draft
+**Contracts:** `page-intel-v1` → `content-gap-v1` → `opt-brief-v1` → `opt-draft-v1`  
+**Package:** `aeo_mvp.content` — page_intel · gaps · brief · draft
 
 ## Coverage honesty
 

@@ -9,6 +9,7 @@ PAGE_INTEL_VERSION = "page-intel-v1"
 GAP_VERSION = "content-gap-v1"
 BRIEF_VERSION = "opt-brief-v1"
 DRAFT_VERSION = "opt-draft-v1"
+CONTENT_OPTIMIZATION_METHODOLOGY = "content-optimization-v1"
 
 # Page↔queryset coverage (≠ AI visibility / health)
 CoverageStatus = Literal[

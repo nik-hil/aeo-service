@@ -24,6 +24,7 @@ from aeo_mvp.content.draft import (
 from aeo_mvp.content.gaps import build_content_gap_report
 from aeo_mvp.content.models import (
     BRIEF_VERSION,
+    CONTENT_OPTIMIZATION_METHODOLOGY,
     DRAFT_VERSION,
     GAP_VERSION,
     PAGE_INTEL_VERSION,
@@ -40,6 +41,7 @@ __all__ = [
     "GAP_VERSION",
     "BRIEF_VERSION",
     "DRAFT_VERSION",
+    "CONTENT_OPTIMIZATION_METHODOLOGY",
     "PageIntelligence",
     "ContentGapReport",
     "ContentOptimizationBrief",
