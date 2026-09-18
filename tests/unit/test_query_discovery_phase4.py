@@ -183,12 +183,19 @@ def test_different_seed_deterministic_but_may_differ():
     )
     assert a.fingerprint
     assert b.fingerprint
+    assert a.query_set.get("selection_seed_method") == "sha256_seeded_tiebreak_v1"
     # Both pass quality floors
     assert a.selected_count >= 8
     assert b.selected_count >= 8
     assert a.rejected_count >= 0
-    # May differ
-    _ = a.fingerprint != b.fingerprint or a.queries == b.queries
+    # Same seed twice is identical; different seeds MAY differ (not required always)
+    a2 = discover_queries(
+        u, top_n=20, options={"selection_seed": 42}, frozen_at="t0"
+    )
+    assert [q.id for q in a.queries] == [q.id for q in a2.queries]
+    _ = a.fingerprint != b.fingerprint or [q.id for q in a.queries] != [
+        q.id for q in b.queries
+    ]
 
 
 def test_title_wrap_garbage_rejected():

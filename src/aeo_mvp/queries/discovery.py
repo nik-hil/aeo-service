@@ -508,15 +508,59 @@ def discovery_to_json(result: DiscoveryResult) -> str:
 
 
 def replay_discovery_fingerprint(result: DiscoveryResult) -> str:
-    """sha256 fingerprint of ordered query_id/text — used by dry-run tests."""
-    if result.fingerprint:
-        return result.fingerprint
-    payload = [{"id": q.id, "text": q.query} for q in result.queries]
-    import hashlib
+    """Recompute fingerprint via the ONE shared ``fingerprint_query_set`` preimage.
 
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    Uses ordered members (query_id,text,intent,topic,entity) + audit tags
+    (selection_seed_method, versions, effective_seed, top_k, dedup). Excludes
+    frozen_at / unstable evidence ids.
+    """
+    from aeo_mvp.queries.select_v2 import (
+        DEFAULT_MMR_LAMBDA,
+        DEFAULT_TOP_K,
+        DISCOVERY_METHOD_V2,
+        QUERY_SET_VERSION,
+        QUALITY_VERSION,
+        SELECTION_METHOD,
+        SELECTION_SEED_METHOD,
+        canonical_fingerprint_preimage,
+        canonical_member_payload,
+        fingerprint_audit_block,
+        fingerprint_from_preimage,
+    )
+
+    qs = result.query_set or {}
+    payloads = [
+        canonical_member_payload(
+            query_id=q.id,
+            text=q.query,
+            intent=q.intent,
+            topic=q.topic,
+            entity=q.entity,
+        )
+        for q in result.queries
+    ]
+    audit = fingerprint_audit_block(
+        effective_seed=int(qs.get("effective_seed") or qs.get("selection_seed") or 0),
+        top_k=int(qs.get("top_k") or result.selected_count or DEFAULT_TOP_K),
+        dedup_method=str(qs.get("dedup_method") or "lexical_jaccard_v1"),
+        selection_seed_method=str(
+            qs.get("selection_seed_method") or SELECTION_SEED_METHOD
+        ),
+        selection_method=str(qs.get("selection_method") or SELECTION_METHOD),
+        query_set_version=str(qs.get("query_set_version") or QUERY_SET_VERSION),
+        discovery_method=str(
+            qs.get("discovery_method") or result.method or DISCOVERY_METHOD_V2
+        ),
+        quality_version=str(
+            qs.get("quality_version") or result.quality_version or QUALITY_VERSION
+        ),
+        mmr_lambda=float(qs.get("mmr_lambda") or DEFAULT_MMR_LAMBDA),
+    )
+    # Prefer persisted sibling audit when present (same keys)
+    if isinstance(qs.get("fingerprint_audit"), dict) and qs["fingerprint_audit"]:
+        audit = {**audit, **qs["fingerprint_audit"]}
+    preimage = canonical_fingerprint_preimage(members=payloads, audit=audit)
+    return fingerprint_from_preimage(preimage)
 
 
 __all__ = [

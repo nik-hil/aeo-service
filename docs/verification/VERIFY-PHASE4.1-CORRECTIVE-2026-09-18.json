@@ -1,0 +1,366 @@
+{
+  "report": "VERIFY-PHASE4.1-CORRECTIVE-2026-09-18",
+  "date": "2026-09-18",
+  "overall": "PASS",
+  "pr_under_review": "https://github.com/nik-hil/aeo-service/pull/12",
+  "verified_ref": "cursor/phase41-query-intelligence-corrective-d9f1",
+  "verified_sha": "303b6d03940891c93864e7c9eea004382e1dfa73",
+  "base_ref": "main",
+  "base_sha": "dc4abfe23c25d547158fd7bb04186334b5db36b2",
+  "method": "independent_read_and_run_tests",
+  "engineering_claims_trusted_a_priori": false,
+  "paid_digitalocean_apis_run": false,
+  "seed_method": {
+    "required": "sha256_seeded_tiebreak_v1",
+    "observed": "sha256_seeded_tiebreak_v1",
+    "formula": "sha256(f\"{effective_seed}|{query_id}\").hexdigest()",
+    "example_key_42_q_abc": "c47104dcec2c011b7cf17f83420f31240c2a11aaf81136ad2aef9bbae3289556",
+    "no_random_import": true,
+    "no_shuffle_or_Random_call": true,
+    "mmr_uses_seeded_tiebreak_key": true,
+    "mmr_no_ord": true,
+    "result": "PASS",
+    "hard_fail_if_prng": true
+  },
+  "gates": {
+    "C1_same_seed_replay": {
+      "result": "PASS",
+      "checks": {
+        "ordered_ids_equal": "PASS",
+        "ordered_texts_equal": "PASS",
+        "fingerprint_equal": "PASS",
+        "replay_equal": "PASS",
+        "selection_seed_method": "PASS",
+        "no_prng": "PASS"
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/select_v2.py",
+          "src/aeo_mvp/queries/discovery.py"
+        ],
+        "fixture": "personal_tech_blog",
+        "selection_seed": 42,
+        "frozen_at": "2026-09-18T00:00:00Z",
+        "selected_count": 20,
+        "fingerprint": "c40aa380a12bc1cbc6a4bba521a0e2c5f4460453087336d3d78379488c86908d",
+        "selection_seed_method": "sha256_seeded_tiebreak_v1",
+        "ordered_query_ids": [
+          "q_9e73f61c4d25",
+          "q_cc955ead7610",
+          "q_174c13a1aeb2",
+          "q_23807e187591",
+          "q_69a0aa9b4977",
+          "q_5924ef132ef2",
+          "q_e214fd8ac09f",
+          "q_830527b6ba22",
+          "q_60dff3e5296a",
+          "q_1ddbeab04ef5",
+          "q_536082d19efb",
+          "q_65016341d873",
+          "q_fcccb7739631",
+          "q_0b2178dfdcf3",
+          "q_acfe20386ed5",
+          "q_689934725989",
+          "q_9b2d1cf57d0c",
+          "q_e95439f46dd0",
+          "q_c2dc92fbebf2",
+          "q_bbe78dabb3a4"
+        ],
+        "tests": [
+          "tests/unit/test_query_discovery_phase41.py::test_c_selection_deterministic_same_seed",
+          "tests/unit/test_query_discovery_phase41.py::test_c1_seed_sha256_tiebreak_no_prng",
+          "tests/unit/test_query_discovery_phase41.py::test_canonical_fingerprint_shared_by_members_and_replay"
+        ]
+      }
+    },
+    "C2_different_seed_validity": {
+      "result": "PASS",
+      "checks": {
+        "seed_42_valid": "PASS",
+        "seed_99_valid": "PASS",
+        "tiebreak_keys_differ_by_seed": "PASS"
+      },
+      "fixture_set_actually_changed": true,
+      "change_required_for_pass": false,
+      "evidence": {
+        "fixture": "synthetic_saas_observability_SignalWatch",
+        "seed_42_selected_count": 20,
+        "seed_99_selected_count": 20,
+        "seed_42_fingerprint": "d4dab5d034ce3167fa5247f8974e985863779c62f48b6a76acc1b2037402625e",
+        "seed_99_fingerprint": "a7529225b5827f1f98599624792d3ffc66c90abda566ed58416e6f794d291666",
+        "note": "Both seeds produced valid sets (>=8). Ordered set and fingerprint did change for this fixture; change not required.",
+        "tests": [
+          "tests/unit/test_query_discovery_phase41.py::test_d_same_seed_identical_different_may_differ",
+          "tests/unit/test_query_discovery_phase41.py::test_d_seed_influences_selection_not_global_random"
+        ]
+      }
+    },
+    "C3_canonical_fingerprint": {
+      "result": "PASS",
+      "checks": {
+        "shared_preimage_matches_fingerprint": "PASS",
+        "members_only_differs_from_full": "PASS",
+        "frozen_at_excluded": "PASS",
+        "member_fields_canonical": "PASS",
+        "content_hash_present": "PASS",
+        "selection_seed_method_in_audit": "PASS"
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/select_v2.py",
+          "src/aeo_mvp/queries/discovery.py"
+        ],
+        "fingerprint": "c40aa380a12bc1cbc6a4bba521a0e2c5f4460453087336d3d78379488c86908d",
+        "content_hash": "e1aefd1528626b8e561c580d",
+        "member_fields": ["entity", "intent", "query_id", "text", "topic"],
+        "fingerprint_audit": {
+          "selection_seed_method": "sha256_seeded_tiebreak_v1",
+          "selection_method": "coverage_mmr_intent_budget_v1",
+          "query_set_version": "query-set-v3",
+          "discovery_method": "query-discovery-v2",
+          "quality_version": "query-quality-v1",
+          "effective_seed": 42,
+          "top_k": 20,
+          "dedup_method": "lexical_jaccard_v1",
+          "mmr_lambda": 0.65
+        },
+        "tests": [
+          "tests/unit/test_query_discovery_phase41.py::test_canonical_fingerprint_shared_by_members_and_replay",
+          "tests/unit/test_query_discovery_phase41.py::test_c3_fingerprint_excludes_unstable_fields"
+        ]
+      }
+    },
+    "C4_intent_topic_caps": {
+      "result": "PASS",
+      "checks": {
+        "problem_solving_le_6": "PASS",
+        "commercial_le_1": "PASS",
+        "topic_cap_respected": "PASS"
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/intent_budget.py",
+          "src/aeo_mvp/queries/select_v2.py"
+        ],
+        "intent_budget_id": "intent-budget-v1",
+        "mmr_lambda": 0.65,
+        "blog_seed_42_intent_breakdown": {
+          "informational": 5,
+          "problem_solving": 6,
+          "recommendation": 4,
+          "comparison": 3,
+          "navigational": 2
+        },
+        "saas_seed_7_max_per_topic": 4,
+        "saas_topic_breakdown_max": 3,
+        "tests": [
+          "tests/unit/test_query_discovery_phase41.py::test_g_intent_budgets_personal_blog",
+          "tests/unit/test_query_discovery_phase41.py::test_h_topic_cap_diversity"
+        ]
+      }
+    },
+    "C5_quality_gates_seed_immune": {
+      "result": "PASS",
+      "checks": {
+        "health_v1_unchanged": "PASS",
+        "seed_not_in_health_weights": "PASS",
+        "title_wrap_reject_independent_of_seed": "PASS",
+        "diagnostics_not_health": "PASS"
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/quality.py",
+          "src/aeo_mvp/queries/quality_policy.py",
+          "src/aeo_mvp/scoring/health.py"
+        ],
+        "health_formula_version": "health-v1",
+        "health_weights": {
+          "technical": 0.25,
+          "content": 0.25,
+          "entity": 0.2,
+          "structured_data": 0.15,
+          "answerability": 0.15
+        },
+        "quality_version": "query-quality-v1",
+        "title_wrap_status": "reject",
+        "genre_policy_forbid_commercial_personal_blog": true,
+        "note": "seed is selection tie-break only; quality reject independent of seed; diagnostics ≠ health-v1",
+        "tests": [
+          "tests/unit/test_query_discovery_phase41.py::test_f_quality_reject_not_mere_selection",
+          "tests/unit/test_query_discovery_phase41.py::test_c6_diagnostics_not_health_and_seed_not_site_quality",
+          "tests/unit/test_query_discovery_phase41.py::test_health_v1_frozen_and_no_paid_do"
+        ]
+      }
+    },
+    "C6_evidence_provenance": {
+      "result": "PASS",
+      "checks": {
+        "observed_counts_for_strongest_evd": "PASS",
+        "derived_alone_cannot_accept": "PASS",
+        "compatibility_alone_cannot_accept": "PASS",
+        "shim_missing_provenance_cannot_accept": "PASS"
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/evidence.py",
+          "src/aeo_mvp/queries/quality.py"
+        ],
+        "provenance_enum": ["observed", "derived", "compatibility"],
+        "probe_matrix": {
+          "two_observed": "pass",
+          "one_observed_one_derived": "fail",
+          "derived_only": "fail",
+          "compatibility_only": "fail",
+          "missing_provenance_shim_as_compatibility": "fail"
+        },
+        "shim_only_cannot_accept": true,
+        "tests": [
+          "tests/unit/test_query_discovery_phase41.py::test_evidence_provenance_observed_vs_derived",
+          "tests/unit/test_query_discovery_phase41.py::test_siteunderstanding_compat_missing_provenance",
+          "tests/unit/test_query_discovery_phase41.py::test_c5_provenance_cannot_satisfy_with_derived_alone"
+        ]
+      }
+    },
+    "C7_hashnode_and_synthetic": {
+      "result": "PASS",
+      "checks": {
+        "synthetic_saas_generic": "PASS",
+        "hashnode_offline_no_overfit": "PASS",
+        "no_hostname_special_case_in_generate_v2": "PASS"
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/generate_v2.py",
+          "src/aeo_mvp/queries/discovery.py"
+        ],
+        "synthetic": {
+          "brand": "SignalWatch",
+          "candidate_count": 41,
+          "selected_count": 20,
+          "no_ai_pack": true,
+          "no_hashnode_string": true,
+          "has_signalwatch": true
+        },
+        "hashnode": {
+          "base_url": "https://nik-hil.hashnode.dev/",
+          "selected_count": 14,
+          "method": "query-discovery-v2",
+          "no_pm_overfit": true,
+          "no_ai_pack_phrase": true,
+          "selection_seed_method": "sha256_seeded_tiebreak_v1",
+          "paid_retrieval_opt_in": false
+        },
+        "generate_v2_no_hostname_special_case": true,
+        "tests": [
+          "tests/unit/test_query_discovery_phase41.py::test_a_generic_generation_saas_observability",
+          "tests/unit/test_query_discovery_phase41.py::test_i_hashnode_regression_no_overfit"
+        ]
+      }
+    },
+    "C8_no_paid_do": {
+      "result": "PASS",
+      "checks": {
+        "paid_apis_not_run": "PASS",
+        "discovery_only_forces_paid_false": "PASS",
+        "no_httpx_during_discovery_only": "PASS",
+        "live_do_test_skipped": "PASS"
+      },
+      "evidence": {
+        "paid_digitalocean_apis_run": false,
+        "httpx_called_during_discovery_only": false,
+        "result_paid_retrieval_opt_in": false,
+        "result_paid_retrieval_ready": false,
+        "live_keys_present": {
+          "DO_MODEL_ACCESS_KEY": false,
+          "OPENAI_API_KEY": false,
+          "PERPLEXITY_API_KEY": false,
+          "AEO_PAID_RETRIEVAL_OPT_IN": false
+        },
+        "skipped_live_test": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional",
+        "tests": [
+          "tests/unit/test_query_discovery_phase41.py::test_c8_freezes_and_no_paid_do_in_discovery",
+          "tests/unit/test_query_discovery_phase41.py::test_health_v1_frozen_and_no_paid_do"
+        ]
+      }
+    }
+  },
+  "freezes": {
+    "result": "PASS",
+    "checks": {
+      "health_v1": "PASS",
+      "domain_match_v1": "PASS",
+      "ssrf": "PASS",
+      "llm_vs_ai_search": "PASS",
+      "do_opt_in": "PASS"
+    },
+    "freeze_files_unchanged_vs_main": [
+      "src/aeo_mvp/security/ssrf.py",
+      "src/aeo_mvp/target_site.py",
+      "src/aeo_mvp/domains.py",
+      "src/aeo_mvp/scoring/health.py",
+      "src/aeo_mvp/visibility/digitalocean_web_search.py"
+    ],
+    "health_formula_version": "health-v1",
+    "health_weights": {
+      "technical": 0.25,
+      "content": 0.25,
+      "entity": 0.2,
+      "structured_data": 0.15,
+      "answerability": 0.15
+    },
+    "hashnode_identity_probe": {
+      "hostname": "nik-hil.hashnode.dev",
+      "registrable_domain": "hashnode.dev",
+      "match_rule_version": "domain-match-v1",
+      "match_scope": "hostname",
+      "multi_tenant_host": true
+    },
+    "provider_capabilities": {
+      "digitalocean_web_search": {
+        "retrieval_enabled": true,
+        "experiment_kinds": ["ai_search_visibility"],
+        "measures_consumer_ui": false
+      },
+      "openai_compatible": {
+        "retrieval_enabled": false,
+        "experiment_kinds": ["llm_mention"]
+      },
+      "demo": {
+        "retrieval_enabled": false,
+        "experiment_kinds": ["llm_mention"]
+      }
+    }
+  },
+  "pytest": {
+    "full": {
+      "command": "python3 -m pytest tests/ -v --tb=line",
+      "passed": 142,
+      "skipped": 1,
+      "failed": 0,
+      "collected": 143,
+      "summary_line": "142 passed, 1 skipped, 2 warnings in 3.30s"
+    },
+    "phase41_targeted": {
+      "command": "python3 -m pytest tests/unit/test_query_discovery_phase41.py -v --tb=line",
+      "passed": 20,
+      "failed": 0
+    },
+    "skipped_test": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
+  },
+  "engineering_claim_crosscheck": {
+    "claimed_pytest": "142 passed, 1 skipped",
+    "observed_pytest": "142 passed, 1 skipped (143 collected)",
+    "claimed_sha": "303b6d03940891c93864e7c9eea004382e1dfa73",
+    "observed_sha": "303b6d03940891c93864e7c9eea004382e1dfa73"
+  },
+  "top_fail_issues": [],
+  "observations_non_blocking": [
+    "C2 fixture set did change for SignalWatch seeds 42 vs 99; change not required for PASS.",
+    "Engineering test names C5/C6 are swapped relative to Evaluator checklist numbering; verification follows Evaluator C1–C8."
+  ],
+  "artifact_paths": {
+    "markdown": "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.md",
+    "json": "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.json"
+  },
+  "product_code_changes_in_verifier_commit": false
+}
