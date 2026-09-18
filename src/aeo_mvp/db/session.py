@@ -59,6 +59,7 @@ def migrate_schema(database_url: str | None = None) -> None:
     for table, column, coltype in (
         ("experiment_configs", "experiment_kind", "VARCHAR(64) DEFAULT 'llm_mention'"),
         ("experiment_configs", "retrieval_enabled", "INTEGER DEFAULT 0"),
+        ("experiment_configs", "discovered_queries_json", "TEXT"),
         ("visibility_observations", "model_id", "VARCHAR(128)"),
         ("visibility_observations", "retrieval_enabled", "INTEGER DEFAULT 0"),
         ("visibility_observations", "experiment_kind", "VARCHAR(64) DEFAULT 'llm_mention'"),
@@ -66,6 +67,7 @@ def migrate_schema(database_url: str | None = None) -> None:
         ("visibility_observations", "source_urls_json", "TEXT"),
         ("visibility_observations", "target_domain_appeared", "INTEGER"),
         ("visibility_observations", "target_domain_cited", "INTEGER"),
+        ("recommendations", "details_json", "TEXT"),
     ):
         try:
             _sqlite_add_column_if_missing(engine, table, column, coltype)

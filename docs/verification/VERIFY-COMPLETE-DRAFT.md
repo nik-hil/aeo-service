@@ -58,6 +58,6 @@ banned_checked=['ChatGPT ranking', 'official AI share of voice', 'ai_mention_rat
     _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-25 passed, 2 warnings in 0.12s
+25 passed, 2 warnings in 0.11s
 ```
 

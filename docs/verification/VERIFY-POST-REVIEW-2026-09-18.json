@@ -1,0 +1,22 @@
+{
+  "overall": "PASS",
+  "criteria": {
+    "pytest": "pass",
+    "independent_verification_script": "pass",
+    "demo_job_report_keys": "pass",
+    "ssrf": "pass",
+    "honesty": "pass",
+    "signed_report_written": "pass"
+  },
+  "pytest_passed": 46,
+  "notes": [
+    "Independent re-run 2026-09-18 ~11:09 IST; Engineering claims not trusted.",
+    "pytest: 46 passed, 2 warnings (Starlette TestClient deprecation only).",
+    "scripts/run_independent_verification.py exit 0; WRITE VERIFY-COMPLETE-DRAFT.md overall=PASS.",
+    "Demo job fad7e5a2-a146-49e7-9371-78489dca2520 completed; experiment_kind=llm_mention, retrieval_enabled=false, llm_mention_rate present (not AI search), P1 keys present.",
+    "Enriched recs add problem/why_it_matters/recommended_action/implementation_pattern/validation_method/affected_urls/evidence_snippets (+ evidence_ids/finding_ids/effort/impact) beyond basic code/priority.",
+    "SSRF: tests/unit/test_ssrf.py — 13 passed; blocks localhost/private IPs; src/aeo_mvp/security/ssrf.py spot-checked.",
+    "Honesty: README/methodology/report caveats deny OpenAI chat = consumer ChatGPT/Gemini/Perplexity search UI; no equivalence claim found.",
+    "Isolated DB sqlite:////tmp/aeo_verify_post_review.db; AEO_DEMO_MODE=true; no product source changes; port 8000 free."
+  ]
+}
