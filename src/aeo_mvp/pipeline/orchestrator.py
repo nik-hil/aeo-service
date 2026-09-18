@@ -16,9 +16,10 @@ from aeo_mvp.analyzers.entities import analyze_entities
 from aeo_mvp.analyzers.structured_data import analyze_structured_data
 from aeo_mvp.analyzers.technical import analyze_technical
 from aeo_mvp.config import (
+    AI_SEARCH_PROTOCOL_VERSION,
     DEMO_BASE_URL,
-    EXPERIMENT_PROTOCOL_VERSION,
     HEALTH_FORMULA_VERSION,
+    LLM_MENTION_PROTOCOL_VERSION,
     PROMPT_SET_ID,
     get_settings,
 )
@@ -46,7 +47,16 @@ from aeo_mvp.understanding.site import infer_site_understanding
 from aeo_mvp.visibility.base import VisibilityContext
 from aeo_mvp.visibility.competitors import extract_competitor_domains
 from aeo_mvp.visibility.demo import DemoProvider
-from aeo_mvp.visibility.metrics import aggregate_llm_metrics, filter_brand_tokens, registrable_domain
+from aeo_mvp.visibility.digitalocean_web_search import (
+    DigitalOceanWebSearchError,
+    DigitalOceanWebSearchProvider,
+)
+from aeo_mvp.visibility.metrics import (
+    aggregate_ai_search_metrics,
+    aggregate_llm_metrics,
+    filter_brand_tokens,
+    registrable_domain,
+)
 from aeo_mvp.visibility.openai_compatible import OpenAICompatibleProvider
 
 logger = logging.getLogger(__name__)
@@ -69,20 +79,54 @@ class JobOrchestrator:
     def _select_provider(
         self, job: Job, options: dict[str, Any]
     ) -> tuple[Any, str | None, bool]:
-        """Return (provider, model_id, used_demo_fallback)."""
-        provider_opt = (options.get("provider") or "auto").lower()
-        demo = bool(job.demo_mode) or self.settings.demo_mode or provider_opt == "demo"
+        """Return (provider, model_id, used_demo_fallback).
+
+        Selection order (non-demo):
+          1. Explicit options.provider or AEO_VISIBILITY_PROVIDER
+          2. auto → DigitalOcean web_search if DO key present,
+             else OpenAI-compatible if OPENAI_API_KEY,
+             else DemoProvider + fallback flag
+        Demo mode always uses DemoProvider (deterministic).
+        """
+        settings = self.settings
+        provider_opt = (
+            options.get("provider")
+            or settings.visibility_provider
+            or "auto"
+        )
+        provider_opt = str(provider_opt).lower().strip()
+        demo = bool(job.demo_mode) or settings.demo_mode or provider_opt == "demo"
         if demo or provider_opt == "demo":
             return DemoProvider(), None, False
+
+        if provider_opt in ("digitalocean_web_search", "digitalocean", "do_web_search"):
+            if not settings.effective_do_api_key:
+                raise DigitalOceanWebSearchError(
+                    "provider=digitalocean_web_search requires DO_MODEL_ACCESS_KEY "
+                    "(or MODEL_ACCESS_KEY)"
+                )
+            p = DigitalOceanWebSearchProvider()
+            return p, p.model, False
+
         if provider_opt == "openai_compatible":
-            if not self.settings.openai_api_key:
+            if not settings.openai_api_key:
                 raise RuntimeError(
                     "provider=openai_compatible requires OPENAI_API_KEY"
                 )
             p = OpenAICompatibleProvider()
             return p, p.model, False
-        # auto — never silently use Perplexity stub (would raise / fake metrics)
-        if self.settings.openai_api_key:
+
+        if provider_opt not in ("auto", ""):
+            raise RuntimeError(
+                f"Unknown visibility provider {provider_opt!r}. "
+                "Use auto, demo, openai_compatible, or digitalocean_web_search."
+            )
+
+        # auto — prefer real retrieval when DO key is present; never silent Perplexity stub
+        if settings.effective_do_api_key:
+            p = DigitalOceanWebSearchProvider()
+            return p, p.model, False
+        if settings.openai_api_key:
             p = OpenAICompatibleProvider()
             return p, p.model, False
         return DemoProvider(), None, True
@@ -234,7 +278,6 @@ class JobOrchestrator:
 
             # 7–8. Experiment
             self._set_status(job, "experimenting")
-            job.experiment_protocol_version = EXPERIMENT_PROTOCOL_VERSION
             provider, model_id, used_demo_fallback = self._select_provider(job, options)
             brand = (
                 understanding.organization_brand
@@ -258,9 +301,9 @@ class JobOrchestrator:
                 "ai_search_visibility" if retrieval_enabled else "llm_mention"
             )
             protocol_version = (
-                EXPERIMENT_PROTOCOL_VERSION
+                LLM_MENTION_PROTOCOL_VERSION
                 if not retrieval_enabled
-                else "ai-search-vis-v1"
+                else AI_SEARCH_PROTOCOL_VERSION
             )
             job.experiment_protocol_version = protocol_version
 
@@ -293,6 +336,7 @@ class JobOrchestrator:
                         site_registrable_domain=site_domain,
                         prompt_id=prompt["id"],
                         run_index=run_index,
+                        protocol_version=protocol_version,
                     )
                     obs = await provider.run_query(prompt["query"], context=ctx)
                     observations.append(obs)
@@ -333,28 +377,71 @@ class JobOrchestrator:
                     self.session.add(row)
             self.session.flush()
 
-            rates = aggregate_llm_metrics(observations)
-            metric_prov = "synthetic_demo" if provider.name == "demo" else "estimate"
-            metric_rows = [
-                (
-                    "llm_mention_rate",
-                    rates.llm_mention_rate,
-                    rates.mention_numerator,
-                    rates.denominator_runs,
-                ),
-                (
-                    "llm_url_mention_rate",
-                    rates.llm_url_mention_rate,
-                    rates.url_mention_numerator,
-                    rates.denominator_runs,
-                ),
-                (
-                    "query_coverage",
-                    rates.query_coverage,
-                    rates.coverage_numerator,
-                    rates.denominator_prompts,
-                ),
-            ]
+            rates_llm = None
+            rates_ai = None
+            if retrieval_enabled:
+                rates_ai = aggregate_ai_search_metrics(observations)
+                metric_prov = (
+                    "synthetic_demo" if provider.name == "demo" else "estimate"
+                )
+                metric_rows = [
+                    (
+                        "ai_search_mention_rate",
+                        rates_ai.ai_search_mention_rate,
+                        rates_ai.mention_numerator,
+                        rates_ai.denominator_runs,
+                    ),
+                    (
+                        "ai_search_citation_rate",
+                        rates_ai.ai_search_citation_rate,
+                        rates_ai.citation_numerator,
+                        rates_ai.denominator_runs,
+                    ),
+                    (
+                        "target_domain_appearance_rate",
+                        rates_ai.target_domain_appearance_rate,
+                        rates_ai.appearance_numerator,
+                        rates_ai.denominator_runs,
+                    ),
+                    (
+                        "query_coverage",
+                        rates_ai.query_coverage,
+                        rates_ai.coverage_numerator,
+                        rates_ai.denominator_prompts,
+                    ),
+                ]
+                mention_for_recs = rates_ai.ai_search_mention_rate
+                citation_for_recs = rates_ai.ai_search_citation_rate
+                log_rate = rates_ai.ai_search_mention_rate
+            else:
+                rates_llm = aggregate_llm_metrics(observations)
+                metric_prov = (
+                    "synthetic_demo" if provider.name == "demo" else "estimate"
+                )
+                metric_rows = [
+                    (
+                        "llm_mention_rate",
+                        rates_llm.llm_mention_rate,
+                        rates_llm.mention_numerator,
+                        rates_llm.denominator_runs,
+                    ),
+                    (
+                        "llm_url_mention_rate",
+                        rates_llm.llm_url_mention_rate,
+                        rates_llm.url_mention_numerator,
+                        rates_llm.denominator_runs,
+                    ),
+                    (
+                        "query_coverage",
+                        rates_llm.query_coverage,
+                        rates_llm.coverage_numerator,
+                        rates_llm.denominator_prompts,
+                    ),
+                ]
+                mention_for_recs = rates_llm.llm_mention_rate
+                citation_for_recs = rates_llm.llm_url_mention_rate
+                log_rate = rates_llm.llm_mention_rate
+
             for name, value, num, den in metric_rows:
                 self.session.add(
                     ExperimentMetric(
@@ -398,8 +485,8 @@ class JobOrchestrator:
                 self.session,
                 job.id,
                 evidence,
-                mention_rate=rates.llm_mention_rate,
-                citation_rate=rates.llm_url_mention_rate,
+                mention_rate=mention_for_recs,
+                citation_rate=citation_for_recs,
                 used_demo_fallback=used_demo_fallback or bool(job.demo_mode),
                 observation_ids=[o.id for o in obs_rows],
             )
@@ -429,8 +516,8 @@ class JobOrchestrator:
                     e.id for e in evidence_by_code.get("SD_PARSE_ERROR", [])
                 ],
                 component_scores=health.components,
-                mention_rate=rates.llm_mention_rate,
-                citation_rate=rates.llm_url_mention_rate,
+                mention_rate=mention_for_recs,
+                citation_rate=citation_for_recs,
                 used_demo_fallback=used_demo_fallback or bool(job.demo_mode),
                 evidence_by_code=dict(evidence_by_code),
                 home_answer_first=home_af,
@@ -441,10 +528,11 @@ class JobOrchestrator:
             self._set_status(job, "completed")
             build_report(self.session, job)
             logger.info(
-                "job %s completed health=%.1f mention=%.2f",
+                "job %s completed health=%.1f visibility_rate=%.2f kind=%s",
                 job.id,
                 health.health,
-                rates.llm_mention_rate,
+                log_rate,
+                experiment_kind,
             )
             return job
         except Exception as exc:  # noqa: BLE001

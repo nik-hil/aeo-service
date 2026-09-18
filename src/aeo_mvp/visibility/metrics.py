@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from urllib.parse import urlparse
 
+from aeo_mvp.domains import registrable_domain
 from aeo_mvp.visibility.base import VisibilityObservation
 
 URL_RE = re.compile(r"https?://[^\s\)\]\"'<>]+", re.I)
 EXTRACTION_METHODOLOGY = "llm-mention-v1:mention-rule-v1+url-mention-rule-v1"
+AI_SEARCH_EXTRACTION_METHODOLOGY = (
+    "ai-search-vis-v1:do-web-search+url-citation-v1+mention-rule-v1"
+)
 
 
 def extract_urls(text: str) -> list[str]:
@@ -19,15 +22,6 @@ def extract_urls(text: str) -> list[str]:
         if url not in found:
             found.append(url)
     return found
-
-
-def registrable_domain(url_or_host: str) -> str:
-    if "://" in url_or_host:
-        host = urlparse(url_or_host).netloc
-    else:
-        host = url_or_host
-    return host.lower().removeprefix("www.")
-
 
 def detect_mention(text: str, brand_tokens: list[str], *, exclude_suffix: str | None = None) -> bool:
     corpus = text or ""
@@ -56,12 +50,19 @@ def detect_citation(text: str, site_domain: str, extra_urls: list[str] | None = 
         for u in extra_urls:
             if u not in urls:
                 urls.append(u)
-    site = site_domain.lower().removeprefix("www.")
+    site = registrable_domain(site_domain)
     cited: list[str] = []
     for u in urls:
         if registrable_domain(u) == site:
             cited.append(u)
     return (len(cited) > 0, cited)
+
+
+def domain_matches_target(url_or_host: str, target_domain: str) -> bool:
+    """True iff url_or_host's registrable domain equals the target's (PSL-based)."""
+    left = registrable_domain(url_or_host)
+    right = registrable_domain(target_domain)
+    return bool(left) and left == right
 
 
 @dataclass
@@ -141,7 +142,17 @@ def aggregate_ai_search_metrics(observations: list[VisibilityObservation]) -> Ai
     )
     prompts = {o.prompt_id for o in observations}
     p = len(prompts)
-    qm = len({o.prompt_id for o in observations if o.detected_mention})
+
+    def _covered(o: VisibilityObservation) -> bool:
+        if o.detected_mention:
+            return True
+        if o.target_domain_appeared is True:
+            return True
+        if o.target_domain_cited is True:
+            return True
+        return False
+
+    qm = len({o.prompt_id for o in observations if _covered(o)})
     return AiSearchAggregateRates(
         ai_search_mention_rate=(m / r) if r else 0.0,
         ai_search_citation_rate=(k / r) if r else 0.0,

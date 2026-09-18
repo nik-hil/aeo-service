@@ -21,6 +21,7 @@
 | P1-B Site understanding | Done | `understanding/site.py` + `site_profiles`; LLM default off |
 | P1-C Query discovery | Done | `queries/discovery.py`; demo keeps fixture prompts for bit-stability |
 | P1-D Retrieval interface | Done | `retrieval_base.py`, Perplexity stub (no fake metrics), competitors |
+| P2 DigitalOcean web_search | Done | `DigitalOceanWebSearchProvider`; PSL `registrable_domain`; ai-search metrics/report; mocked tests |
 | P1-E Enriched recommendations | Done | problem/action/pattern/validation + evidence snippets |
 | P1-F Executive summary | Done | `executive_summary` + `page_findings` on report |
 | P1-G Signal classification | Done | `docs/methodology/SIGNAL_CLASSIFICATION.md` (health-v1 immutable) |

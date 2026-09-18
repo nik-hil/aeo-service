@@ -36,9 +36,35 @@ class Settings(BaseSettings):
     site_understanding_llm: bool = Field(default=False, alias="AEO_SITE_UNDERSTANDING_LLM")
     perplexity_api_key: str | None = Field(default=None, alias="PERPLEXITY_API_KEY")
 
+    # Visibility provider selection: auto | demo | openai_compatible | digitalocean_web_search
+    visibility_provider: str = Field(default="auto", alias="AEO_VISIBILITY_PROVIDER")
+
+    # DigitalOcean Inference (Responses API + web_search)
+    do_model_access_key: str | None = Field(default=None, alias="DO_MODEL_ACCESS_KEY")
+    model_access_key: str | None = Field(
+        default=None,
+        alias="MODEL_ACCESS_KEY",
+        description="Fallback for DO docs naming; prefer DO_MODEL_ACCESS_KEY",
+    )
+    do_inference_base_url: str = Field(
+        default="https://inference.do-ai.run/v1",
+        alias="DO_INFERENCE_BASE_URL",
+    )
+    do_inference_model: str = Field(
+        default="openai-gpt-4o",
+        alias="DO_INFERENCE_MODEL",
+    )
+    do_web_search_max_uses: int = Field(default=3, alias="DO_WEB_SEARCH_MAX_USES")
+    do_web_search_max_results: int = Field(default=5, alias="DO_WEB_SEARCH_MAX_RESULTS")
+    do_inference_timeout_s: float = Field(default=60.0, alias="DO_INFERENCE_TIMEOUT_S")
+
     @property
     def user_agent(self) -> str:
         return USER_AGENT
+
+    @property
+    def effective_do_api_key(self) -> str | None:
+        return self.do_model_access_key or self.model_access_key
 
 
 @lru_cache

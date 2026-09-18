@@ -6,7 +6,6 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse
 
 from selectolax.parser import HTMLParser
 from sqlalchemy.orm import Session
@@ -88,8 +87,9 @@ def word_count(text: str) -> int:
 
 
 def registrable_domain(url: str) -> str:
-    host = urlparse(url).netloc.lower().removeprefix("www.")
-    return host
+    from aeo_mvp.domains import registrable_domain as _reg
+
+    return _reg(url)
 
 
 def domain_label(url: str) -> str:

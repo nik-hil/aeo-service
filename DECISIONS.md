@@ -103,3 +103,9 @@ Assumptions and decisions made without asking the user. Update when overturned.
 ## D021 — Provider capability declarations (2026-09-18)
 **Decision:** Every visibility provider exposes `ProviderCapabilities` including `retrieval_enabled` and `measures_consumer_ui=False` unless proven otherwise.
 **Rationale:** Extensibility for future Perplexity/Gemini grounding without schema redesign.
+
+## D022 — DigitalOcean web_search as first AI-search provider (2026-09-18)
+**Decision:** Implement `DigitalOceanWebSearchProvider` against DigitalOcean Inference `POST /v1/responses` with `tools: [{type: web_search}]`. Auth via `DO_MODEL_ACCESS_KEY` (accept `MODEL_ACCESS_KEY` as docs fallback). Default model `openai-gpt-4o` (configurable `DO_INFERENCE_MODEL`). Protocol `ai-search-vis-v1`. `measures_consumer_ui=false`. Missing key / HTTP / absent web_search evidence → hard fail; never fabricate or silently degrade to LLM-only under `ai_search_visibility`. Emit `ai_search_*` / `target_domain_appearance_rate` metrics separately from `llm_*`. Registrable domains via Public Suffix List (`tldextract`). Live Hashnode retrieval validation is a follow-up on a machine with `DO_MODEL_ACCESS_KEY` (gated by `AEO_LIVE_RETRIEVAL_TEST=true`).
+**Rationale:** First real retrieval-enabled visibility path without claiming consumer UI rankings; builds on D019/D021 abstractions.
+**Doc:** `docs/methodology/AI_SEARCH_VISIBILITY_DO.md`.
+**Alternatives considered:** Perplexity Sonar live path first (still stub); OpenAI Responses web_search (deferred); scraping consumer UIs (forbidden).

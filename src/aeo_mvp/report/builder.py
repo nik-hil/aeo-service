@@ -26,6 +26,7 @@ from aeo_mvp.db.models import (
 CAVEATS = [
     "LLM mention metrics are sample estimates from controlled llm-mention-v1 experiments, not AI search visibility or engine rankings.",
     "Chat-completions / LLM mention probes (retrieval_enabled=false) are NOT equivalent to AI search visibility.",
+    "AI search visibility metrics (ai-search-vis-v1) are API observations from retrieval-enabled providers (e.g. DigitalOcean Inference web_search), not consumer ChatGPT/Gemini/Perplexity UI rankings.",
     "API-based observations are not equivalent to consumer ChatGPT, Gemini, or Perplexity UI results.",
     "This product does not reproduce proprietary answer-engine ranking or retrieval.",
     "Model or provider updates can change results; compare only runs that share protocol_version, prompt_set_id, provider, model_id, and experiment_kind.",
@@ -288,6 +289,59 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
         retrieval_enabled=retrieval_enabled,
     )
 
+    caps_notes = (
+        "Non-retrieval LLM mention provider; not AI search visibility."
+        if not retrieval_enabled
+        else (
+            "Retrieval-enabled AI search visibility provider "
+            "(measures_consumer_ui=false; API observation only)."
+        )
+    )
+
+    experiment_block: dict[str, Any] = {
+        "provider_name": exp_cfg.provider_name if exp_cfg else None,
+        "model_id": exp_cfg.model_id if exp_cfg else None,
+        "experiment_kind": experiment_kind,
+        "retrieval_enabled": retrieval_enabled,
+        "protocol_version": (
+            exp_cfg.protocol_version
+            if exp_cfg
+            else (job.experiment_protocol_version or "llm-mention-v1")
+        ),
+        "provider_capabilities_notes": caps_notes,
+        "observations_count": obs_count,
+        "measures_consumer_ui": False,
+    }
+
+    if retrieval_enabled:
+        experiment_block["ai_search_visibility"] = {
+            "ai_search_mention_rate": metric_obj("ai_search_mention_rate"),
+            "ai_search_citation_rate": metric_obj("ai_search_citation_rate"),
+            "target_domain_appearance_rate": metric_obj(
+                "target_domain_appearance_rate"
+            ),
+            "query_coverage": metric_obj("query_coverage"),
+            "note": (
+                "AI-search metrics only. llm_mention_rate / llm_url_mention_rate "
+                "are not emitted for retrieval-enabled runs."
+            ),
+        }
+        # Flat aliases for consumers that expect top-level keys under experiment
+        experiment_block["ai_search_mention_rate"] = metric_obj(
+            "ai_search_mention_rate"
+        )
+        experiment_block["ai_search_citation_rate"] = metric_obj(
+            "ai_search_citation_rate"
+        )
+        experiment_block["target_domain_appearance_rate"] = metric_obj(
+            "target_domain_appearance_rate"
+        )
+        experiment_block["query_coverage"] = metric_obj("query_coverage")
+    else:
+        experiment_block["llm_mention_rate"] = metric_obj("llm_mention_rate")
+        experiment_block["llm_url_mention_rate"] = metric_obj("llm_url_mention_rate")
+        experiment_block["query_coverage"] = metric_obj("query_coverage")
+
     report: dict[str, Any] = {
         "job_id": job.id,
         "base_url": job.base_url,
@@ -306,26 +360,7 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
         "caveats": caveats,
         "executive_summary": executive_summary,
         "scores": scores_block,
-        "experiment": {
-            "provider_name": exp_cfg.provider_name if exp_cfg else None,
-            "model_id": exp_cfg.model_id if exp_cfg else None,
-            "experiment_kind": experiment_kind,
-            "retrieval_enabled": retrieval_enabled,
-            "protocol_version": (
-                exp_cfg.protocol_version
-                if exp_cfg
-                else (job.experiment_protocol_version or "llm-mention-v1")
-            ),
-            "provider_capabilities_notes": (
-                "Non-retrieval LLM mention provider; not AI search visibility."
-                if not retrieval_enabled
-                else "Retrieval-enabled AI search visibility provider."
-            ),
-            "observations_count": obs_count,
-            "llm_mention_rate": metric_obj("llm_mention_rate"),
-            "llm_url_mention_rate": metric_obj("llm_url_mention_rate"),
-            "query_coverage": metric_obj("query_coverage"),
-        },
+        "experiment": experiment_block,
         "ai_crawler_access": ai_crawler_access
         or {
             "caveat": CAVEATS[-1],

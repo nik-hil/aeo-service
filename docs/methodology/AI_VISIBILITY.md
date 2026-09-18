@@ -19,12 +19,16 @@
 `measures_consumer_ui` (almost always false), and `notes`.
 
 **MVP providers:** `DemoProvider` and `OpenAICompatibleProvider` are `llm_mention` only
-(`retrieval_enabled=false`). Future Perplexity/Gemini grounding providers may enable retrieval.
+(`retrieval_enabled=false`). **`DigitalOceanWebSearchProvider`** is the first
+retrieval-enabled `ai_search_visibility` provider (`retrieval_enabled=true`,
+`measures_consumer_ui=false`). See `docs/methodology/AI_SEARCH_VISIBILITY_DO.md`.
+Perplexity Sonar remains a stub until a real live path ships.
 
 **Observation extensions:** `model_id`, `retrieval_enabled`, `experiment_kind`,
 `search_queries`, `source_urls`, `target_domain_appeared`, `target_domain_cited`.
 Legacy `detected_mention` / `detected_citation` remain as **LLM-text heuristics** when
-`retrieval_enabled=false` (URL-in-text ≠ retrieval citation).
+`retrieval_enabled=false` (URL-in-text ≠ retrieval citation). For retrieval runs,
+`target_domain_cited` comes **only** from structured `url_citation` annotations.
 
 **Caveat (user-facing):** LLM mention ≠ AI search visibility.
 
