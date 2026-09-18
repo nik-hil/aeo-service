@@ -17,6 +17,62 @@
   "product_code_changed_by_verifier": false,
   "docs_only": true,
   "checklist_version": "query-set-quality-v1.1",
+  "gate_rows_labeled_by": "assert_intent",
+  "gate_rows_not_labeled_by": "test_function_names",
+  "cos_methodology_notes": {
+    "note_1_accepts_never_slip_without_ge2_observed": {
+      "blocking": false,
+      "assert_intent": "Even if generate_v2/candidate pool includes derived/compatibility-seeded evidence, no accept and no selected member may pass without ≥2 distinct provenance=observed evidence classes; derived-only reject path still holds.",
+      "result": "PASS",
+      "probe": {
+        "sha": "303b6d03940891c93864e7c9eea004382e1dfa73",
+        "fixtures": {
+          "blog": {
+            "natural_pool_size": 38,
+            "injected_weak_count": 3,
+            "injected_accepted_ids": [],
+            "injected_rejected_count": 3,
+            "accepted_count": 31,
+            "accept_obs_min": 2,
+            "selected_count": 20,
+            "selected_obs_min": 2,
+            "all_accepted_obs_ge2_and_ev_pass": true,
+            "all_selected_obs_ge2_and_ev_pass": true,
+            "derived_compat_evaluate": {
+              "status": "reject",
+              "evidence_support": "fail"
+            }
+          },
+          "saas": {
+            "natural_pool_size": 41,
+            "injected_weak_count": 3,
+            "injected_accepted_ids": [],
+            "injected_rejected_count": 3,
+            "accepted_count": 33,
+            "accept_obs_min": 2,
+            "selected_count": 20,
+            "selected_obs_min": 2,
+            "all_accepted_obs_ge2_and_ev_pass": true,
+            "all_selected_obs_ge2_and_ev_pass": true,
+            "derived_compat_evaluate": {
+              "status": "reject",
+              "evidence_support": "fail"
+            }
+          }
+        },
+        "injected_kinds": [
+          "derived_only",
+          "compatibility_only",
+          "one_observed_plus_derived"
+        ]
+      }
+    },
+    "note_2_map_gates_by_assert_intent": {
+      "blocking": false,
+      "assert_intent": "C1–C8 rows named by what is proven; test names are evidence paths only.",
+      "applied": true
+    }
+  },
   "different_seed_changed_fixture_set": true,
   "different_seed_changed_fixture_set_details": {
     "blog": {
@@ -85,6 +141,7 @@
   },
   "gates": {
     "C1": {
+      "assert_intent": "deterministic SHA tie-break only; no PRNG on v2 select path",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
@@ -94,13 +151,14 @@
       },
       "evidence": {
         "files": ["src/aeo_mvp/queries/select_v2.py"],
-        "tests": [
+        "evidence_paths": [
           "tests/unit/test_query_discovery_phase41.py::test_c1_seed_sha256_tiebreak_no_prng"
         ],
         "probe": "seeded_tiebreak_key(42,'q_abc') matches hashlib.sha256(b'42|q_abc').hexdigest()"
       }
     },
     "C2": {
+      "assert_intent": "same snapshot+seed → identical ordered query_id/text/fingerprint",
       "result": "PASS",
       "blocks_merge_if_fail": false,
       "checks": {
@@ -110,7 +168,7 @@
         "content_hash_stable_same_seed": true
       },
       "evidence": {
-        "tests": [
+        "evidence_paths": [
           "tests/unit/test_query_discovery_phase41.py::test_c_selection_deterministic_same_seed",
           "tests/unit/test_query_discovery_phase41.py::test_d_same_seed_identical_different_may_differ"
         ],
@@ -118,6 +176,7 @@
       }
     },
     "C3": {
+      "assert_intent": "one shared fingerprint preimage; unstable fields excluded; replay matches",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
@@ -142,13 +201,14 @@
           "selection_seed_method",
           "top_k"
         ],
-        "tests": [
+        "evidence_paths": [
           "tests/unit/test_query_discovery_phase41.py::test_canonical_fingerprint_shared_by_members_and_replay",
           "tests/unit/test_query_discovery_phase41.py::test_c3_fingerprint_excludes_unstable_fields"
         ]
       }
     },
     "C4": {
+      "assert_intent": "different seeds MAY change ordered set; both seeds remain valid (≥8)",
       "result": "PASS",
       "blocks_merge_if_fail": false,
       "checks": {
@@ -162,27 +222,33 @@
       }
     },
     "C5": {
+      "assert_intent": "observed-only EVD strength — accepts never slip without ≥2 observed classes",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
         "observed_required_for_qsq_evd": true,
         "derived_alone_insufficient": true,
         "compatibility_alone_insufficient": true,
-        "mixed_one_observed_fails": true
+        "mixed_one_observed_fails": true,
+        "accepts_never_slip_ge2_observed": true,
+        "selected_never_slip_ge2_observed": true,
+        "injected_weak_provenance_rejected": true
       },
       "evidence": {
         "files": [
           "src/aeo_mvp/queries/quality.py",
           "src/aeo_mvp/queries/evidence.py"
         ],
-        "tests": [
+        "evidence_paths": [
           "tests/unit/test_query_discovery_phase41.py::test_c5_provenance_cannot_satisfy_with_derived_alone",
           "tests/unit/test_query_discovery_phase41.py::test_evidence_provenance_observed_vs_derived",
           "tests/unit/test_query_discovery_phase41.py::test_siteunderstanding_compat_missing_provenance"
-        ]
+        ],
+        "cos_note_1_probe_ref": "cos_methodology_notes.note_1_accepts_never_slip_without_ge2_observed.probe"
       }
     },
     "C6": {
+      "assert_intent": "query diagnostics ≠ health-v1; seed ≠ site quality; WEIGHTS unchanged",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
@@ -200,13 +266,14 @@
           "answerability": 0.15
         },
         "health_diff_vs_main": "empty",
-        "tests": [
+        "evidence_paths": [
           "tests/unit/test_query_discovery_phase41.py::test_c6_diagnostics_not_health_and_seed_not_site_quality",
           "tests/unit/test_query_discovery_phase41.py::test_health_v1_frozen_and_no_paid_do"
         ]
       }
     },
     "C7": {
+      "assert_intent": "intent/topic budgets hold; quality gate not seed-bypassed; Hashnode + SaaS fixtures",
       "result": "PASS",
       "blocks_merge_if_fail": false,
       "checks": {
@@ -225,7 +292,7 @@
           "navigational": 2
         },
         "max_per_topic_observed": 4,
-        "tests": [
+        "evidence_paths": [
           "tests/unit/test_query_discovery_phase41.py::test_g_intent_budgets_personal_blog",
           "tests/unit/test_query_discovery_phase41.py::test_h_topic_cap_diversity",
           "tests/unit/test_query_discovery_phase41.py::test_a_generic_generation_saas_observability",
@@ -236,6 +303,7 @@
       }
     },
     "C8": {
+      "assert_intent": "freezes intact; discovery_only/dry-run zero paid DO / no httpx",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
@@ -253,7 +321,7 @@
           "site_understanding_llm": false
         },
         "freeze_paths_diff_empty": true,
-        "tests": [
+        "evidence_paths": [
           "tests/unit/test_query_discovery_phase41.py::test_c8_freezes_and_no_paid_do_in_discovery",
           "tests/unit/test_query_discovery_phase41.py::test_health_v1_frozen_and_no_paid_do"
         ]
