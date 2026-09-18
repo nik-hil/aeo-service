@@ -36,15 +36,17 @@ Accept aliases: `selection_seed` | `query_selection_seed` | `experiment_seed`.
 Persist `root_seed`, `effective_seed`, `seed_resolution` (source + alias),
 and `selection_seed_method=sha256_seeded_tiebreak_v1`.
 
-**Contract:**
+**Architect binding (deterministic SHA — not PRNG):**
 
-- Same snapshot + same seed + same versions → **identical** ordered query set
-  (fingerprint of query_id/text/intent/topic/entity).
-- Different seeds **MAY** differ when alternatives exist (not required to always differ).
-- Seed change ≠ site quality delta. Seed never bypasses quality / intent / topic /
-  MMR / evidence gates.
-- Tie-break only: `SHA-256(effective_seed|query_id)` — **not** global random /
-  `random.Random(seed)`.
+1. Primary path is **seed-independent**: intent budgets → coverage → MMR →
+   confidence/rel → `query_id`.
+2. Seed is used **only on ties**:
+   `sha256(f"{effective_seed}|{query_id}").hexdigest()`.
+3. **No** `random.Random` / shuffle / nondeterministic PRNG on the v2 path.
+4. Same snapshot + same seed + same versions → **identical** ordered query set.
+5. Different seeds **MAY** differ when alternatives exist (not required always).
+6. Seed change ≠ site quality delta. Seed never bypasses quality / intent /
+   topic / MMR / evidence gates.
 
 ## Candidate generation (v2)
 
@@ -84,18 +86,25 @@ See `QUERY_SET_QUALITY.md`. **Not** a website ranking score.
 2. Prefer uncovered (topic × intent) cells.  
 3. Lexical MMR λ ≈ 0.65.  
 4. Max-per-topic ≤ 3–4 for k ≈ 20.  
-5. Deterministic seeded tie-break: `sha256_seeded_tiebreak_v1`, then `query_id`.
+5. Seed-independent confidence/`query_id` order; **ties only** via
+   `sha256_seeded_tiebreak_v1`, then `query_id`.
+
+**Fingerprint (Evaluator C3):** ONE shared preimage =
+ordered members `{query_id,text,intent,topic,entity}` + audit
+`{selection_seed_method, selection_method, versions, effective_seed, top_k,
+dedup_method, mmr_lambda}`. Excludes `frozen_at` / UUIDs / unstable evidence ids.
+`selection_seed_method` is in the preimage (and persisted as sibling
+`fingerprint_audit`).
 
 **Version note (4.1):** Kept `query-set-v3` / `coverage_mmr_intent_budget_v1`
-(additive `selection_seed_method` field). No set-version bump — wire format
-compatible; only tie-break now honors persisted `effective_seed`.
+(additive `selection_seed_method`, `top_k`, `fingerprint_audit`). No set-version bump.
 
 ## Dry-run / reproducibility
 
 - `discovery_only` / `dry_run`: persist full candidates + gate decisions + fingerprint;
   **zero** paid provider calls.
-- Canonical fingerprint payload shared by `fingerprint_members` and
-  `replay_discovery_fingerprint`: `(query_id, text, intent, topic, entity)`.
+- Canonical fingerprint shared by selection (`fingerprint_query_set`) and
+  `replay_discovery_fingerprint`.
 - Paid path requires ready QuerySet + opt-in (+ content_hash binding).
 
 ## Select prior version

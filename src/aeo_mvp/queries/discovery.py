@@ -508,33 +508,27 @@ def discovery_to_json(result: DiscoveryResult) -> str:
 
 
 def replay_discovery_fingerprint(result: DiscoveryResult) -> str:
-    """Canonical sha256 fingerprint shared with ``fingerprint_members``.
+    """Recompute fingerprint via the ONE shared ``fingerprint_query_set`` preimage.
 
-    Payload per member: query_id, text, intent, topic, entity.
-    Prefer persisted fingerprint when present (same bytes).
+    Uses ordered members (query_id,text,intent,topic,entity) + audit tags
+    (selection_seed_method, versions, effective_seed, top_k, dedup). Excludes
+    frozen_at / unstable evidence ids.
     """
     from aeo_mvp.queries.select_v2 import (
+        DEFAULT_MMR_LAMBDA,
+        DEFAULT_TOP_K,
+        DISCOVERY_METHOD_V2,
+        QUERY_SET_VERSION,
+        QUALITY_VERSION,
+        SELECTION_METHOD,
+        SELECTION_SEED_METHOD,
+        canonical_fingerprint_preimage,
         canonical_member_payload,
-        fingerprint_from_payloads,
+        fingerprint_audit_block,
+        fingerprint_from_preimage,
     )
 
-    if result.fingerprint:
-        # Recompute from ordered queries to prove shared canonical shape
-        payloads = [
-            canonical_member_payload(
-                query_id=q.id,
-                text=q.query,
-                intent=q.intent,
-                topic=q.topic,
-                entity=q.entity,
-            )
-            for q in result.queries
-        ]
-        recomputed = fingerprint_from_payloads(payloads)
-        # Persisted fingerprint must match canonical recompute
-        if recomputed == result.fingerprint:
-            return result.fingerprint
-        return recomputed
+    qs = result.query_set or {}
     payloads = [
         canonical_member_payload(
             query_id=q.id,
@@ -545,7 +539,28 @@ def replay_discovery_fingerprint(result: DiscoveryResult) -> str:
         )
         for q in result.queries
     ]
-    return fingerprint_from_payloads(payloads)
+    audit = fingerprint_audit_block(
+        effective_seed=int(qs.get("effective_seed") or qs.get("selection_seed") or 0),
+        top_k=int(qs.get("top_k") or result.selected_count or DEFAULT_TOP_K),
+        dedup_method=str(qs.get("dedup_method") or "lexical_jaccard_v1"),
+        selection_seed_method=str(
+            qs.get("selection_seed_method") or SELECTION_SEED_METHOD
+        ),
+        selection_method=str(qs.get("selection_method") or SELECTION_METHOD),
+        query_set_version=str(qs.get("query_set_version") or QUERY_SET_VERSION),
+        discovery_method=str(
+            qs.get("discovery_method") or result.method or DISCOVERY_METHOD_V2
+        ),
+        quality_version=str(
+            qs.get("quality_version") or result.quality_version or QUALITY_VERSION
+        ),
+        mmr_lambda=float(qs.get("mmr_lambda") or DEFAULT_MMR_LAMBDA),
+    )
+    # Prefer persisted sibling audit when present (same keys)
+    if isinstance(qs.get("fingerprint_audit"), dict) and qs["fingerprint_audit"]:
+        audit = {**audit, **qs["fingerprint_audit"]}
+    preimage = canonical_fingerprint_preimage(members=payloads, audit=audit)
+    return fingerprint_from_preimage(preimage)
 
 
 __all__ = [

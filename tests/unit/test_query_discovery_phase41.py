@@ -6,6 +6,7 @@ Dry-run / offline only: no paid DigitalOcean calls.
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,7 +23,10 @@ from aeo_mvp.queries.quality_policy import resolve_genre_policy
 from aeo_mvp.queries.seed import resolve_seed_from_options
 from aeo_mvp.queries.select_v2 import (
     SELECTION_SEED_METHOD,
+    canonical_fingerprint_preimage,
     canonical_member_payload,
+    fingerprint_audit_block,
+    fingerprint_from_preimage,
     fingerprint_from_payloads,
     fingerprint_members,
     seeded_tiebreak_key,
@@ -382,7 +386,7 @@ def test_i_hashnode_regression_no_overfit(db_session):
     assert r.query_set.get("selection_seed_method") == "sha256_seeded_tiebreak_v1"
 
 
-# --- P0 Canonical fingerprint ---
+# --- P0 Canonical fingerprint (Evaluator C3) ---
 
 
 def test_canonical_fingerprint_shared_by_members_and_replay():
@@ -407,7 +411,20 @@ def test_canonical_fingerprint_shared_by_members_and_replay():
         )
         for q in a.queries
     ]
-    assert fingerprint_from_payloads(payloads) == a.fingerprint
+    audit = a.query_set.get("fingerprint_audit") or fingerprint_audit_block(
+        effective_seed=42,
+        top_k=20,
+        dedup_method=a.query_set.get("dedup_method") or "lexical_jaccard_v1",
+        mmr_lambda=float(a.query_set.get("mmr_lambda") or 0.65),
+    )
+    preimage = canonical_fingerprint_preimage(members=payloads, audit=audit)
+    assert fingerprint_from_preimage(preimage) == a.fingerprint
+    # Members-only digest is intentionally different from full preimage
+    assert fingerprint_from_payloads(payloads) != a.fingerprint
+    assert "selection_seed_method" in audit
+    assert audit["selection_seed_method"] == "sha256_seeded_tiebreak_v1"
+    assert "frozen_at" not in json.dumps(preimage)
+    assert a.query_set.get("top_k") == 20
 
     # seed42 vs 99 both valid; MAY differ
     c = discover_queries(
@@ -416,6 +433,106 @@ def test_canonical_fingerprint_shared_by_members_and_replay():
     assert c.fingerprint
     assert c.selected_count >= 8
     assert replay_discovery_fingerprint(c) == c.fingerprint
+
+
+# --- Verifier C1–C8 guards (corrective FAIL if C1/C3/C5/C6/C8 fail) ---
+
+
+def test_c1_seed_sha256_tiebreak_no_prng():
+    """C1: Architect SHA tie-break; no Random/shuffle on v2 select path."""
+    import ast
+    import inspect
+    from aeo_mvp.queries import select_v2 as mod
+
+    tree = ast.parse(inspect.getsource(mod))
+    imports = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.Import, ast.ImportFrom))
+    ]
+    for node in imports:
+        if isinstance(node, ast.Import):
+            assert all(a.name != "random" for a in node.names)
+        if isinstance(node, ast.ImportFrom):
+            assert node.module != "random"
+    # No Call to Random(...) or .shuffle(
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+    for call in calls:
+        if isinstance(call.func, ast.Attribute):
+            assert call.func.attr != "shuffle"
+            assert call.func.attr != "Random"
+        if isinstance(call.func, ast.Name):
+            assert call.func.id != "Random"
+    assert SELECTION_SEED_METHOD == "sha256_seeded_tiebreak_v1"
+    assert seeded_tiebreak_key(42, "q_abc") == hashlib.sha256(b"42|q_abc").hexdigest()
+
+
+def test_c3_fingerprint_excludes_unstable_fields():
+    u = _saas_observability_understanding()
+    r = discover_queries(u, top_n=20, options={"selection_seed": 42}, frozen_at="WALL")
+    audit = r.query_set["fingerprint_audit"]
+    for forbidden in ("frozen_at", "evidence_id", "query_set_id", "uuid"):
+        assert forbidden not in audit
+    raw = json.dumps(
+        canonical_fingerprint_preimage(
+            members=[
+                canonical_member_payload(
+                    query_id=q.id,
+                    text=q.query,
+                    intent=q.intent,
+                    topic=q.topic,
+                    entity=q.entity,
+                )
+                for q in r.queries
+            ],
+            audit=audit,
+        )
+    )
+    assert "WALL" not in raw  # frozen_at excluded from preimage
+    assert replay_discovery_fingerprint(r) == r.fingerprint
+
+
+def test_c5_provenance_cannot_satisfy_with_derived_alone():
+    u = _saas_observability_understanding()
+    der = _cand(
+        text="What is OpenTelemetry in SignalWatch?",
+        evidence=[
+            {"evidence_class": "title_h1", "provenance": "derived"},
+            {"evidence_class": "jsonld", "provenance": "compatibility"},
+        ],
+    )
+    d = evaluate_query_v2(der, u)
+    assert next(x for x in d.dimensions if x.name == "evidence_support").status == "fail"
+
+
+def test_c6_diagnostics_not_health_and_seed_not_site_quality():
+    assert HEALTH_FORMULA_VERSION == "health-v1"
+    # Policy abstraction exists
+    assert resolve_genre_policy("personal_tech_blog").forbid_commercial_templates
+    # Seed change is selection control — not a health input
+    assert "query" not in WEIGHTS and "diagnostic" not in WEIGHTS
+
+
+def test_c8_freezes_and_no_paid_do_in_discovery():
+    u = _blog_understanding()
+    with patch("httpx.AsyncClient") as mock_async:
+        with patch("httpx.Client") as mock_client:
+            r = discover_queries(
+                u,
+                top_n=20,
+                options={
+                    "selection_seed": 42,
+                    "discovery_only": True,
+                    "paid_retrieval_opt_in": True,
+                },
+                discovery_only=True,
+                paid_retrieval_opt_in=True,
+            )
+            mock_client.assert_not_called()
+            mock_async.assert_not_called()
+    # discovery_only forces paid off
+    assert r.paid_retrieval_opt_in is False
+    assert r.paid_retrieval_ready is False
 
 
 # --- P1 Evidence provenance / QSQ-EVD ---

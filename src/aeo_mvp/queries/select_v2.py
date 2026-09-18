@@ -1,11 +1,12 @@
 """Coverage-aware query selection ``query-set-v3`` (Phase 4 + 4.1 corrective).
 
-Pipeline: intent budgets → coverage cell fill → lexical MMR → max-per-topic caps.
-Deterministic given effective_seed + candidate pool.
+Primary path (seed-independent):
+  intent budgets → coverage cells → MMR → confidence/rel → query_id
 
-Phase 4.1: ``effective_seed`` influences selection **only** via
-``sha256_seeded_tiebreak_v1`` (SHA-256(seed|query_id)) — never global random.
-Order: coverage/intent → MMR → seeded tie-break → query_id.
+Seed is used **only on ties** via ``selection_seed_method=sha256_seeded_tiebreak_v1``:
+  ``sha256(f"{effective_seed}|{query_id}").hexdigest()``
+Never ``random.Random`` / shuffle / nondeterministic PRNG.
+
 Seed never bypasses quality / intent / topic / MMR / evidence gates.
 """
 
@@ -96,6 +97,8 @@ class QuerySetV3:
     generator_version: str = "candidate-gen-v2"
     dedup_method: str = "lexical_jaccard_v1"
     selection_seed_method: str = SELECTION_SEED_METHOD
+    top_k: int = DEFAULT_TOP_K
+    fingerprint_audit: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,9 +134,11 @@ class QuerySetV3:
             "grace_mode": self.grace_mode,
             "content_hash": self.content_hash,
             "fingerprint": self.fingerprint,
+            "fingerprint_audit": dict(self.fingerprint_audit),
             "representativeness": self.representativeness,
             "generator_version": self.generator_version,
             "dedup_method": self.dedup_method,
+            "top_k": self.top_k,
             "selected_count": len(self.members),
         }
 
@@ -154,7 +159,7 @@ def _set_id(seed: int, evidence_hash: str | None, version: str) -> str:
 
 
 def seeded_tiebreak_key(effective_seed: int, query_id: str) -> str:
-    """SHA-256(seed|query_id) hex — deterministic tie-break only (no RNG)."""
+    """Architect tie-break: ``sha256(f"{effective_seed}|{query_id}").hexdigest()``."""
     return hashlib.sha256(f"{effective_seed}|{query_id}".encode()).hexdigest()
 
 
@@ -166,7 +171,7 @@ def canonical_member_payload(
     topic: str | None,
     entity: str | None,
 ) -> dict[str, Any]:
-    """Single canonical fingerprint payload shape (Phase 4.1)."""
+    """Stable member fields only — no frozen_at / UUIDs / unstable evidence ids."""
     return {
         "query_id": query_id,
         "text": text,
@@ -176,13 +181,56 @@ def canonical_member_payload(
     }
 
 
-def fingerprint_from_payloads(payloads: list[dict[str, Any]]) -> str:
-    raw = json.dumps(payloads, sort_keys=True, separators=(",", ":"))
+def fingerprint_audit_block(
+    *,
+    effective_seed: int,
+    top_k: int,
+    dedup_method: str,
+    selection_seed_method: str = SELECTION_SEED_METHOD,
+    selection_method: str = SELECTION_METHOD,
+    query_set_version: str = QUERY_SET_VERSION,
+    discovery_method: str = DISCOVERY_METHOD_V2,
+    quality_version: str = QUALITY_VERSION,
+    mmr_lambda: float = DEFAULT_MMR_LAMBDA,
+) -> dict[str, Any]:
+    """Sibling audit / preimage tags (version + seed method + top_k + dedup)."""
+    return {
+        "selection_seed_method": selection_seed_method,
+        "selection_method": selection_method,
+        "query_set_version": query_set_version,
+        "discovery_method": discovery_method,
+        "quality_version": quality_version,
+        "effective_seed": int(effective_seed),
+        "top_k": int(top_k),
+        "dedup_method": dedup_method,
+        "mmr_lambda": float(mmr_lambda),
+    }
+
+
+def canonical_fingerprint_preimage(
+    *,
+    members: list[dict[str, Any]],
+    audit: dict[str, Any],
+) -> dict[str, Any]:
+    """ONE shared preimage: ordered members + audit (no wall-clock / evidence ids)."""
+    return {
+        "members": list(members),
+        "audit": dict(audit),
+    }
+
+
+def fingerprint_from_preimage(preimage: dict[str, Any]) -> str:
+    raw = json.dumps(preimage, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def fingerprint_members(members: list[QuerySetMember]) -> str:
-    payloads = [
+def fingerprint_from_payloads(payloads: list[dict[str, Any]]) -> str:
+    """Compat helper — members-only hash (prefer ``fingerprint_query_set``)."""
+    return fingerprint_from_preimage({"members": payloads})
+
+
+def members_to_payloads(members: list[QuerySetMember]) -> list[dict[str, Any]]:
+    return [
         canonical_member_payload(
             query_id=m.query.query_id,
             text=m.query.text,
@@ -192,7 +240,41 @@ def fingerprint_members(members: list[QuerySetMember]) -> str:
         )
         for m in members
     ]
-    return fingerprint_from_payloads(payloads)
+
+
+def fingerprint_query_set(
+    members: list[QuerySetMember],
+    *,
+    effective_seed: int,
+    top_k: int,
+    dedup_method: str,
+    mmr_lambda: float = DEFAULT_MMR_LAMBDA,
+    selection_seed_method: str = SELECTION_SEED_METHOD,
+    selection_method: str = SELECTION_METHOD,
+    query_set_version: str = QUERY_SET_VERSION,
+    discovery_method: str = DISCOVERY_METHOD_V2,
+    quality_version: str = QUALITY_VERSION,
+) -> tuple[str, dict[str, Any]]:
+    """Canonical fingerprint + audit block used by selection and replay."""
+    payloads = members_to_payloads(members)
+    audit = fingerprint_audit_block(
+        effective_seed=effective_seed,
+        top_k=top_k,
+        dedup_method=dedup_method,
+        selection_seed_method=selection_seed_method,
+        selection_method=selection_method,
+        query_set_version=query_set_version,
+        discovery_method=discovery_method,
+        quality_version=quality_version,
+        mmr_lambda=mmr_lambda,
+    )
+    preimage = canonical_fingerprint_preimage(members=payloads, audit=audit)
+    return fingerprint_from_preimage(preimage), audit
+
+
+def fingerprint_members(members: list[QuerySetMember]) -> str:
+    """Members-only digest (tests/legacy). Production uses ``fingerprint_query_set``."""
+    return fingerprint_from_preimage({"members": members_to_payloads(members)})
 
 
 def content_hash_for_set(
@@ -237,7 +319,7 @@ def _mmr_pick(
     lam: float,
     effective_seed: int,
 ) -> CandidateQuery | None:
-    """Pick next candidate by MMR; ties broken by sha256_seeded_tiebreak_v1 then query_id."""
+    """MMR primary score; on ``isclose`` ties only → sha256 seed key → query_id."""
     if not pool:
         return None
     best: CandidateQuery | None = None
@@ -258,9 +340,13 @@ def _mmr_pick(
             best_score = score
             best_tb = tb
             continue
-        if score > best_score or (
-            math.isclose(score, best_score)
-            and (tb < best_tb or (tb == best_tb and q.query_id < best.query_id))
+        # Primary: higher MMR score (seed-independent). Seed only when tied.
+        if score > best_score and not math.isclose(score, best_score):
+            best_score = score
+            best = q
+            best_tb = tb
+        elif math.isclose(score, best_score) and (
+            tb < best_tb or (tb == best_tb and q.query_id < best.query_id)
         ):
             best_score = score
             best = q
@@ -327,6 +413,7 @@ def select_query_set_v2(
         mmr_lambda=mmr_lambda,
         max_per_topic=topic_cap,
         dedup_method=dedup_method,
+        top_k=k,
     )
 
     if not accepted:
@@ -337,7 +424,7 @@ def select_query_set_v2(
         )
 
     gate_by_id = {q.query_id: g for q, g in accepted}
-    # Stable order: confidence desc → seeded tie-break → query_id
+    # Seed-independent primary: confidence → …; seed only on confidence ties
     unique = sorted(
         [q for q, _ in accepted],
         key=lambda q: (
@@ -394,6 +481,7 @@ def select_query_set_v2(
                 break
             pool.sort(
                 key=lambda q: (
+                    # coverage → rel/confidence → seed-on-tie → query_id
                     0 if (q.topic or "_none", q.intent) not in covered_cells else 1,
                     -_rel_score(q, profile_tokens),
                     seeded_tiebreak_key(seed, q.query_id),
@@ -457,7 +545,13 @@ def select_query_set_v2(
         for i, q in enumerate(selected[:k])
     ]
     intents, topics, entities = _breakdown(members)
-    fp = fingerprint_members(members)
+    fp, fp_audit = fingerprint_query_set(
+        members,
+        effective_seed=seed,
+        top_k=k,
+        dedup_method=dedup_method,
+        mmr_lambda=mmr_lambda,
+    )
     ch = content_hash_for_set(
         evidence_hash=understanding.evidence_hash,
         effective_seed=seed,
@@ -502,9 +596,11 @@ def select_query_set_v2(
         grace_mode=grace_mode,
         content_hash=ch,
         fingerprint=fp,
+        fingerprint_audit=fp_audit,
         mmr_lambda=mmr_lambda,
         max_per_topic=topic_cap,
         dedup_method=dedup_method,
+        top_k=k,
     )
 
 
