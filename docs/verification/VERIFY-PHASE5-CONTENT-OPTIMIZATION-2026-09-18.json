@@ -1,0 +1,329 @@
+{
+  "report": "VERIFY-PHASE5-CONTENT-OPTIMIZATION-2026-09-18",
+  "date": "2026-09-18",
+  "overall": "PASS",
+  "merge_recommendation": "PASS",
+  "blocking_gates": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10"],
+  "blocking_gates_all_pass": true,
+  "checklist_version": "content-optimization-v1",
+  "pr_under_review": "https://github.com/nik-hil/aeo-service/pull/17",
+  "product_commit_sha": "53e5d11f44ce7e4f9a2e0100007930eac9e9deff",
+  "verified_product_ref": "cursor/phase5-content-optimization-ae1e",
+  "tip_sha_at_start": "53e5d11f44ce7e4f9a2e0100007930eac9e9deff",
+  "tip_sha_rechecked": "53e5d11f44ce7e4f9a2e0100007930eac9e9deff",
+  "tip_moved": false,
+  "base_ref": "main",
+  "base_sha": "28a0b8526f3c76c6116565aa2ef08256201976bd",
+  "method": "independent_read_and_run_tests_and_probe",
+  "engineering_claims_trusted_a_priori": false,
+  "paid_digitalocean_apis_run": false,
+  "paid_llm_inference_run": false,
+  "product_code_changed_by_verifier": false,
+  "docs_only": true,
+  "honesty_locks": {
+    "diagnostics_not_site_score": true,
+    "coverage_not_ai_visibility": true,
+    "generated_not_observed": true
+  },
+  "does_not_overwrite": [
+    "docs/verification/VERIFY-PHASE4-QUERY-INTELLIGENCE-2026-09-18.md",
+    "docs/verification/VERIFY-PHASE4-QUERY-INTELLIGENCE-2026-09-18.json",
+    "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.md",
+    "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.json",
+    "docs/verification/VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18.md",
+    "docs/verification/VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18.json"
+  ],
+  "gate_rows_labeled_by": "assert_intent",
+  "gate_rows_not_labeled_by": "test_function_names",
+  "pytest": {
+    "full_suite": {
+      "passed": 205,
+      "skipped": 1,
+      "failed": 0,
+      "duration_s": 4.14,
+      "command": "pytest -q",
+      "line": "205 passed, 1 skipped, 2 warnings in 4.14s"
+    },
+    "phase5": {
+      "passed": 42,
+      "failed": 0,
+      "command": "pytest tests/unit/test_content_optimization_phase5.py -v"
+    },
+    "content_keyword_selection": {
+      "passed": 44,
+      "deselected": 162,
+      "command": "pytest tests/ -k 'content or phase5 or optim' -v"
+    },
+    "skipped_test": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
+  },
+  "freeze_diff_vs_main": {
+    "ssrf": "empty",
+    "target_site": "empty",
+    "domains": "empty",
+    "health": "empty",
+    "digitalocean_web_search": "empty",
+    "select_v2": "empty",
+    "evidence_normalize": "empty",
+    "diff_bytes": 0
+  },
+  "phase4_verify_artifacts_vs_main": {
+    "diff_bytes": 0,
+    "overwritten": false
+  },
+  "version_pins": {
+    "PAGE_INTEL_VERSION": "page-intel-v1",
+    "GAP_VERSION": "content-gap-v1",
+    "BRIEF_VERSION": "opt-brief-v1",
+    "DRAFT_VERSION": "opt-draft-v1",
+    "CONTENT_OPTIMIZATION_METHODOLOGY": "content-optimization-v1",
+    "HEALTH_FORMULA_VERSION": "health-v1",
+    "MATCH_RULE_VERSION": "domain-match-v1",
+    "QUERY_SET_VERSION": "query-set-v3",
+    "QUALITY_VERSION": "query-quality-v1",
+    "SELECTION_SEED_METHOD": "sha256_seeded_tiebreak_v1",
+    "AI_SEARCH_EXTRACTION_METHODOLOGY": "ai-search-vis-v1:do-web-search+url-citation-v1+mention-rule-v1+domain-match-v1",
+    "LLM_MENTION_EXTRACTION_METHODOLOGY": "llm-mention-v1:mention-rule-v1+url-mention-rule-v1",
+    "provenance_normalize_missing_to_compatibility": true
+  },
+  "gates": {
+    "C1": {
+      "assert_intent": "PageIntelligence from source page; hostname-scoped; provenance normalize (missing→compatibility); no invented observed",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "page_intel_version_page_intel_v1": true,
+        "hostname_scoped": true,
+        "internal_links_same_host": true,
+        "missing_to_compatibility": true,
+        "observed_only_when_present": true,
+        "no_invented_observed_on_empty": true
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/content/page_intel.py",
+          "src/aeo_mvp/content/models.py",
+          "src/aeo_mvp/queries/evidence.py"
+        ],
+        "test_names": [
+          "test_c1_page_intel_provenance_hostname_scope",
+          "test_a_page_intelligence_observed_facts_hashnode",
+          "test_b_provenance_missing_maps_to_compatibility"
+        ],
+        "probe": "independent extract_page_intelligence host-scope + empty→compatibility matrix PASS"
+      }
+    },
+    "C2": {
+      "assert_intent": "enum observed|derived|compatibility|(generated for drafts); draft/generated NEVER enters observed evidence / QSQ-EVD / crawl observed stores",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "normalize_provenance_matrix": true,
+        "draft_content_provenance_generated": true,
+        "unsupported_claims_generated": true,
+        "no_content_provenance_observed_assign": true,
+        "evidence_quality_no_content_import": true,
+        "answer_unit_generated_maps_to_compatibility": true,
+        "gap_evidence_never_generated_as_observed": true
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/content/draft.py",
+          "src/aeo_mvp/content/models.py",
+          "src/aeo_mvp/content/brief.py",
+          "src/aeo_mvp/queries/evidence.py"
+        ],
+        "test_names": [
+          "test_c2_provenance_includes_generated_no_draft_to_observed",
+          "test_r_generated_draft_never_observed",
+          "test_honesty_diagnostics_not_health_generated_not_observed"
+        ],
+        "probe": "C2_REFINED_PASS; draft→generated; EvidenceRecord.from_dict(missing)→compatibility"
+      }
+    },
+    "C3": {
+      "assert_intent": "query×page coverage from snapshot themes/content (full|partial|thin|absent|mismatched); no niche/hostname hardcode; not marketed as AI visibility/health",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "coverage_enum_valid": true,
+        "multiple_levels_observed": true,
+        "coverage_is_not_ai_visibility_flag": true,
+        "coverage_is_not_health_v1_flag": true,
+        "matrix_honesty_flags": true,
+        "no_hashnode_hardcode_in_content_pkg": true
+      },
+      "evidence": {
+        "files": ["src/aeo_mvp/content/gaps.py", "src/aeo_mvp/content/brief.py"],
+        "test_names": [
+          "test_c3_coverage_from_snapshot_themes_no_niche_hardcode",
+          "test_d_coverage_levels_separate_from_ai_visibility"
+        ],
+        "probe": "coverage enum multi-level; zero hashnode matches under src/aeo_mvp/content/"
+      }
+    },
+    "C4": {
+      "assert_intent": "ContentGapReport evidence-backed; each gap cites page/query evidence; deterministic prioritize",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "all_gaps_have_evidence": true,
+        "gap_ids_deterministic": true,
+        "severity_type_id_order": true,
+        "cite_miss_only_with_observations": true
+      },
+      "evidence": {
+        "files": ["src/aeo_mvp/content/gaps.py"],
+        "test_names": [
+          "test_c4_evidence_backed_gaps_only",
+          "test_c_content_gap_categories_deterministic",
+          "test_d1_cite_miss_only_with_observations"
+        ],
+        "probe": "dual-run identical gap ids; cite_miss gated on visibility observations"
+      }
+    },
+    "C5": {
+      "assert_intent": "opt-brief-v1 cites page-intel + gap-report + queryset fingerprints/versions; retain/rewrite/expand/remove/add with reasons",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "brief_version_opt_brief_v1": true,
+        "cites_page_intel_version": true,
+        "cites_gap_report_version": true,
+        "cites_queryset_version_and_id": true,
+        "scope_version_pins": true,
+        "edit_actions_with_reasons": true,
+        "brief_id_deterministic": true
+      },
+      "evidence": {
+        "files": ["src/aeo_mvp/content/brief.py", "src/aeo_mvp/content/models.py"],
+        "test_names": [
+          "test_c5_versioned_brief_cites_inputs",
+          "test_e_brief_deterministic_cites_inputs",
+          "test_g_change_plan_edit_ops"
+        ],
+        "probe": "input_citations + scope version pins; edit action set with reasons"
+      }
+    },
+    "C6": {
+      "assert_intent": "OptimizedContentDraft from brief+source; unsupported→warnings; refuse ungrounded factual assert; paid=False default; Null/skeleton OK",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "default_null_generator": true,
+        "null_status_skipped_paid_false": true,
+        "paid_default_false": true,
+        "skeleton_unsupported_claims_present": true,
+        "no_fabricated_stats_as_fact": true,
+        "paid_llm_stub_refuses_live": true,
+        "pipeline_paid_retrieval_false": true,
+        "api_job_defaults_draft_paid_false": true
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/content/draft.py",
+          "src/aeo_mvp/content/pipeline.py",
+          "src/aeo_mvp/api/schemas.py"
+        ],
+        "test_names": [
+          "test_c6_grounded_draft_citations_refuse_ungrounded",
+          "test_h_skeleton_draft_when_generate_draft",
+          "test_i_null_draft_default_unsupported_claims",
+          "test_s_null_default_no_paid",
+          "test_t_paid_writer_refuses"
+        ],
+        "probe": "Null/skeleton/paid-refuse matrix; JobOptions draft_paid=False"
+      }
+    },
+    "C7": {
+      "assert_intent": "same inputs→same intel/gaps/brief/change-plan; freezes: health-v1, domain-match-v1, SSRF, query-set-v3, query-quality-v1, 4.1.1 provenance, AI-search vs LLM-mention, sha256 tie-break",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "dual_run_fingerprints_equal": true,
+        "freeze_diff_empty": true,
+        "health_v1": true,
+        "domain_match_v1": true,
+        "query_set_v3": true,
+        "query_quality_v1": true,
+        "sha256_seeded_tiebreak_v1": true,
+        "ai_search_distinct_from_llm_mention": true,
+        "provenance_normalize_unchanged": true
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/scoring/health.py",
+          "src/aeo_mvp/target_site.py",
+          "src/aeo_mvp/security/ssrf.py",
+          "src/aeo_mvp/queries/select_v2.py",
+          "src/aeo_mvp/queries/evidence.py",
+          "src/aeo_mvp/visibility/metrics.py"
+        ],
+        "test_names": [
+          "test_c7_determinism_and_null_draft_ok",
+          "test_p_deterministic_same_inputs",
+          "test_x_freezes_held"
+        ],
+        "probe": "freeze DIFF_BYTES=0; dual-run fingerprints match"
+      }
+    },
+    "C8": {
+      "assert_intent": "new URL fetches use existing SSRF path; no private/metadata bypass",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "fetch_html_ssrf_safe_uses_assert_safe_public_url": true,
+        "fetch_url_reasserts_on_redirect": true,
+        "loopback_blocked": true,
+        "link_local_metadata_blocked": true,
+        "file_scheme_blocked": true,
+        "api_rejects_unsafe_source_url": true
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/content/service.py",
+          "src/aeo_mvp/crawler/fetch.py",
+          "src/aeo_mvp/security/ssrf.py",
+          "src/aeo_mvp/api/routes.py"
+        ],
+        "test_names": ["test_c8_ssrf_held", "test_u_api_rejects_unsafe_source_url"],
+        "probe": "assert_safe_public_url blocks 127.0.0.1 / 169.254.169.254 / localhost / file://"
+      }
+    },
+    "C9": {
+      "assert_intent": "content VERIFY/dry-run no paid DO inference/retrieval",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "no_digitalocean_in_content_package": true,
+        "dry_run_offline_no_network_required": true,
+        "paid_retrieval_false": true,
+        "paid_llm_false": true,
+        "live_do_test_not_run": true
+      },
+      "evidence": {
+        "files": ["src/aeo_mvp/content/", "src/aeo_mvp/api/schemas.py"],
+        "test_names": [
+          "test_c9_paid_do_off",
+          "test_x2_no_digitalocean_in_content_package"
+        ],
+        "probe": "content pkg DO import scan empty; offline pipeline paid flags false"
+      }
+    },
+    "C10": {
+      "assert_intent": "full pytest green + Phase 5 tests; no live external site deps in tests",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "full_suite_green": true,
+        "phase5_42_passed": true,
+        "fixtures_only_no_live_web": true,
+        "ssrf_tests_fail_closed_only": true
+      },
+      "evidence": {
+        "files": ["tests/unit/test_content_optimization_phase5.py", "tests/fixtures/phase5/"],
+        "test_names": ["test_c10_full_suite_and_phase5_tests_present"],
+        "probe": "pytest -q → 205 passed, 1 skipped; phase5 module 42 passed"
+      }
+    }
+  }
+}
