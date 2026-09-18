@@ -1,0 +1,61 @@
+{
+  "recommended_flow": [
+    "create_job",
+    "discover_and_crawl",
+    "analyze_technical",
+    "analyze_content_extractability",
+    "analyze_entities",
+    "analyze_structured_data",
+    "compute_aeo_health",
+    "prepare_experiment",
+    "run_visibility_experiment",
+    "synthesize_findings",
+    "prioritize_recommendations",
+    "emit_report"
+  ],
+  "mvp_must_haves": [
+    "single_site_crawl",
+    "technical_analysis",
+    "content_extractability_analysis",
+    "entity_analysis",
+    "structured_data_analysis",
+    "transparent_aeo_health_score",
+    "prioritized_recommendations",
+    "controlled_ai_visibility_experiments",
+    "json_api_machine_readable_report",
+    "sqlite_persistence",
+    "deterministic_demo_mode"
+  ],
+  "mvp_defer": [
+    "continuous_multi_engine_monitoring",
+    "competitor_share_of_voice_labs",
+    "sentiment_hallucination_monitoring",
+    "auto_schema_cms_publish",
+    "content_generation_studios",
+    "multi_site_agency_workspaces",
+    "gsc_import_ai_referral_attribution",
+    "digital_pr_citation_outreach",
+    "consumer_ui_scraping_at_scale",
+    "geo_language_fanout_shopping_modules"
+  ],
+  "key_caveats": [
+    "AI answers are stochastic; metrics are sample estimates not rankings",
+    "API collection is not equivalent to consumer ChatGPT/Gemini/Perplexity UI",
+    "Never claim experiments reproduce proprietary engine ranking",
+    "Report denominators (prompts x runs) and store raw responses",
+    "Model updates break time series; version methodology and annotate",
+    "Separate mention vs citation vs recommendation",
+    "No guaranteed inclusion outcomes",
+    "llms.txt is not a proven citation silver bullet"
+  ],
+  "jtbd": [
+    "Confirm site eligibility for AI crawlers and extraction",
+    "Diagnose why pages would not be quoted (structure schema entity)",
+    "Get one explainable AEO health score with transparent components",
+    "Prioritize high-impact site-owned fixes",
+    "Run controlled disclosed visibility experiments on fixed prompts",
+    "Prove readiness and progress via machine-readable reports",
+    "Avoid false confidence conflating readiness with engine rankings",
+    "Integrate scores and recommendations via JSON API"
+  ]
+}

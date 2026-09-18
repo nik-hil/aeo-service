@@ -1,0 +1,58 @@
+# Implementation Status — AEO MVP Backend
+
+**Date:** 2026-09-18 (IST)  
+**Formula / protocol:** `health-v1` · `vis-exp-v1` · `rec-catalog-v1`  
+**Package:** `aeo_mvp` (`src/` layout)
+
+## What works
+
+| Phase | Status | Notes |
+| --- | --- | --- |
+| 0 Scaffold | Done | `pyproject.toml`, config, logging, SQLAlchemy models, `create_all`, FastAPI app |
+| 1 Crawler | Done | robots-respecting live crawl; demo fixtures for `https://demo.example/`; caps 25/2/5s; UA per D012 |
+| 2 Analyzers | Done | technical, content (+answerability checks), entities, structured_data → `analysis_evidence` |
+| 3 Scoring | Done | `health-v1` weighted mean; `score_components` persisted with breakdowns |
+| 4 Recommendations | Done | `rec-catalog-v1`, impact×effort, evidence-linked ranks |
+| 5 Visibility | Done | `AIVisibilityProvider`; `DemoProvider` (deterministic); `OpenAICompatibleProvider` (optional key) |
+| 6 Pipeline + API | Done | Full orchestrator; `POST/GET /api/v1/jobs`, report, pages; `GET /health`; BackgroundTasks |
+| 7 Tests | Done | Unit + analyzer + demo E2E bit-stability + API TestClient — `pytest` green |
+
+### Demo E2E (verified locally)
+
+- No API keys / no live network for demo crawl or DemoProvider
+- Two demo runs → identical health score and visibility rates
+- Sample demo health (fixtures as of 2026-09-18): **87.9**
+  - technical 100.0 · content 57.5 · entity 92.5 · structured_data 100.0 · answerability 100.0
+- Visibility (synthetic): mention **0.4** (6/15), citation **≈0.133** (2/15), coverage **0.6** (3/5)
+- Report includes methodology, caveats, scores (with provenance), findings, recommendations, experiment block
+
+### How to run
+
+```bash
+cd /workspace/aeo-mvp
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q
+uvicorn aeo_mvp.api.app:app --host 127.0.0.1 --port 8000
+```
+
+See root `README.md` and `examples/`.
+
+## Known gaps / non-goals (MVP)
+
+1. **No Alembic migrations** — `Base.metadata.create_all` only (acceptable per blueprint).
+2. **Live crawl not exhaustively integration-tested** against real sites in CI (unit coverage for robots/same-host; live path exists).
+3. **OpenAICompatibleProvider** not exercised against a live API in default CI (skipped cleanly without key).
+4. **No auth / multi-tenant / frontend / billing** (explicit out of scope).
+5. **JS-rendered SPA sites** — heuristics only; no headless browser.
+6. **Robots parser** is minimal (UA groups + Allow/Disallow prefixes); not a full robots.txt RFC implementation.
+7. **BackgroundTasks** run in-process — process restart drops in-flight jobs; no Redis/Celery queue.
+8. **Report provenance map** is embedded per score/metric field; no separate top-level `provenance` object beyond field labels.
+9. **Verifier sign-off** (`docs/verification/`) is a separate role — this status is engineer delivery, not Verifier certification.
+10. **Content score on demo** intentionally mid-range (thin pricing page, heading skips) so recommendations stay interesting.
+
+## Honesty reminders (product)
+
+- Visibility rates are **estimates** from finite experiments, not engine rankings.
+- API observations ≠ consumer ChatGPT / Gemini / Perplexity UI.
+- Health does **not** include visibility rates as inputs.

@@ -1,0 +1,14 @@
+{
+  "prompt_set_id": "prompt-set-v1",
+  "brand": "AcmeFlow",
+  "category": "project management software",
+  "domain": "demo.example",
+  "prompts": [
+    {"id": "ps1_brand", "intent": "brand", "query": "What is AcmeFlow?"},
+    {"id": "ps2_category", "intent": "category", "query": "What are leading options for project management software?"},
+    {"id": "ps3_compare", "intent": "comparison-neutral", "query": "How do teams evaluate tools in project management software?"},
+    {"id": "ps4_problem", "intent": "problem/solution", "query": "How can a website improve its chances of being cited in AI answers?"},
+    {"id": "ps5_best", "intent": "best-for", "query": "What is a good resource for answer engine optimization on demo.example?"}
+  ],
+  "runs_per_prompt": 3
+}

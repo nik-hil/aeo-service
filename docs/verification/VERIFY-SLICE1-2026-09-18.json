@@ -1,0 +1,21 @@
+{
+  "overall": "PASS",
+  "criteria": {
+    "demo_mode_e2e": "pass",
+    "metric_formulas": "pass",
+    "determinism": "pass",
+    "pytest": "pass",
+    "honesty": "pass",
+    "observations_storage": "pass"
+  },
+  "pytest_passed": 22,
+  "health_score_run1": 87.9,
+  "health_score_run2": 87.9,
+  "notes": [
+    "Isolated DB sqlite:////tmp/aeo_verify_slice1.db; jobs acf8d249-43b6-4a96-8fc4-7815cd37228e and cc7ad5c6-00d1-4a36-94bd-93f5a0b2963a",
+    "Visibility rates identical: mention=0.4, citation=0.13333333333333333, query_coverage=0.6",
+    "Report status field may show 'synthesizing' while job is completed (minor)",
+    "No /api/v1/jobs/{{id}}/observations route; storage verified in DB",
+    "honesty: no affirmative ranking-reproduction claims; caveats deny them"
+  ]
+}

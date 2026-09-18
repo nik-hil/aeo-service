@@ -1,0 +1,235 @@
+{
+  "observations": [
+    {
+      "prompt_id": "ps1_brand",
+      "run_index": 0,
+      "query": "What is AcmeFlow?",
+      "raw_response": "AcmeFlow is a project management platform used by shipping teams. You can learn more at https://demo.example/ and https://demo.example/about.",
+      "detected_mention": true,
+      "detected_citation": true,
+      "cited_urls": [
+        "https://demo.example/",
+        "https://demo.example/about"
+      ],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps1_brand",
+      "run_index": 1,
+      "query": "What is AcmeFlow?",
+      "raw_response": "AcmeFlow is a project management platform used by shipping teams. You can learn more at https://demo.example/ and https://demo.example/about.",
+      "detected_mention": true,
+      "detected_citation": true,
+      "cited_urls": [
+        "https://demo.example/",
+        "https://demo.example/about"
+      ],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps1_brand",
+      "run_index": 2,
+      "query": "What is AcmeFlow?",
+      "raw_response": "AcmeFlow is a project management platform used by shipping teams. It focuses on documentation and ownership without requiring external links.",
+      "detected_mention": true,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps2_category",
+      "run_index": 0,
+      "query": "What are leading options for project management software?",
+      "raw_response": "Several vendors compete in this space. AcmeFlow is sometimes discussed for documentation-heavy workflows, alongside other generic tools.",
+      "detected_mention": true,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps2_category",
+      "run_index": 1,
+      "query": "What are leading options for project management software?",
+      "raw_response": "Several vendors compete in this space. AcmeFlow is sometimes discussed for documentation-heavy workflows, alongside other generic tools.",
+      "detected_mention": true,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps2_category",
+      "run_index": 2,
+      "query": "What are leading options for project management software?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps3_compare",
+      "run_index": 0,
+      "query": "How do teams evaluate tools in project management software?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps3_compare",
+      "run_index": 1,
+      "query": "How do teams evaluate tools in project management software?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps3_compare",
+      "run_index": 2,
+      "query": "How do teams evaluate tools in project management software?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps4_problem",
+      "run_index": 0,
+      "query": "How can a website improve its chances of being cited in AI answers?",
+      "raw_response": "Several vendors compete in this space. AcmeFlow is sometimes discussed for documentation-heavy workflows, alongside other generic tools.",
+      "detected_mention": true,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps4_problem",
+      "run_index": 1,
+      "query": "How can a website improve its chances of being cited in AI answers?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps4_problem",
+      "run_index": 2,
+      "query": "How can a website improve its chances of being cited in AI answers?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps5_best",
+      "run_index": 0,
+      "query": "What is a good resource for answer engine optimization on demo.example?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps5_best",
+      "run_index": 1,
+      "query": "What is a good resource for answer engine optimization on demo.example?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    },
+    {
+      "prompt_id": "ps5_best",
+      "run_index": 2,
+      "query": "What is a good resource for answer engine optimization on demo.example?",
+      "raw_response": "Teams typically compare roadmaps, integrations, pricing, and support quality when selecting software. Documentation clarity also matters for onboarding.",
+      "detected_mention": false,
+      "detected_citation": false,
+      "cited_urls": [],
+      "engine_label": "demo-engine",
+      "provenance": "synthetic_demo",
+      "extraction_methodology": "vis-exp-v1:mention-rule-v1+citation-rule-v1",
+      "meta": {
+        "seeded": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "url": "https://demo.example/",
+  "demo_mode": true,
+  "options": {
+    "max_pages": 25,
+    "max_depth": 2,
+    "runs_per_prompt": 3,
+    "provider": "demo",
+    "category": "project management software"
+  }
+}
