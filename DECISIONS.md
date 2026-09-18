@@ -201,3 +201,43 @@ QSQ-EVD unchanged: ≥2 distinct observed. Kept query-set-v3 (no v4).
 SiteProfile evidence lacking provenance, inconsistent with EvidenceRecord.from_dict.
 **Doc:** `docs/architecture/PHASE4_1_1_PROVENANCE_LOCK.md`,
 `docs/methodology/QUERY_DISCOVERY.md`.
+
+## D032 — Phase 5 content package & contracts (2026-09-18)
+**Decision:** Implement Phase 5 in `aeo_mvp.content` (`page_intel`, `gaps`,
+`brief`, `draft`) with contracts `page-intel-v1`, `content-gap-v1`,
+`opt-brief-v1`, `opt-draft-v1`. Gaps+brief deterministic; draft via
+`DraftGenerator` Protocol (Null default, `draft_paid=false`). Reuse
+`query-set-v3` + provenance 4.1.1. No CMS publish; no health-v1 mutation;
+no query-set-v4; paid retrieval/draft OFF by default.
+**Rationale:** Architect binding package/protocol lock.
+**Doc:** ADR-032, `PHASE5_PAGE_INTELLIGENCE.md`.
+
+## D033 — Coverage ≠ visibility ≠ health (2026-09-18)
+**Decision:** Page↔queryset overlap uses `page_coverage`
+(full|partial|thin|absent|mismatched|unknown) on `coverage_by_query`.
+Never label as AI visibility or fold into health-v1 / SOV. Optional
+visibility enrich may attach `cite_miss` **only** when observations exist.
+No opaque content AEO score. No citation/inclusion guarantees.
+**Rationale:** Measurement integrity; Evaluator content-optimization-v1 honesty.
+**Doc:** `PHASE5_PAGE_INTELLIGENCE.md` §2, §8 D1.
+
+## D034 — Alignment deltas D1–D7 accepted (2026-09-18)
+**Decision:** Accept Content Optimizer alignment deltas into Architect memo §8:
+coverage_by_query field; extended gap_type taxonomy; edit_ops under brief;
+unsupported_claims + generated provenance; readiness vs queryset gap split;
+anti-pattern caveats; C1–C10 testable gates. Package/protocol locks unchanged.
+**Rationale:** Reconcile Optimizer types with Architect package without forks.
+**Doc:** `PHASE5_PAGE_INTELLIGENCE.md` §8, `PHASE5_ALIGNMENT_DELTAS.md`,
+`PHASE5_RECONCILED_CONTRACTS.md`.
+
+## D035 — Evaluator content-optimization-v1 gates C1–C10 (2026-09-18)
+**Decision:** Binding Evaluator methodology `content-optimization-v1`. Honesty:
+diagnostics ≠ health-v1; Generated ≠ observed; drafts never feed QSQ-EVD /
+crawl observed / visibility raw. Gates C1–C10 testable in
+`test_content_optimization_phase5.py`. Block merge on C1/C2/C4/C6/C8/C9
+(and C3/C5/C7/C10 by default). Formal
+`VERIFY-PHASE5-CONTENT-OPTIMIZATION-2026-09-18` is Verifier-owned after
+product SHA — engineering ships gate tests + methodology docs only.
+**Rationale:** Measurement integrity for Phase 5.
+**Doc:** `docs/methodology/CONTENT_OPTIMIZATION_V1.md`,
+`docs/architecture/PHASE5_EVALUATOR_GATES.md`.

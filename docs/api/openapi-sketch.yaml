@@ -142,6 +142,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/content-optimization:
+    post:
+      tags: [jobs]
+      summary: Grounded content optimization (Phase 5)
+      description: |
+        page-intel-v1 → content-gap-v1 → opt-brief-v1 → opt-draft-v1
+        via aeo_mvp.content. Accepts job_id/page_id, SSRF-safe source_url, or offline html.
+        Rejects free-form topic generation. generate_draft/draft_paid default false.
+      operationId: contentOptimization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                job_id: { type: string }
+                page_id: { type: string }
+                source_url: { type: string, format: uri }
+                html: { type: string }
+                url: { type: string, format: uri }
+                queryset: { type: object }
+                site_profile: { type: object }
+                config: { type: object }
+                content_optimization: { type: boolean, default: true }
+                generate_draft: { type: boolean, default: false }
+                draft_paid: { type: boolean, default: false }
+                paid_llm_opt_in: { type: boolean, default: false }
+            examples:
+              offline:
+                value:
+                  html: "<html><body><h1>Demo</h1></body></html>"
+                  url: https://demo.example/
+                  generate_draft: true
+                  draft_paid: false
+      responses:
+        "200":
+          description: Optimization result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [page_intelligence, gap_report, brief, draft]
+                properties:
+                  page_intelligence: { type: object }
+                  gap_report: { type: object }
+                  brief: { type: object }
+                  draft: { type: object }
+                  paid_retrieval: { type: boolean }
+                  paid_llm: { type: boolean }
+        "400":
+          description: Validation or SSRF rejection
+        "422":
+          description: Malformed body (e.g. topic-only generate)
+
 components:
   parameters:
     JobId:
