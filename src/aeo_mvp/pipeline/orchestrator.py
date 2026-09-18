@@ -250,12 +250,30 @@ class JobOrchestrator:
             )
             p1_sections["site_understanding"] = understanding.to_dict()
 
-            # P1-C query discovery
+            # P1-C / Phase 3 query discovery (generate→gate→select).
+            # Paid DO retrieval is NEVER auto-started here — requires explicit opt-in
+            # after a ready QuerySet (options.paid_retrieval_opt_in / settings).
             top_n = int(options.get("query_top_n", self.settings.query_top_n))
+            paid_opt_in = bool(
+                options.get("paid_retrieval_opt_in", self.settings.paid_retrieval_opt_in)
+            )
+            early_identity = resolve_target_site_identity(job.base_url)
+            target_audit = early_identity.to_audit_dict()
+            p1_sections["target_site"] = target_audit
             discovery = discover_queries(
-                understanding, top_n=top_n, provenance=provenance
+                understanding,
+                top_n=top_n,
+                provenance=provenance,
+                selection_seed=options.get("query_selection_seed"),
+                paid_retrieval_opt_in=paid_opt_in,
+                target_site_audit=target_audit,
             )
             p1_sections["discovered_queries"] = discovery.to_dict()
+            if paid_opt_in and not discovery.paid_retrieval_ready:
+                logger.info(
+                    "paid_retrieval_opt_in set but query set not ready; "
+                    "skipping auto retrieval (Phase 3 cost control)"
+                )
 
             # 6. Health
             self._set_status(job, "scoring")

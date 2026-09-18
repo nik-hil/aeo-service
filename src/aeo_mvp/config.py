@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     crawl_max_pages: int = Field(default=25, alias="AEO_CRAWL_MAX_PAGES")
     crawl_max_depth: int = Field(default=2, alias="AEO_CRAWL_MAX_DEPTH")
     crawl_timeout_s: float = Field(default=5.0, alias="AEO_CRAWL_TIMEOUT_S")
-    query_top_n: int = Field(default=10, alias="AEO_QUERY_TOP_N")
+    query_top_n: int = Field(default=20, alias="AEO_QUERY_TOP_N")
+    # Paid DO web_search never auto-runs from discovery; requires explicit opt-in.
+    paid_retrieval_opt_in: bool = Field(default=False, alias="AEO_PAID_RETRIEVAL_OPT_IN")
     site_understanding_llm: bool = Field(default=False, alias="AEO_SITE_UNDERSTANDING_LLM")
     perplexity_api_key: str | None = Field(default=None, alias="PERPLEXITY_API_KEY")
 
