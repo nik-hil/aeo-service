@@ -3,15 +3,26 @@
   "date": "2026-09-18",
   "overall": "PASS",
   "merge_recommendation": "PASS",
-  "blocking_gates": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10"],
+  "blocking_gates": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "C7",
+    "C8",
+    "C9",
+    "C10"
+  ],
   "blocking_gates_all_pass": true,
   "checklist_version": "content-optimization-v1",
   "pr_under_review": "https://github.com/nik-hil/aeo-service/pull/17",
   "product_commit_sha": "53e5d11f44ce7e4f9a2e0100007930eac9e9deff",
   "verified_product_ref": "cursor/phase5-content-optimization-ae1e",
   "tip_sha_at_start": "53e5d11f44ce7e4f9a2e0100007930eac9e9deff",
-  "tip_sha_rechecked": "53e5d11f44ce7e4f9a2e0100007930eac9e9deff",
-  "tip_moved": false,
+  "tip_sha_rechecked": "bda584f8858a19642bda96e1b256ee13edd24c78",
+  "tip_moved": true,
   "base_ref": "main",
   "base_sha": "28a0b8526f3c76c6116565aa2ef08256201976bd",
   "method": "independent_read_and_run_tests_and_probe",
@@ -40,9 +51,9 @@
       "passed": 205,
       "skipped": 1,
       "failed": 0,
-      "duration_s": 4.14,
+      "duration_s": 4.1,
       "command": "pytest -q",
-      "line": "205 passed, 1 skipped, 2 warnings in 4.14s"
+      "line": "205 passed, 1 skipped, 2 warnings in 4.10s"
     },
     "phase5": {
       "passed": 42,
@@ -54,7 +65,8 @@
       "deselected": 162,
       "command": "pytest tests/ -k 'content or phase5 or optim' -v"
     },
-    "skipped_test": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
+    "skipped_test": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional",
+    "verified_on_tip": "bda584f8858a19642bda96e1b256ee13edd24c78"
   },
   "freeze_diff_vs_main": {
     "ssrf": "empty",
@@ -87,7 +99,7 @@
   },
   "gates": {
     "C1": {
-      "assert_intent": "PageIntelligence from source page; hostname-scoped; provenance normalize (missing→compatibility); no invented observed",
+      "assert_intent": "PageIntelligence from source page; hostname-scoped; provenance normalize (missing\u2192compatibility); no invented observed",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
@@ -96,7 +108,10 @@
         "internal_links_same_host": true,
         "missing_to_compatibility": true,
         "observed_only_when_present": true,
-        "no_invented_observed_on_empty": true
+        "no_invented_observed_on_empty": true,
+        "heading_text_observed_ok": true,
+        "answerability_derived_ok": true,
+        "heading_count_gap_flagged_non_blocking": true
       },
       "evidence": {
         "files": [
@@ -109,7 +124,24 @@
           "test_a_page_intelligence_observed_facts_hashnode",
           "test_b_provenance_missing_maps_to_compatibility"
         ],
-        "probe": "independent extract_page_intelligence host-scope + empty→compatibility matrix PASS"
+        "probe": "independent extract_page_intelligence host-scope + empty\u2192compatibility matrix PASS",
+        "cos_flag": "heading_count structure gap stamped observed (should be derived); non-blocking"
+      },
+      "cos_structure_heading_spot_check": {
+        "heading_text_observed": "OK",
+        "answerability_derived": "OK",
+        "word_count_derived": "OK",
+        "thin_body_gap_derived": "OK",
+        "has_main_false_observed": "OK_dom_crawl_extract",
+        "heading_count_structure_gap_observed": {
+          "verdict": "FLAG",
+          "expected": "derived",
+          "file": "src/aeo_mvp/content/gaps.py",
+          "probe": "word_count>=120 + single H1 \u2192 evidence provenance=observed snippet=heading_count=1",
+          "blocks_merge": false
+        },
+        "answer_unit_kind_heuristic_note": "kind classification is heuristic; unit provenance observed for heading extract",
+        "limits_unstamped": "OK"
       }
     },
     "C2": {
@@ -137,11 +169,11 @@
           "test_r_generated_draft_never_observed",
           "test_honesty_diagnostics_not_health_generated_not_observed"
         ],
-        "probe": "C2_REFINED_PASS; draft→generated; EvidenceRecord.from_dict(missing)→compatibility"
+        "probe": "C2_REFINED_PASS; draft\u2192generated; EvidenceRecord.from_dict(missing)\u2192compatibility"
       }
     },
     "C3": {
-      "assert_intent": "query×page coverage from snapshot themes/content (full|partial|thin|absent|mismatched); no niche/hostname hardcode; not marketed as AI visibility/health",
+      "assert_intent": "query\u00d7page coverage from snapshot themes/content (full|partial|thin|absent|mismatched); no niche/hostname hardcode; not marketed as AI visibility/health",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
@@ -153,7 +185,10 @@
         "no_hashnode_hardcode_in_content_pkg": true
       },
       "evidence": {
-        "files": ["src/aeo_mvp/content/gaps.py", "src/aeo_mvp/content/brief.py"],
+        "files": [
+          "src/aeo_mvp/content/gaps.py",
+          "src/aeo_mvp/content/brief.py"
+        ],
         "test_names": [
           "test_c3_coverage_from_snapshot_themes_no_niche_hardcode",
           "test_d_coverage_levels_separate_from_ai_visibility"
@@ -172,7 +207,9 @@
         "cite_miss_only_with_observations": true
       },
       "evidence": {
-        "files": ["src/aeo_mvp/content/gaps.py"],
+        "files": [
+          "src/aeo_mvp/content/gaps.py"
+        ],
         "test_names": [
           "test_c4_evidence_backed_gaps_only",
           "test_c_content_gap_categories_deterministic",
@@ -195,7 +232,10 @@
         "brief_id_deterministic": true
       },
       "evidence": {
-        "files": ["src/aeo_mvp/content/brief.py", "src/aeo_mvp/content/models.py"],
+        "files": [
+          "src/aeo_mvp/content/brief.py",
+          "src/aeo_mvp/content/models.py"
+        ],
         "test_names": [
           "test_c5_versioned_brief_cites_inputs",
           "test_e_brief_deterministic_cites_inputs",
@@ -205,7 +245,7 @@
       }
     },
     "C6": {
-      "assert_intent": "OptimizedContentDraft from brief+source; unsupported→warnings; refuse ungrounded factual assert; paid=False default; Null/skeleton OK",
+      "assert_intent": "OptimizedContentDraft from brief+source; unsupported\u2192warnings; refuse ungrounded factual assert; paid=False default; Null/skeleton OK",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
@@ -235,7 +275,7 @@
       }
     },
     "C7": {
-      "assert_intent": "same inputs→same intel/gaps/brief/change-plan; freezes: health-v1, domain-match-v1, SSRF, query-set-v3, query-quality-v1, 4.1.1 provenance, AI-search vs LLM-mention, sha256 tie-break",
+      "assert_intent": "same inputs\u2192same intel/gaps/brief/change-plan; freezes: health-v1, domain-match-v1, SSRF, query-set-v3, query-quality-v1, 4.1.1 provenance, AI-search vs LLM-mention, sha256 tie-break",
       "result": "PASS",
       "blocks_merge_if_fail": true,
       "checks": {
@@ -285,7 +325,10 @@
           "src/aeo_mvp/security/ssrf.py",
           "src/aeo_mvp/api/routes.py"
         ],
-        "test_names": ["test_c8_ssrf_held", "test_u_api_rejects_unsafe_source_url"],
+        "test_names": [
+          "test_c8_ssrf_held",
+          "test_u_api_rejects_unsafe_source_url"
+        ],
         "probe": "assert_safe_public_url blocks 127.0.0.1 / 169.254.169.254 / localhost / file://"
       }
     },
@@ -301,7 +344,10 @@
         "live_do_test_not_run": true
       },
       "evidence": {
-        "files": ["src/aeo_mvp/content/", "src/aeo_mvp/api/schemas.py"],
+        "files": [
+          "src/aeo_mvp/content/",
+          "src/aeo_mvp/api/schemas.py"
+        ],
         "test_names": [
           "test_c9_paid_do_off",
           "test_x2_no_digitalocean_in_content_package"
@@ -320,10 +366,48 @@
         "ssrf_tests_fail_closed_only": true
       },
       "evidence": {
-        "files": ["tests/unit/test_content_optimization_phase5.py", "tests/fixtures/phase5/"],
-        "test_names": ["test_c10_full_suite_and_phase5_tests_present"],
-        "probe": "pytest -q → 205 passed, 1 skipped; phase5 module 42 passed"
+        "files": [
+          "tests/unit/test_content_optimization_phase5.py",
+          "tests/fixtures/phase5/"
+        ],
+        "test_names": [
+          "test_c10_full_suite_and_phase5_tests_present"
+        ],
+        "probe": "pytest -q \u2192 205 passed, 1 skipped; phase5 module 42 passed"
       }
+    }
+  },
+  "tip": "bda584f8858a19642bda96e1b256ee13edd24c78",
+  "tip_differs_from_product_commit_sha": true,
+  "tip_move_note": "Tip advanced by VERIFY-only commit on product PR; src/ identical to product_commit_sha",
+  "binding_docs": {
+    "authoritative": [
+      "docs/methodology/CONTENT_OPTIMIZATION_V1.md",
+      "docs/architecture/PHASE5_EVALUATOR_GATES.md"
+    ],
+    "subordinate_when_conflict": [
+      "docs/methodology/CONTENT_OPTIMIZATION.md"
+    ],
+    "conflict_found": false,
+    "note": "Short CONTENT_OPTIMIZATION.md defers to CONTENT_OPTIMIZATION_V1.md"
+  },
+  "cos_methodology_notes": {
+    "non_blocking": true,
+    "structure_heading_heuristic_provenance": {
+      "heading_text_observed": "OK",
+      "answerability_derived": "OK",
+      "word_count_derived": "OK",
+      "thin_body_gap_derived": "OK",
+      "has_main_false_observed": "OK_dom_crawl_extract",
+      "heading_count_structure_gap_observed": {
+        "verdict": "FLAG",
+        "expected": "derived",
+        "file": "src/aeo_mvp/content/gaps.py",
+        "probe": "word_count>=120 + single H1 \u2192 evidence provenance=observed snippet=heading_count=1",
+        "blocks_merge": false
+      },
+      "answer_unit_kind_heuristic_note": "kind classification is heuristic; unit provenance observed for heading extract",
+      "limits_unstamped": "OK"
     }
   }
 }

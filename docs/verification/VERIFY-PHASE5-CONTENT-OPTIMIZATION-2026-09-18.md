@@ -2,21 +2,28 @@
 
 **Date:** 2026-09-18  
 **PR under review (product):** https://github.com/nik-hil/aeo-service/pull/17  
-**product_commit_sha (FINAL tip under review):** `53e5d11f44ce7e4f9a2e0100007930eac9e9deff`  
-**Tip re-check:** `refs/pull/17/head` @ same SHA (tip did not move from start ref)  
-**Product branch tip:** `cursor/phase5-content-optimization-ae1e` @ `53e5d11f44ce7e4f9a2e0100007930eac9e9deff`  
+**product_commit_sha (final product code under review):** `53e5d11f44ce7e4f9a2e0100007930eac9e9deff`  
+**tip (re-checked):** `bda584f8858a19642bda96e1b256ee13edd24c78` — **differs** from product_commit_sha (tip-only commit adds VERIFY docs onto product PR; `src/` unchanged vs product_commit_sha)  
+**Tip at start:** `53e5d11f44ce7e4f9a2e0100007930eac9e9deff` → re-check moved to `bda584f…`  
+**Product branch:** `cursor/phase5-content-optimization-ae1e`  
 **Base:** `main` @ `28a0b8526f3c76c6116565aa2ef08256201976bd`  
 **checklist_version:** `content-optimization-v1`  
+**Binding docs (authoritative when conflict):** `docs/methodology/CONTENT_OPTIMIZATION_V1.md` · `docs/architecture/PHASE5_EVALUATOR_GATES.md` (prefer over shorter `docs/methodology/CONTENT_OPTIMIZATION.md`, which defers to V1)  
 **Method:** independent code read + full pytest + independent Python probes; Engineering/PR claims not trusted a priori  
 **Paid DigitalOcean APIs:** not run  
 **Paid LLM inference:** not run  
-**Product code changed by Verifier:** none (docs-only VERIFY artifacts)
+**Product code changed by Verifier:** none (docs-only VERIFY artifacts on this docs PR)
 
 ## Honesty locks (asserted)
 
 - diagnostics ≠ site score / health-v1  
 - page_coverage ≠ AI visibility / LLM-mention  
 - generated draft ≠ observed evidence / QSQ-EVD / crawl observed stores  
+
+## CoS methodology notes (non-blocking)
+
+1. **Structure / heading heuristic provenance spot-check** — see C1 evidence. One FLAG: structure gap `heading_count=N` stamped `observed` (should be `derived`). Does not block merge.
+2. **Binding docs preference** — V1 methodology + Evaluator gates authoritative; short `CONTENT_OPTIMIZATION.md` is a pointer/summary (no material conflict found).
 
 ## Overall: **PASS**
 
@@ -37,7 +44,7 @@ Gate table rows are **assert-intent** labels. Test function names are evidence p
 
 **Merge recommendation:** **PASS** — all blocking gates C1–C10 PASS.
 
-**Pytest (independent on product tip):** `205 passed, 1 skipped, 0 failed` in 4.14s  
+**Pytest (independent on tip `bda584f`, product code = `53e5d11`):** `205 passed, 1 skipped, 0 failed` in 4.10s  
 **Phase 5 file:** `42 passed` (`tests/unit/test_content_optimization_phase5.py`)  
 **Skipped:** `tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional` (live paid DO; not run)
 
@@ -50,19 +57,16 @@ Gate table rows are **assert-intent** labels. Test function names are evidence p
 
 ```bash
 git fetch origin pull/17/head
-# TIP=53e5d11f44ce7e4f9a2e0100007930eac9e9deff (unchanged from start)
+# tip_at_start=53e5d11… → tip_rechecked=bda584f… (VERIFY-only tip move; src/ identical)
 
 pip install -e ".[dev]"
 pytest -q
-# → 205 passed, 1 skipped, 2 warnings in 4.14s
+# → 205 passed, 1 skipped, 2 warnings in 4.10s  (on tip bda584f)
 
 pytest tests/unit/test_content_optimization_phase5.py -v
 # → 42 passed
 
-pytest tests/ -k 'content or phase5 or optim' -v
-# → 44 passed, 162 deselected
-
-git diff 28a0b85...53e5d11 -- \
+git diff 28a0b85...bda584f -- \
   src/aeo_mvp/security/ssrf.py \
   src/aeo_mvp/target_site.py \
   src/aeo_mvp/domains.py \
@@ -72,12 +76,10 @@ git diff 28a0b85...53e5d11 -- \
   src/aeo_mvp/queries/evidence.py
 # → empty (DIFF_BYTES=0)
 
-git diff 28a0b85...53e5d11 -- docs/verification/VERIFY-PHASE4*
+git diff 28a0b85...bda584f -- docs/verification/VERIFY-PHASE4*
 # → empty
 
-# Independent probes: page-intel host scope; normalize_provenance; coverage enum;
-# gap evidence+order; brief citations; draft paid=False/Null/skeleton; dual-run
-# determinism; SSRF assert/fetch path; content pkg DO import scan; dry-run offline
+# Independent probes + CoS structure/heading provenance spot-check
 ```
 
 ---
@@ -89,8 +91,23 @@ git diff 28a0b85...53e5d11 -- docs/verification/VERIFY-PHASE4*
 ### Evidence
 
 - Code: `src/aeo_mvp/content/page_intel.py` (`extract_page_intelligence`, `_content_prov` → `normalize_provenance`); `target_match_scope="hostname"`; internal links filtered to same host.
-- Independent probe: SaaS fixture @ `https://acme-widgets.example/pricing` → `hostname=acme-widgets.example`; docs fixture @ other host scoped separately; empty HTML stamps `compatibility` (not fabricated observed title/meta); title present → `observed`.
+- Independent probe: SaaS fixture @ `https://acme-widgets.example/pricing` → `hostname=acme-widgets.example`; docs fixture @ other host scoped separately; empty HTML string stamps `compatibility` (not fabricated observed title/meta); title present → `observed`.
 - Evidence path: `test_c1_page_intel_provenance_hostname_scope`, `test_a_page_intelligence_observed_facts_hashnode`, `test_b_provenance_missing_maps_to_compatibility`.
+
+### CoS structure / heading heuristic provenance (non-blocking)
+
+| Signal | Provenance | Verdict |
+| --- | --- | --- |
+| Heading text (`HeadingNode` from `<h1>`–`<h6>`) | `observed` | **OK** — true crawl extract |
+| `answerability_signals` | `derived` | **OK** — heuristic |
+| `word_count` signal | `derived` | **OK** |
+| Thin-body structure gap (`word_count=N`) | `derived` | **OK** |
+| Technical gap `has_main=false` | `observed` | **OK** — DOM landmark absence is crawl extract |
+| Structure gap “Fewer than two headings” evidence `heading_count=N` | `observed` | **FLAG** — count/threshold heuristic should be `derived` (`gaps.py`); confirmed with word_count≥120 + single H1 |
+| `AnswerUnit.kind` (faq/howto/section) on unit stamped `observed` | unit=`observed` | **NOTE** — heading text is extract; kind label is heuristic (no separate kind provenance field) |
+| `limits` (`thin_copy`, `heading_skip`, …) | unstamped strings | **OK** — not stamped `observed` |
+
+FLAG does **not** invent missing page facts as observed; does **not** fail C1 (host scope + missing→compatibility). CoS honesty note only.
 
 ---
 
@@ -215,7 +232,10 @@ git diff 28a0b85...53e5d11 -- docs/verification/VERIFY-PHASE4*
 
 | Check | Result |
 | --- | --- |
-| `VERIFY-PHASE4*` / `VERIFY-PHASE4.1*` overwritten? | **No** — product tip diff empty; this PR adds only Phase 5 VERIFY pair |
+| `VERIFY-PHASE4*` / `VERIFY-PHASE4.1*` overwritten? | **No** — tip/main diff empty for those paths; this docs PR adds/updates only Phase 5 VERIFY pair |
+| Binding docs | `CONTENT_OPTIMIZATION_V1.md` + `PHASE5_EVALUATOR_GATES.md` authoritative; short `CONTENT_OPTIMIZATION.md` defers to V1 (no conflict) |
+| CoS structure FLAG | `heading_count` stamped `observed` — non-blocking |
 | `engineering_claims_trusted_a_priori` | `false` |
 | `paid_digitalocean_apis_run` | `false` |
-| `product_commit_sha` recorded | `53e5d11f44ce7e4f9a2e0100007930eac9e9deff` |
+| `product_commit_sha` | `53e5d11f44ce7e4f9a2e0100007930eac9e9deff` |
+| `tip` (≠ product_commit_sha) | `bda584f8858a19642bda96e1b256ee13edd24c78` |
