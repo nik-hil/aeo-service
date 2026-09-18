@@ -1,305 +1,200 @@
 {
-  "report": "VERIFY-PHASE4-QUERY-INTELLIGENCE-2026-09-18",
+  "schema_version": "aeo-verify-phase4-gates-v1",
+  "role": "aeo_verifier",
   "date": "2026-09-18",
-  "overall": "PASS",
-  "merge_recommendation": "PASS_with_G_blocked",
-  "pr_under_review": "https://github.com/nik-hil/aeo-service/pull/8",
-  "verified_ref": "cursor/phase4-query-intelligence-0007",
-  "verified_sha": "10920caea5cdea29094d85a927ac4a5950245bdf",
-  "base_ref": "main",
+  "pr_url": "https://github.com/nik-hil/aeo-service/pull/8",
+  "pr_number": 8,
+  "branch": "cursor/phase4-query-intelligence-0007",
+  "product_sha_under_test": "10920caea5cdea29094d85a927ac4a5950245bdf",
   "base_sha": "282a28cc5a76aea69047c23c035037cf3584c953",
-  "method": "independent_read_and_run_tests",
-  "engineering_claims_trusted_a_priori": false,
-  "paid_digitalocean_apis_run": false,
-  "gates": {
-    "A_generic_query_generation": {
+  "method": "independent_code_read_pytest_dry_run_recompute",
+  "trust_engineering_claims": false,
+  "paid_digitalocean_calls": 0,
+  "overall": "PASS",
+  "overall_rule": "FAIL if any of A-F or H fails; G BLOCKED does not fail overall",
+  "pytest": {
+    "command": "python3 -m pytest tests/ -v --tb=line",
+    "passed": 122,
+    "skipped": 1,
+    "failed": 0,
+    "collected": 123,
+    "skipped_detail": "tests/unit/test_digitalocean_web_search.py:585 Live DO retrieval test requires DO_MODEL_ACCESS_KEY and AEO_LIVE_RETRIEVAL_TEST=true",
+    "product_tree_diff_vs_sha_under_test": "none"
+  },
+  "per_gate": {
+    "A": {
+      "name": "generic_generation",
       "result": "PASS",
-      "checks": {
-        "v2_generator_no_ai_agent_pack": "PASS",
-        "v2_no_hostname_hashnode_special_case": "PASS",
-        "garden_topics_no_ai_injection": "PASS"
-      },
-      "evidence": {
-        "files": [
-          "src/aeo_mvp/queries/generate_v2.py",
-          "src/aeo_mvp/queries/discovery.py"
-        ],
-        "tests": [
-          "tests/unit/test_query_discovery_phase4.py::test_no_ai_agent_hardcode_in_v2_generator",
-          "tests/unit/test_query_discovery_phase4.py::test_hashnode_regression_no_hostname_special_case"
-        ],
-        "manual_probe": {
-          "generator": "candidate-gen-v2",
-          "blog_candidate_count": 33,
-          "garden_ai_pack_absent": true
-        }
-      }
+      "evidence": [
+        "src/aeo_mvp/queries/generate_v2.py GENERATOR=candidate-gen-v2; no AI-agent/Hashnode hardcode grep hits",
+        "garden dry-run: 33 candidates, has_ai_agent_pack=false",
+        "multi-genre dry-run: saas=20 ecom=19 docs=20 method=query-discovery-v2",
+        "hashnode fixture fingerprint=34a46492e7bb2c6ce071b29c370fd9b2c450cede822e0a3d0d77398e3308180a pm_leak=false"
+      ],
+      "paths": [
+        "src/aeo_mvp/queries/generate_v2.py",
+        "tests/unit/test_query_discovery_phase4.py",
+        "tests/fixtures/hashnode"
+      ]
     },
-    "B_quality_diagnostics": {
+    "B": {
+      "name": "quality_diagnostics",
       "result": "PASS",
-      "checks": {
-        "decomposable_dimensions": "PASS",
-        "qsq_panels_named": "PASS",
-        "not_folded_into_health_v1": "PASS",
-        "title_wrap_rejected": "PASS"
-      },
-      "evidence": {
-        "files": [
-          "src/aeo_mvp/queries/quality.py",
-          "src/aeo_mvp/scoring/health.py",
-          "src/aeo_mvp/pipeline/orchestrator.py"
-        ],
+      "evidence": [
+        "junk reject status=reject quality_version=query-quality-v1",
+        "reasons include grammaticality_lint:fail:double-interrogative / title-wrap garbage",
+        "scoring/health.py has zero quality/QSQ/diagnostics coupling",
+        "orchestrator compute_health uses only five component scores"
+      ],
+      "paths": [
+        "src/aeo_mvp/queries/quality.py",
+        "src/aeo_mvp/scoring/health.py",
+        "src/aeo_mvp/pipeline/orchestrator.py"
+      ],
+      "sample_reject": {
+        "text": "How does Why does an AI agent need permissions work?",
+        "status": "reject",
         "quality_version": "query-quality-v1",
-        "qsq_ids": [
-          "QSQ-SPEC",
-          "QSQ-ANS",
-          "QSQ-REL",
-          "QSQ-ENT",
-          "QSQ-EVD",
-          "QSQ-DEDUP",
-          "QSQ-DIV",
-          "QSQ-LEAK",
-          "QSQ-DET",
-          "QSQ-COV"
-        ],
-        "per_candidate_dimensions": [
-          "relevance",
-          "specificity",
-          "answerability",
-          "grammaticality_lint",
-          "entity_alignment",
-          "evidence_support",
-          "duplication",
-          "intent_label_consistency",
-          "WEAK_INDUSTRY_LEAK"
-        ],
-        "diagnostics_note": "query-set diagnostics only — not an AEO/site grade",
-        "title_wrap_probe": {
-          "status": "reject",
-          "reasons": [
-            "answerability:fail:ungrammatical / nonsensical template",
-            "grammaticality_lint:fail:double-interrogative / title-wrap garbage"
+        "reasons": [
+          "answerability:fail:ungrammatical / nonsensical template",
+          "grammaticality_lint:fail:double-interrogative / title-wrap garbage"
+        ]
+      },
+      "diagnostics_enter_health": false
+    },
+    "C": {
+      "name": "coverage_selection",
+      "result": "PASS",
+      "evidence": [
+        "intent_budget_id=intent-budget-v1",
+        "selection_method=coverage_mmr_intent_budget_v1",
+        "DEFAULT_MMR_LAMBDA=0.65; intent minima then MMR then relaxed fill"
+      ],
+      "paths": [
+        "src/aeo_mvp/queries/intent_budget.py",
+        "src/aeo_mvp/queries/select_v2.py"
+      ]
+    },
+    "D": {
+      "name": "reproducibility",
+      "result": "PASS",
+      "evidence": [
+        "fingerprint replay match for selection_seed=42",
+        "query_selection_seed=42 and experiment_seed=42 alias match",
+        "root_seed=42 effective_seed=42 persisted"
+      ],
+      "fingerprint": "03962ae0256fa7e2fbca975b699856d33be4f315ad0b84ef42f4f83145de4862",
+      "seed_aliases": [
+        "selection_seed",
+        "query_selection_seed",
+        "experiment_seed"
+      ],
+      "paths": [
+        "src/aeo_mvp/queries/seed.py",
+        "src/aeo_mvp/queries/discovery.py"
+      ]
+    },
+    "E": {
+      "name": "versioning_compat",
+      "result": "PASS",
+      "evidence": [
+        "JobOptions.query_discovery_version default=v2",
+        "_normalize_version(None)->v2; discovery_version=v1 -> query-discovery-v1 / query-set-v2",
+        "default dry-run method=query-discovery-v2 query_set_version=query-set-v3 representativeness-v1"
+      ],
+      "paths": [
+        "src/aeo_mvp/api/schemas.py",
+        "src/aeo_mvp/queries/discovery.py",
+        "src/aeo_mvp/queries/representativeness.py"
+      ]
+    },
+    "F": {
+      "name": "no_paid_in_dry_run",
+      "result": "PASS",
+      "evidence": [
+        "paid_retrieval_opt_in default False (config + JobOptions)",
+        "dry-run paid_retrieval_ready=False",
+        "httpx.Client call_count=0 under discovery_only dry-run",
+        "orchestrator discovery_only forces paid_opt_in=False and retrieval_enabled=False"
+      ],
+      "paths": [
+        "src/aeo_mvp/config.py",
+        "src/aeo_mvp/api/schemas.py",
+        "src/aeo_mvp/queries/discovery.py",
+        "src/aeo_mvp/pipeline/orchestrator.py"
+      ]
+    },
+    "G": {
+      "name": "live_paid_experiment",
+      "result": "BLOCKED",
+      "evidence": [
+        "Brief: Gate G OFF; no paid DigitalOcean / live retrieval",
+        "Live test skipped without DO_MODEL_ACCESS_KEY and AEO_LIVE_RETRIEVAL_TEST=true"
+      ],
+      "paid_calls": 0
+    },
+    "H": {
+      "name": "frozen_security_visibility",
+      "result": "PASS",
+      "spot_checks": {
+        "ssrf": {
+          "result": "PASS",
+          "path": "src/aeo_mvp/security/ssrf.py",
+          "blocks": [
+            "http://127.0.0.1/",
+            "http://169.254.169.254/latest",
+            "http://10.0.0.1/"
+          ],
+          "allows": [
+            "https://example.com/"
           ]
         },
-        "tests": [
-          "tests/unit/test_query_discovery_phase4.py::test_title_wrap_garbage_rejected",
-          "tests/unit/test_query_discovery_phase4.py::test_health_formula_unchanged"
-        ]
-      }
-    },
-    "C_coverage_diversity_selection": {
-      "result": "PASS",
-      "checks": {
-        "intent_budget_v1": "PASS",
-        "max_per_topic": "PASS",
-        "mmr_selection": "PASS"
-      },
-      "evidence": {
-        "files": [
-          "src/aeo_mvp/queries/intent_budget.py",
-          "src/aeo_mvp/queries/select_v2.py"
-        ],
-        "selection_method": "coverage_mmr_intent_budget_v1",
-        "intent_budget_id": "intent-budget-v1",
-        "mmr_lambda": 0.65,
-        "max_per_topic": 4,
-        "query_set_version": "query-set-v3",
-        "dry_run_seed_42_intent_breakdown": {
-          "informational": 5,
-          "problem_solving": 6,
-          "recommendation": 4,
-          "comparison": 3,
-          "navigational": 2
+        "target_site_identity_domain_match_v1": {
+          "result": "PASS",
+          "match_rule_version": "domain-match-v1",
+          "hashnode_identity_kind": "supplemental_multi_tenant",
+          "path": "src/aeo_mvp/target_site.py"
         },
-        "topic_breakdown_max": 4,
-        "tests": [
-          "tests/unit/test_query_discovery_phase4.py::test_intent_budgets_and_topic_cap",
-          "tests/unit/test_query_discovery_phase4.py::test_genre_fixtures_saas_ecommerce_docs",
-          "tests/unit/test_query_discovery_phase4.py::test_candidate_pool_target_and_persisted_rejects"
-        ]
-      }
-    },
-    "D_reproducibility": {
-      "result": "PASS",
-      "checks": {
-        "same_snapshot_seed_identical_fingerprint": "PASS",
-        "seed_alias_selection_seed": "PASS",
-        "seed_alias_query_selection_seed": "PASS",
-        "seed_alias_experiment_seed": "PASS",
-        "root_and_effective_seed_persisted": "PASS"
-      },
-      "evidence": {
-        "files": [
-          "src/aeo_mvp/queries/seed.py",
-          "src/aeo_mvp/queries/discovery.py",
-          "src/aeo_mvp/queries/select_v2.py"
-        ],
-        "fingerprint": "689255c05dfbea4d6507fd46ca3139980df9ba0460bfa780fded89863db0120e",
-        "fingerprint_replay_equal": true,
-        "ordered_query_ids_equal": true,
-        "root_seed": 42,
-        "effective_seed": 42,
-        "alias_resolution": {
-          "selection_seed": {"root_seed": 42, "effective_seed": 42, "source": "explicit"},
-          "query_selection_seed": {"root_seed": 7, "effective_seed": 7, "source": "explicit"},
-          "experiment_seed": {"root_seed": 99, "effective_seed": 99, "source": "explicit"}
+        "health_v1": {
+          "result": "PASS",
+          "formula_version": "health-v1",
+          "weights": {
+            "technical": 0.25,
+            "content": 0.25,
+            "entity": 0.2,
+            "structured_data": 0.15,
+            "answerability": 0.15
+          },
+          "path": "src/aeo_mvp/scoring/health.py"
         },
-        "tests": [
-          "tests/unit/test_query_discovery_phase4.py::test_seed_aliases_selection_seed_honored",
-          "tests/unit/test_query_discovery_phase4.py::test_dry_run_replay_identical_fingerprint",
-          "tests/unit/test_query_discovery_phase4.py::test_different_seed_deterministic_but_may_differ"
-        ]
-      }
-    },
-    "E_versioning_compat": {
-      "result": "PASS",
-      "checks": {
-        "v2_default": "PASS",
-        "v1_selectable": "PASS",
-        "phase3_artifacts_interpretable": "PASS"
-      },
-      "evidence": {
-        "files": ["src/aeo_mvp/queries/discovery.py"],
-        "default_method": "query-discovery-v2",
-        "default_query_set_version": "query-set-v3",
-        "v1_method": "query-discovery-v1",
-        "v1_query_set_version": "query-set-v2",
-        "tests": [
-          "tests/unit/test_query_discovery_phase4.py::test_historical_v1_compat",
-          "tests/unit/test_query_discovery_phase4.py::test_dry_run_replay_identical_fingerprint"
-        ]
-      }
-    },
-    "F_no_paid_in_dry_run": {
-      "result": "PASS",
-      "checks": {
-        "paid_opt_in_forced_false_on_discovery_only": "PASS",
-        "no_httpx_provider_network": "PASS",
-        "orchestrator_discovery_only_skips_visibility": "PASS"
-      },
-      "evidence": {
-        "files": [
-          "src/aeo_mvp/queries/discovery.py",
-          "src/aeo_mvp/pipeline/orchestrator.py",
-          "src/aeo_mvp/config.py"
-        ],
-        "probe": {
-          "discovery_only": true,
-          "paid_retrieval_opt_in_arg": true,
-          "result_paid_retrieval_opt_in": false,
-          "result_paid_retrieval_ready": false,
-          "httpx_Client_called": false,
-          "httpx_AsyncClient_called": false
+        "llm_mention_vs_ai_search_split": {
+          "result": "PASS",
+          "aggregators": [
+            "aggregate_llm_metrics",
+            "aggregate_ai_search_metrics"
+          ],
+          "path": "src/aeo_mvp/visibility/metrics.py"
         },
-        "live_keys_present": {
-          "DO_MODEL_ACCESS_KEY": false,
-          "OPENAI_API_KEY": false,
-          "PERPLEXITY_API_KEY": false,
-          "AEO_PAID_RETRIEVAL_OPT_IN": false
+        "do_provider_honesty": {
+          "result": "PASS",
+          "measures_consumer_ui": false,
+          "experiment_kind": "ai_search_visibility",
+          "never_fabricates": true,
+          "path": "src/aeo_mvp/visibility/digitalocean_web_search.py"
         },
-        "tests": [
-          "tests/unit/test_query_discovery_phase4.py::test_paid_opt_in_default_off_and_no_network"
-        ],
-        "skipped_live_test": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
-      }
-    },
-    "G_live_experiment": {
-      "result": "BLOCKED",
-      "reason": "Deferred per brief and QUERY_SET_QUALITY live protocol; do not run paid DigitalOcean APIs in this verification.",
-      "paid_run_executed": false
-    },
-    "H_frozen_semantics": {
-      "result": "PASS",
-      "blocks_merge_if_fail": true,
-      "checks": {
-        "ssrf_unchanged": "PASS",
-        "domain_match_v1_target_site_identity": "PASS",
-        "health_v1_weights": "PASS",
-        "llm_mention_vs_ai_search_split": "PASS",
-        "do_provider_honesty_unchanged": "PASS"
-      },
-      "freeze_files_unchanged_vs_base": [
-        "src/aeo_mvp/security/ssrf.py",
-        "src/aeo_mvp/target_site.py",
-        "src/aeo_mvp/domains.py",
-        "src/aeo_mvp/scoring/health.py",
-        "src/aeo_mvp/visibility/digitalocean_web_search.py"
-      ],
-      "health_formula_version": "health-v1",
-      "health_weights": {
-        "technical": 0.25,
-        "content": 0.25,
-        "entity": 0.2,
-        "structured_data": 0.15,
-        "answerability": 0.15
-      },
-      "hashnode_identity_probe": {
-        "hostname": "nik-hil.hashnode.dev",
-        "registrable_domain": "hashnode.dev",
-        "match_rule_version": "domain-match-v1",
-        "match_scope": "hostname",
-        "multi_tenant_host": true
-      },
-      "provider_capabilities": {
-        "digitalocean_web_search": {
-          "retrieval_enabled": true,
-          "experiment_kinds": ["ai_search_visibility"],
-          "measures_consumer_ui": false
-        },
-        "openai_compatible": {
-          "retrieval_enabled": false,
-          "experiment_kinds": ["llm_mention"]
-        },
-        "demo": {
-          "retrieval_enabled": false,
-          "experiment_kinds": ["llm_mention"]
+        "diagnostics_not_in_health": {
+          "result": "PASS",
+          "health_quality_coupling": false
         }
-      },
-      "tests": [
-        "tests/unit/test_ssrf.py",
-        "tests/unit/test_target_site.py",
-        "tests/unit/test_scoring.py",
-        "tests/unit/test_digitalocean_web_search.py",
-        "tests/unit/test_query_discovery_phase4.py::test_health_formula_unchanged"
-      ]
+      }
     }
   },
-  "pytest": {
-    "full": {
-      "command": "python3 -m pytest tests/ -v --tb=line",
-      "passed": 122,
-      "skipped": 1,
-      "failed": 0,
-      "collected": 123,
-      "summary_line": "122 passed, 1 skipped, 2 warnings in 2.35s"
-    },
-    "phase4_targeted": {
-      "command": "python3 -m pytest tests/unit/test_query_discovery_phase4.py -v --tb=line",
-      "passed": 15,
-      "failed": 0
-    },
-    "freeze_and_phase4_bundle": {
-      "command": "python3 -m pytest tests/unit/test_query_discovery_phase4.py tests/unit/test_ssrf.py tests/unit/test_target_site.py tests/unit/test_scoring.py tests/unit/test_digitalocean_web_search.py -v --tb=line",
-      "passed": 80,
-      "skipped": 1,
-      "failed": 0
-    },
-    "skipped_test": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
+  "dry_run_fingerprints": {
+    "blog_selection_seed_42": "03962ae0256fa7e2fbca975b699856d33be4f315ad0b84ef42f4f83145de4862",
+    "hashnode_fixture_selection_seed_42": "34a46492e7bb2c6ce071b29c370fd9b2c450cede822e0a3d0d77398e3308180a"
   },
-  "engineering_claim_crosscheck": {
-    "claimed_pytest": "122 passed, 1 skipped (123 collected)",
-    "observed_pytest": "122 passed, 1 skipped (123 collected)",
-    "claimed_sha": "10920caea5cdea29094d85a927ac4a5950245bdf",
-    "observed_sha": "10920caea5cdea29094d85a927ac4a5950245bdf"
-  },
-  "top_fail_issues": [],
-  "observations_non_blocking": [
-    "Gate G live paid experiment intentionally BLOCKED; not a FAIL of A–F/H.",
-    "Phase 3 generate.py still contains AI-agent packs; Gate A requires absence on v2 path only."
-  ],
-  "artifact_paths": {
-    "markdown": "docs/verification/VERIFY-PHASE4-QUERY-INTELLIGENCE-2026-09-18.md",
-    "json": "docs/verification/VERIFY-PHASE4-QUERY-INTELLIGENCE-2026-09-18.json"
-  },
-  "product_code_changes_in_verifier_commit": false
+  "artifact_paths": [
+    "docs/verification/VERIFY-PHASE4-QUERY-INTELLIGENCE-2026-09-18.md",
+    "docs/verification/VERIFY-PHASE4-QUERY-INTELLIGENCE-2026-09-18.json"
+  ]
 }
