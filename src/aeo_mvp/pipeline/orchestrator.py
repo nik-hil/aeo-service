@@ -1,4 +1,4 @@
-"""JobOrchestrator — authoritative pipeline order from BLUEPRINT §4."""
+"""JobOrchestrator — authoritative pipeline order from BLUEPRINT §4 (+ P1 steps)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
+from aeo_mvp.analyzers.ai_crawlers import analyze_ai_crawlers
 from aeo_mvp.analyzers.content import analyze_content
 from aeo_mvp.analyzers.entities import analyze_entities
 from aeo_mvp.analyzers.structured_data import analyze_structured_data
@@ -32,6 +33,7 @@ from aeo_mvp.db.models import (
     utc_now_iso,
 )
 from aeo_mvp.demo.loader import load_prompt_set_fixture
+from aeo_mvp.queries.discovery import discover_queries
 from aeo_mvp.recommendations.engine import (
     TriggerContext,
     prioritize_recommendations,
@@ -39,9 +41,12 @@ from aeo_mvp.recommendations.engine import (
 )
 from aeo_mvp.report.builder import build_report
 from aeo_mvp.scoring.health import compute_health
+from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url
+from aeo_mvp.understanding.site import infer_site_understanding
 from aeo_mvp.visibility.base import VisibilityContext
+from aeo_mvp.visibility.competitors import extract_competitor_domains
 from aeo_mvp.visibility.demo import DemoProvider
-from aeo_mvp.visibility.metrics import aggregate_metrics, filter_brand_tokens, registrable_domain
+from aeo_mvp.visibility.metrics import aggregate_llm_metrics, filter_brand_tokens, registrable_domain
 from aeo_mvp.visibility.openai_compatible import OpenAICompatibleProvider
 
 logger = logging.getLogger(__name__)
@@ -76,21 +81,15 @@ class JobOrchestrator:
                 )
             p = OpenAICompatibleProvider()
             return p, p.model, False
-        # auto
+        # auto — never silently use Perplexity stub (would raise / fake metrics)
         if self.settings.openai_api_key:
             p = OpenAICompatibleProvider()
             return p, p.model, False
         return DemoProvider(), None, True
 
-    def _build_prompts(
+    def _fixed_template_prompts(
         self, job: Job, options: dict[str, Any], brand: str
     ) -> list[dict[str, str]]:
-        if job.demo_mode:
-            fixture = load_prompt_set_fixture()
-            return [
-                {"id": p["id"], "query": p["query"], "intent": p["intent"]}
-                for p in fixture["prompts"]
-            ]
         domain = registrable_domain(job.base_url)
         category = options.get("category") or "answer engine optimization"
         templates = [
@@ -114,12 +113,39 @@ class JobOrchestrator:
         ]
         return [{"id": i, "intent": intent, "query": q} for i, intent, q in templates]
 
+    def _build_prompts(
+        self,
+        job: Job,
+        options: dict[str, Any],
+        brand: str,
+        *,
+        discovered: list[dict[str, str]] | None = None,
+    ) -> tuple[list[dict[str, str]], str]:
+        """Return (prompts, prompt_set_id).
+
+        Demo mode keeps fixture prompt-set for bit-stable visibility metrics.
+        Otherwise prefer discovered queries; fall back to fixed templates.
+        """
+        if job.demo_mode:
+            fixture = load_prompt_set_fixture()
+            prompts = [
+                {"id": p["id"], "query": p["query"], "intent": p["intent"]}
+                for p in fixture["prompts"]
+            ]
+            return prompts, fixture.get("prompt_set_id", PROMPT_SET_ID)
+
+        if discovered:
+            return discovered, "discovered-queries-v1"
+
+        return self._fixed_template_prompts(job, options, brand), PROMPT_SET_ID
+
     async def run(self, job_id: str) -> Job:
         job = self.session.get(Job, job_id)
         if job is None:
             raise ValueError(f"unknown job {job_id}")
         options = json.loads(job.options_json or "{}")
         provenance = "synthetic_demo" if job.demo_mode else "derived_metric"
+        p1_sections: dict[str, Any] = {}
 
         try:
             # 1. Crawl
@@ -135,7 +161,7 @@ class JobOrchestrator:
             )
             pages = crawl.pages
 
-            # 2–5. Analyzers
+            # 2–5. Analyzers (+ P1-A AI crawlers)
             self._set_status(job, "analyzing")
             tech = analyze_technical(
                 self.session,
@@ -153,6 +179,37 @@ class JobOrchestrator:
             structured = analyze_structured_data(
                 self.session, job.id, pages, provenance=provenance
             )
+            ai_crawl = analyze_ai_crawlers(
+                self.session,
+                job.id,
+                pages,
+                robots_raw=crawl.robots_raw,
+                base_url=job.base_url,
+                provenance=provenance,
+            )
+            p1_sections["ai_crawler_access"] = ai_crawl.report_section
+
+            # P1-B site understanding
+            use_llm = bool(options.get("site_understanding_llm")) or bool(
+                self.settings.site_understanding_llm
+            )
+            understanding = infer_site_understanding(
+                self.session,
+                job.id,
+                pages,
+                job.base_url,
+                provenance=provenance,
+                use_llm=use_llm,
+                openai_api_key=self.settings.openai_api_key,
+            )
+            p1_sections["site_understanding"] = understanding.to_dict()
+
+            # P1-C query discovery
+            top_n = int(options.get("query_top_n", self.settings.query_top_n))
+            discovery = discover_queries(
+                understanding, top_n=top_n, provenance=provenance
+            )
+            p1_sections["discovered_queries"] = discovery.to_dict()
 
             # 6. Health
             self._set_status(job, "scoring")
@@ -179,20 +236,46 @@ class JobOrchestrator:
             self._set_status(job, "experimenting")
             job.experiment_protocol_version = EXPERIMENT_PROTOCOL_VERSION
             provider, model_id, used_demo_fallback = self._select_provider(job, options)
-            brand = entity.brand_tokens[0] if entity.brand_tokens else registrable_domain(job.base_url).split(".")[0]
-            prompts = self._build_prompts(job, options, brand)
+            brand = (
+                understanding.organization_brand
+                or (entity.brand_tokens[0] if entity.brand_tokens else None)
+                or registrable_domain(job.base_url).split(".")[0]
+            )
+            prompts, prompt_set_id = self._build_prompts(
+                job,
+                options,
+                brand,
+                discovered=discovery.as_prompts() if not discovery.fallback_used else None,
+            )
             runs_per_prompt = int(options.get("runs_per_prompt", 3))
             runs_per_prompt = max(1, min(runs_per_prompt, 5))
+
+            caps = getattr(provider, "capabilities", None)
+            retrieval_enabled = (
+                bool(getattr(caps, "retrieval_enabled", False)) if caps else False
+            )
+            experiment_kind = (
+                "ai_search_visibility" if retrieval_enabled else "llm_mention"
+            )
+            protocol_version = (
+                EXPERIMENT_PROTOCOL_VERSION
+                if not retrieval_enabled
+                else "ai-search-vis-v1"
+            )
+            job.experiment_protocol_version = protocol_version
 
             exp_cfg = ExperimentConfig(
                 id=new_id(),
                 job_id=job.id,
-                protocol_version=EXPERIMENT_PROTOCOL_VERSION,
+                protocol_version=protocol_version,
                 provider_name=provider.name,
                 model_id=model_id,
-                prompt_set_id=PROMPT_SET_ID,
+                prompt_set_id=prompt_set_id,
                 prompts_json=json.dumps(prompts, sort_keys=True),
                 runs_per_prompt=runs_per_prompt,
+                experiment_kind=experiment_kind,
+                retrieval_enabled=1 if retrieval_enabled else 0,
+                discovered_queries_json=json.dumps(discovery.to_dict(), sort_keys=True),
                 created_at=utc_now_iso(),
             )
             self.session.add(exp_cfg)
@@ -231,23 +314,38 @@ class JobOrchestrator:
                         extraction_methodology=obs.extraction_methodology,
                         provenance=obs.provenance,
                         meta_json=json.dumps(obs.meta, sort_keys=True),
+                        model_id=obs.model_id,
+                        retrieval_enabled=1 if obs.retrieval_enabled else 0,
+                        experiment_kind=obs.experiment_kind,
+                        search_queries_json=json.dumps(obs.search_queries or []),
+                        source_urls_json=json.dumps(obs.source_urls or []),
+                        target_domain_appeared=(
+                            None
+                            if obs.target_domain_appeared is None
+                            else (1 if obs.target_domain_appeared else 0)
+                        ),
+                        target_domain_cited=(
+                            None
+                            if obs.target_domain_cited is None
+                            else (1 if obs.target_domain_cited else 0)
+                        ),
                     )
                     self.session.add(row)
             self.session.flush()
 
-            rates = aggregate_metrics(observations)
+            rates = aggregate_llm_metrics(observations)
             metric_prov = "synthetic_demo" if provider.name == "demo" else "estimate"
-            for name, value, num, den in (
+            metric_rows = [
                 (
-                    "ai_mention_rate",
-                    rates.ai_mention_rate,
+                    "llm_mention_rate",
+                    rates.llm_mention_rate,
                     rates.mention_numerator,
                     rates.denominator_runs,
                 ),
                 (
-                    "ai_citation_rate",
-                    rates.ai_citation_rate,
-                    rates.citation_numerator,
+                    "llm_url_mention_rate",
+                    rates.llm_url_mention_rate,
+                    rates.url_mention_numerator,
                     rates.denominator_runs,
                 ),
                 (
@@ -256,7 +354,8 @@ class JobOrchestrator:
                     rates.coverage_numerator,
                     rates.denominator_prompts,
                 ),
-            ):
+            ]
+            for name, value, num, den in metric_rows:
                 self.session.add(
                     ExperimentMetric(
                         id=new_id(),
@@ -266,9 +365,21 @@ class JobOrchestrator:
                         numerator=num,
                         denominator=den,
                         provenance=metric_prov,
-                        protocol_version=EXPERIMENT_PROTOCOL_VERSION,
+                        protocol_version=protocol_version,
                     )
                 )
+            self.session.flush()
+
+            # P1-D competitors only when retrieval_enabled
+            competitors = extract_competitor_domains(
+                observations, target_domain=site_domain
+            )
+            if retrieval_enabled and competitors.get("applicable"):
+                p1_sections["competitors"] = competitors
+
+            # Stash P1 sections into job options for report builder
+            options["_p1_sections"] = p1_sections
+            job.options_json = json.dumps(options, sort_keys=True)
             self.session.flush()
 
             # 9–10. Findings + recommendations
@@ -287,8 +398,8 @@ class JobOrchestrator:
                 self.session,
                 job.id,
                 evidence,
-                mention_rate=rates.ai_mention_rate,
-                citation_rate=rates.ai_citation_rate,
+                mention_rate=rates.llm_mention_rate,
+                citation_rate=rates.llm_url_mention_rate,
                 used_demo_fallback=used_demo_fallback or bool(job.demo_mode),
                 observation_ids=[o.id for o in obs_rows],
             )
@@ -299,7 +410,6 @@ class JobOrchestrator:
 
             home_af = None
             if content.page_scores:
-                # homepage is depth 0 — match first page score by url path /
                 home_ps = content.page_scores[0]
                 for ps in content.page_scores:
                     path = urlparse(ps.url).path or "/"
@@ -319,22 +429,22 @@ class JobOrchestrator:
                     e.id for e in evidence_by_code.get("SD_PARSE_ERROR", [])
                 ],
                 component_scores=health.components,
-                mention_rate=rates.ai_mention_rate,
-                citation_rate=rates.ai_citation_rate,
+                mention_rate=rates.llm_mention_rate,
+                citation_rate=rates.llm_url_mention_rate,
                 used_demo_fallback=used_demo_fallback or bool(job.demo_mode),
                 evidence_by_code=dict(evidence_by_code),
                 home_answer_first=home_af,
             )
             prioritize_recommendations(self.session, job.id, findings, ctx)
 
-            # 11. Report — mark completed before emit so report_json.status matches job
+            # 11. Report
             self._set_status(job, "completed")
             build_report(self.session, job)
             logger.info(
                 "job %s completed health=%.1f mention=%.2f",
                 job.id,
                 health.health,
-                rates.ai_mention_rate,
+                rates.llm_mention_rate,
             )
             return job
         except Exception as exc:  # noqa: BLE001
@@ -360,8 +470,11 @@ def create_job_record(
     force_demo = demo_mode or settings.demo_mode or options.get("provider") == "demo"
     base = DEMO_BASE_URL if force_demo else url
     if force_demo:
-        # Normalize demo URL
         base = DEMO_BASE_URL
+    elif is_obviously_unsafe_url(url):
+        raise SSRFError(
+            f"Refusing to create job for unsafe URL (SSRF policy): {url!r}"
+        )
     job = Job(
         id=new_id(),
         base_url=base,

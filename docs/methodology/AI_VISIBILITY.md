@@ -1,3 +1,35 @@
+# Revised (2026-09-18) — Experiment kinds split (D019 / D021)
+
+> **Supersedes conflicting language below** that framed chat-completions mention/citation
+> rates as “AI search visibility.” Historical sections remain for audit trail.
+
+## Two experiment kinds
+
+| Kind | `experiment_kind` | `retrieval_enabled` | Report metric keys |
+| --- | --- | --- | --- |
+| LLM mention | `llm_mention` | **false** | `llm_mention_rate`, `llm_url_mention_rate` |
+| AI search visibility | `ai_search_visibility` | **true** | `ai_search_mention_rate`, `ai_search_citation_rate`, `target_domain_appearance_rate` |
+
+**Protocols:** `llm-mention-v1` (non-retrieval) · `ai-search-vis-v1` (retrieval-enabled).
+
+**Forbidden:** labeling OpenAI-compatible `/chat/completions` (no tools) results as AI search visibility.
+
+**ProviderCapabilities (required):** every provider declares `retrieval_enabled`,
+`experiment_kinds`, `returns_search_queries`, `returns_source_urls`, `returns_citations`,
+`measures_consumer_ui` (almost always false), and `notes`.
+
+**MVP providers:** `DemoProvider` and `OpenAICompatibleProvider` are `llm_mention` only
+(`retrieval_enabled=false`). Future Perplexity/Gemini grounding providers may enable retrieval.
+
+**Observation extensions:** `model_id`, `retrieval_enabled`, `experiment_kind`,
+`search_queries`, `source_urls`, `target_domain_appeared`, `target_domain_cited`.
+Legacy `detected_mention` / `detected_citation` remain as **LLM-text heuristics** when
+`retrieval_enabled=false` (URL-in-text ≠ retrieval citation).
+
+**Caveat (user-facing):** LLM mention ≠ AI search visibility.
+
+---
+
 # AEO MVP — AI Visibility Experiment Protocol
 
 **protocol_version:** `vis-exp-v1`  

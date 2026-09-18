@@ -40,9 +40,44 @@ def get_session_factory(database_url: str | None = None) -> sessionmaker[Session
     return _SessionLocal
 
 
+def _sqlite_add_column_if_missing(engine: Engine, table: str, column: str, coltype: str) -> None:
+    """Best-effort ALTER TABLE ADD COLUMN for SQLite schema drift."""
+    if not str(engine.url).startswith("sqlite"):
+        return
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+        existing = {r[1] for r in rows}
+        if column in existing:
+            return
+        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+        conn.commit()
+
+
+def migrate_schema(database_url: str | None = None) -> None:
+    """Add nullable/default columns introduced after initial create_all (SQLite-friendly)."""
+    engine = get_engine(database_url)
+    for table, column, coltype in (
+        ("experiment_configs", "experiment_kind", "VARCHAR(64) DEFAULT 'llm_mention'"),
+        ("experiment_configs", "retrieval_enabled", "INTEGER DEFAULT 0"),
+        ("visibility_observations", "model_id", "VARCHAR(128)"),
+        ("visibility_observations", "retrieval_enabled", "INTEGER DEFAULT 0"),
+        ("visibility_observations", "experiment_kind", "VARCHAR(64) DEFAULT 'llm_mention'"),
+        ("visibility_observations", "search_queries_json", "TEXT"),
+        ("visibility_observations", "source_urls_json", "TEXT"),
+        ("visibility_observations", "target_domain_appeared", "INTEGER"),
+        ("visibility_observations", "target_domain_cited", "INTEGER"),
+    ):
+        try:
+            _sqlite_add_column_if_missing(engine, table, column, coltype)
+        except Exception:  # noqa: BLE001
+            # Table may not exist yet; create_all handles that.
+            pass
+
+
 def init_db(database_url: str | None = None) -> None:
     engine = get_engine(database_url)
     Base.metadata.create_all(bind=engine)
+    migrate_schema(database_url)
 
 
 @contextmanager

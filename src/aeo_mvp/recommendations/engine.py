@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from aeo_mvp.db.models import (
     AnalysisEvidence,
     Finding,
+    Page,
     Recommendation,
     new_id,
 )
@@ -21,6 +22,7 @@ from aeo_mvp.recommendations.catalog import (
     VISIBILITY_RELEVANT_CODES,
     RecDef,
 )
+from aeo_mvp.recommendations.enrichment import build_recommendation_details
 
 SEVERITY_ORDER = {"info": 0, "low": 1, "medium": 2, "high": 3}
 SEVERITY_BOOST = {"high": 0.15, "medium": 0.08, "low": 0.03, "info": 0.0}
@@ -129,16 +131,16 @@ def synthesize_findings(
     if mention_rate is not None and mention_rate < 0.2:
         add_finding(
             "visibility",
-            "Low sample AI mention rate",
-            f"Estimated AI mention rate is {mention_rate:.2f} under vis-exp-v1 (sample, not a ranking).",
+            "Low sample LLM mention rate",
+            f"Estimated LLM mention rate is {mention_rate:.2f} under llm-mention-v1 (sample, not a ranking).",
             [],
             obs=observation_ids or [],
         )
     if citation_rate is not None and citation_rate < 0.15:
         add_finding(
             "visibility",
-            "Low sample AI citation rate",
-            f"Estimated AI citation rate is {citation_rate:.2f} under vis-exp-v1 (sample, not a ranking).",
+            "Low sample LLM URL-mention rate",
+            f"Estimated LLM URL-mention rate is {citation_rate:.2f} under llm-mention-v1 (sample, not a ranking).",
             [],
             obs=observation_ids or [],
         )
@@ -336,8 +338,18 @@ def prioritize_recommendations(
         )
 
     scored.sort()
+    pages = session.query(Page).filter(Page.job_id == job_id).all()
+    pages_by_id = {p.id: p for p in pages}
     for rank, item in enumerate(scored, start=1):
         _, _, _, rec_def, ev_ids, finding, impact, priority = item
+        # Enrich with actionable fields + evidence snippets
+        ev_rows: list[AnalysisEvidence] = []
+        for code_key, lst in ctx.evidence_by_code.items():
+            for e in lst:
+                if e.id in ev_ids:
+                    ev_rows.append(e)
+        details = build_recommendation_details(rec_def.code, ev_rows, pages_by_id)
+
         row = Recommendation(
             id=new_id(),
             job_id=job_id,
@@ -350,6 +362,7 @@ def prioritize_recommendations(
             evidence_ids_json=json.dumps(ev_ids),
             finding_ids_json=json.dumps([finding.id]),
             rank=rank,
+            details_json=json.dumps(details, sort_keys=True),
         )
         session.add(row)
         ranked_rows.append(row)

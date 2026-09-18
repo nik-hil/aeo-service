@@ -9,7 +9,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 USER_AGENT = "AEOBot/0.1 (+research; respectful)"
 HEALTH_FORMULA_VERSION = "health-v1"
-EXPERIMENT_PROTOCOL_VERSION = "vis-exp-v1"
+EXPERIMENT_PROTOCOL_VERSION = "llm-mention-v1"
+LLM_MENTION_PROTOCOL_VERSION = "llm-mention-v1"
+AI_SEARCH_PROTOCOL_VERSION = "ai-search-vis-v1"
 PROMPT_SET_ID = "prompt-set-v1"
 REC_CATALOG_VERSION = "rec-catalog-v1"
 DEMO_BASE_URL = "https://demo.example/"
@@ -30,6 +32,9 @@ class Settings(BaseSettings):
     crawl_max_pages: int = Field(default=25, alias="AEO_CRAWL_MAX_PAGES")
     crawl_max_depth: int = Field(default=2, alias="AEO_CRAWL_MAX_DEPTH")
     crawl_timeout_s: float = Field(default=5.0, alias="AEO_CRAWL_TIMEOUT_S")
+    query_top_n: int = Field(default=10, alias="AEO_QUERY_TOP_N")
+    site_understanding_llm: bool = Field(default=False, alias="AEO_SITE_UNDERSTANDING_LLM")
+    perplexity_api_key: str | None = Field(default=None, alias="PERPLEXITY_API_KEY")
 
     @property
     def user_agent(self) -> str:

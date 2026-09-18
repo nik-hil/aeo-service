@@ -3,7 +3,7 @@
 from aeo_mvp.recommendations.engine import compute_priority
 from aeo_mvp.scoring.health import health_from_components
 from aeo_mvp.visibility.metrics import (
-    aggregate_metrics,
+    aggregate_llm_metrics,
     detect_citation,
     detect_mention,
 )
@@ -68,7 +68,7 @@ def test_aggregate_rates():
                 provenance="synthetic_demo",
             )
         )
-    rates = aggregate_metrics(obs)
-    assert rates.ai_mention_rate == 0.4
-    assert rates.ai_citation_rate == 0.2
+    rates = aggregate_llm_metrics(obs)
+    assert rates.llm_mention_rate == 0.4
+    assert rates.llm_url_mention_rate == 0.2
     assert abs(rates.query_coverage - 1.0) < 1e-9 or rates.coverage_numerator == 2

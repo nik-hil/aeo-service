@@ -17,6 +17,7 @@ from aeo_mvp.crawler.fetch import default_headers, fetch_url
 from aeo_mvp.crawler.robots import parse_robots, path_from_url
 from aeo_mvp.db.models import Page, new_id, utc_now_iso
 from aeo_mvp.demo.loader import load_demo_pages, load_demo_robots
+from aeo_mvp.security.ssrf import SSRFError, assert_safe_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,10 @@ async def crawl_live(
     settings = get_settings()
     max_pages = min(max_pages, settings.crawl_max_pages, 25)
     max_depth = min(max_depth, settings.crawl_max_depth, 2)
+    try:
+        base_url = assert_safe_public_url(base_url)
+    except SSRFError as exc:
+        raise RuntimeError(f"Unsafe crawl base URL rejected (SSRF): {exc}") from exc
     base_url = normalize_url(base_url)
     if not base_url.endswith("/") and urlparse(base_url).path in ("", "/"):
         base_url = base_url.rstrip("/") + "/"

@@ -27,7 +27,7 @@ def test_demo_e2e_completes_with_report(db_session):
     job = _run(db_session)
     assert job.status == "completed"
     assert job.health_formula_version == "health-v1"
-    assert job.experiment_protocol_version == "vis-exp-v1"
+    assert job.experiment_protocol_version == "llm-mention-v1"
 
     health = (
         db_session.query(ScoreComponent)
@@ -58,12 +58,39 @@ def test_demo_e2e_completes_with_report(db_session):
         "recommendations",
         "pages_crawled",
         "emitted_at",
+        "ai_crawler_access",
+        "site_understanding",
+        "discovered_queries",
+        "executive_summary",
+        "page_findings",
     ):
         assert key in data
+    assert data["ai_crawler_access"]["agents"]
+    assert data["ai_crawler_access"]["caveat"]
+    assert data["site_understanding"].get("organization_brand")
+    assert data["discovered_queries"].get("queries")
+    assert "overall_health" in data["executive_summary"]
+    assert "top_3_actions" in data["executive_summary"]
+    assert "data_provenance" in data["executive_summary"]
+    rec0 = data["recommendations"][0]
+    for field in (
+        "problem",
+        "why_it_matters",
+        "recommended_action",
+        "implementation_pattern",
+        "validation_method",
+        "affected_urls",
+        "evidence_snippets",
+    ):
+        assert field in rec0
     assert data["scores"]["aeo_health"]["value"] is not None
-    assert data["experiment"]["ai_mention_rate"]["value"] == 0.4
-    assert abs(data["experiment"]["ai_citation_rate"]["value"] - (2/15)) < 1e-9
+    assert data["experiment"]["llm_mention_rate"]["value"] == 0.4
+    assert abs(data["experiment"]["llm_url_mention_rate"]["value"] - (2/15)) < 1e-9
     assert data["experiment"]["query_coverage"]["value"] == 0.6
+    assert data["experiment"]["experiment_kind"] == "llm_mention"
+    assert data["experiment"]["retrieval_enabled"] is False
+    assert "ai_mention_rate" not in data["experiment"]
+    assert "ai_citation_rate" not in data["experiment"]
     assert data["status"] == "completed"
     assert data["demo_mode"] is True
     assert any("synthetic demo" in c.lower() or "not from a live model" in c.lower() for c in data["caveats"])

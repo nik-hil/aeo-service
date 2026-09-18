@@ -1,215 +1,220 @@
 {
-    "base_url": "https://demo.example/",
-    "caveats": [
-        "AI visibility metrics are sample estimates from controlled experiments (protocol vis-exp-v1), not engine rankings.",
-        "API-based observations are not equivalent to consumer ChatGPT, Gemini, or Perplexity UI results.",
-        "This product does not reproduce proprietary answer-engine ranking or retrieval.",
-        "Model or provider updates can change results; compare only runs that share protocol_version, prompt_set_id, provider, and model_id.",
-        "This job used synthetic demo fixtures; visibility data is not from a live model."
-    ],
-    "demo_mode": true,
-    "emitted_at": "2026-09-18T04:53:35+00:00",
-    "experiment": {
-        "ai_citation_rate": {
-            "denominator": 15,
-            "numerator": 2,
-            "provenance": "synthetic_demo",
-            "value": 0.13333333333333333
-        },
-        "ai_mention_rate": {
-            "denominator": 15,
-            "numerator": 6,
-            "provenance": "synthetic_demo",
-            "value": 0.4
-        },
-        "model_id": null,
-        "observations_count": 15,
-        "provider_name": "demo",
-        "query_coverage": {
-            "denominator": 5,
-            "numerator": 3,
-            "provenance": "synthetic_demo",
-            "value": 0.6
-        }
+  "base_url": "https://demo.example/",
+  "caveats": [
+    "LLM mention metrics are sample estimates from controlled llm-mention-v1 experiments, not AI search visibility or engine rankings.",
+    "Chat-completions / LLM mention probes (retrieval_enabled=false) are NOT equivalent to AI search visibility.",
+    "AI visibility metrics are sample estimates from controlled experiments (protocol vis-exp-v1), not engine rankings.",
+    "API-based observations are not equivalent to consumer ChatGPT, Gemini, or Perplexity UI results.",
+    "This product does not reproduce proprietary answer-engine ranking or retrieval.",
+    "Model or provider updates can change results; compare only runs that share protocol_version, prompt_set_id, provider, and model_id.",
+    "This job used synthetic demo fixtures; visibility data is not from a live model."
+  ],
+  "demo_mode": true,
+  "emitted_at": "2026-09-18T04:53:35+00:00",
+  "experiment": {
+    "model_id": null,
+    "observations_count": 15,
+    "provider_name": "demo",
+    "query_coverage": {
+      "denominator": 5,
+      "numerator": 3,
+      "provenance": "synthetic_demo",
+      "value": 0.6
     },
-    "findings": [
-        {
-            "category": "readiness",
-            "evidence_ids": [
-                "9e58316a-3d9f-4cb4-a074-41004164f15c",
-                "4a6e00e4-2421-4c72-a29d-99040701b5f7",
-                "5498588e-f12f-49a5-b8aa-31ea46c5be27",
-                "41483ee4-84f6-463a-8d06-f9459f7eb864",
-                "e1d4bf64-e83d-4e0a-ac78-fac8d7cef2b2",
-                "9f32e30c-eb3e-45a6-bd7d-95c9171de1f5",
-                "b3cb7e5b-061d-4ba0-8ceb-2369382e0bd8",
-                "1c342df0-e420-4177-930c-0795a1a54292",
-                "5d332191-5b0f-493c-a52f-26538e293a2f",
-                "e872481f-81fa-4aac-837e-af29c4e92e07",
-                "25a92291-b943-4920-a5ed-fd77333a1a78",
-                "9eb4b3e4-28f5-4106-8bc1-dae7ba8122ed"
-            ],
-            "id": "cc05e6d9-11b3-44aa-bc1d-b74373038e9b",
-            "severity": "medium",
-            "summary": "12 evidence item(s) with severity \u2265 low from content analyzer.",
-            "title": "Content issues detected"
-        },
-        {
-            "category": "readiness",
-            "evidence_ids": [
-                "e6195b96-0e93-4485-8000-9db0e84d847d"
-            ],
-            "id": "763794f7-8404-41ee-97c2-ee6564cf40f9",
-            "severity": "medium",
-            "summary": "1 evidence item(s) with severity \u2265 low from entities analyzer.",
-            "title": "Entities issues detected"
-        },
-        {
-            "category": "visibility",
-            "evidence_ids": [],
-            "id": "f9215c1c-7cdb-4485-958b-7c3b2bbbfb1e",
-            "severity": "info",
-            "summary": "Estimated AI citation rate is 0.13 under vis-exp-v1 (sample, not a ranking).",
-            "title": "Low sample AI citation rate"
-        },
-        {
-            "category": "meta",
-            "evidence_ids": [],
-            "id": "f229a071-ff72-482c-a95e-aaa6fbb048b0",
-            "severity": "info",
-            "summary": "Visibility observations are synthetic_demo because no API key was available or demo mode was forced.",
-            "title": "DemoProvider used (no live credentials)"
-        }
-    ],
-    "job_id": "d105d30b-caa8-42cb-bea6-8c2785558f26",
-    "methodology": {
-        "crawl": {
-            "max_depth": 2,
-            "max_pages": 25,
-            "user_agent": "AEOBot/0.1 (+research; respectful)"
-        },
-        "experiment_protocol_version": "vis-exp-v1",
-        "health_formula_version": "health-v1",
-        "prompt_set_id": "prompt-set-v1"
+    "llm_mention_rate": {
+      "denominator": 15,
+      "numerator": 6,
+      "provenance": "synthetic_demo",
+      "value": 0.4
     },
-    "pages_crawled": 5,
-    "recommendations": [
-        {
-            "code": "REC_CONSOLIDATE_BRAND_NAME",
-            "effort": "M",
-            "evidence_ids": [
-                "a0c5c8b5-f30a-409a-8a9c-dd77bbea39c3",
-                "e6195b96-0e93-4485-8000-9db0e84d847d"
-            ],
-            "finding_ids": [
-                "cc05e6d9-11b3-44aa-bc1d-b74373038e9b"
-            ],
-            "id": "40b5faa5-9031-4aa4-a826-c97353b2108f",
-            "impact": 0.7799999999999999,
-            "priority_score": 0.5459999999999999,
-            "rank": 1,
-            "rationale": "Brand token consistency is weak or titles diverge, reducing entity clarity.",
-            "title": "Consolidate brand naming across titles"
-        },
-        {
-            "code": "REC_FIX_HEADING_HIERARCHY",
-            "effort": "M",
-            "evidence_ids": [
-                "d6190816-7106-449b-b79b-5734355bc088",
-                "5498588e-f12f-49a5-b8aa-31ea46c5be27",
-                "b3cb7e5b-061d-4ba0-8ceb-2369382e0bd8",
-                "66842b8e-8a12-4fa7-a5b3-19bb8cd1f636",
-                "47774244-adae-47c1-9a70-02710dfdafad"
-            ],
-            "finding_ids": [
-                "cc05e6d9-11b3-44aa-bc1d-b74373038e9b"
-            ],
-            "id": "036de339-2d7a-41d3-8f4c-9bfe4dbee01b",
-            "impact": 0.73,
-            "priority_score": 0.511,
-            "rank": 2,
-            "rationale": "Multiple pages have missing/duplicate h1 or skipped heading levels, hurting extractability.",
-            "title": "Fix heading hierarchy"
-        },
-        {
-            "code": "REC_EXPAND_THIN_CONTENT",
-            "effort": "M",
-            "evidence_ids": [
-                "9d5666c3-c3d1-4dd7-ad92-dbbe5856a249",
-                "9f32e30c-eb3e-45a6-bd7d-95c9171de1f5",
-                "e872481f-81fa-4aac-837e-af29c4e92e07",
-                "9a0616c0-5f52-4f83-ae7f-0fe3d51c643e",
-                "f799ee88-ea5a-4b47-a64d-b7354b008d9c"
-            ],
-            "finding_ids": [
-                "cc05e6d9-11b3-44aa-bc1d-b74373038e9b"
-            ],
-            "id": "ebe6f4b6-391e-4c64-9407-b347b3d7804c",
-            "impact": 0.68,
-            "priority_score": 0.476,
-            "rank": 3,
-            "rationale": "Multiple pages fall below recommended visible word-count ranges.",
-            "title": "Expand thin pages"
-        },
-        {
-            "code": "REC_IMPROVE_CITABLE_URLS",
-            "effort": "M",
-            "evidence_ids": [
-                "fec720e6-52f9-4620-8e82-ad323e95fd12"
-            ],
-            "finding_ids": [
-                "f9215c1c-7cdb-4485-958b-7c3b2bbbfb1e"
-            ],
-            "id": "8131d775-7a63-4ba5-96be-46d7d21b8920",
-            "impact": 0.5,
-            "priority_score": 0.35,
-            "rank": 4,
-            "rationale": "Sample citation rate is low; ensure key pages have clear URLs and are referenced in authoritative copy.",
-            "title": "Publish stable, citable URLs in content"
-        },
-        {
-            "code": "REC_REVIEW_DEMO_ONLY",
-            "effort": "S",
-            "evidence_ids": [
-                "05cb9b32-7314-4f02-bcde-6ba20d913693"
-            ],
-            "finding_ids": [
-                "f229a071-ff72-482c-a95e-aaa6fbb048b0"
-            ],
-            "id": "ae40db92-295b-469c-acbe-a0b4272d0bc7",
-            "impact": 0.2,
-            "priority_score": 0.2,
-            "rank": 5,
-            "rationale": "This job used DemoProvider because live credentials were unavailable; visibility rates are synthetic.",
-            "title": "Re-run with live credentials when ready"
-        }
-    ],
-    "scores": {
-        "aeo_health": {
-            "formula_version": "health-v1",
-            "provenance": "synthetic_demo",
-            "value": 87.9
-        },
-        "answerability": {
-            "provenance": "synthetic_demo",
-            "value": 100.0
-        },
-        "content": {
-            "provenance": "synthetic_demo",
-            "value": 57.5
-        },
-        "entity": {
-            "provenance": "synthetic_demo",
-            "value": 92.5
-        },
-        "structured_data": {
-            "provenance": "synthetic_demo",
-            "value": 100.0
-        },
-        "technical": {
-            "provenance": "synthetic_demo",
-            "value": 100.0
-        }
+    "llm_url_mention_rate": {
+      "denominator": 15,
+      "numerator": 2,
+      "provenance": "synthetic_demo",
+      "value": 0.13333333333333333
     },
-    "status": "synthesizing"
+    "experiment_kind": "llm_mention",
+    "retrieval_enabled": false,
+    "provider_capabilities_notes": "Non-retrieval LLM mention provider; not AI search visibility."
+  },
+  "findings": [
+    {
+      "category": "readiness",
+      "evidence_ids": [
+        "9e58316a-3d9f-4cb4-a074-41004164f15c",
+        "4a6e00e4-2421-4c72-a29d-99040701b5f7",
+        "5498588e-f12f-49a5-b8aa-31ea46c5be27",
+        "41483ee4-84f6-463a-8d06-f9459f7eb864",
+        "e1d4bf64-e83d-4e0a-ac78-fac8d7cef2b2",
+        "9f32e30c-eb3e-45a6-bd7d-95c9171de1f5",
+        "b3cb7e5b-061d-4ba0-8ceb-2369382e0bd8",
+        "1c342df0-e420-4177-930c-0795a1a54292",
+        "5d332191-5b0f-493c-a52f-26538e293a2f",
+        "e872481f-81fa-4aac-837e-af29c4e92e07",
+        "25a92291-b943-4920-a5ed-fd77333a1a78",
+        "9eb4b3e4-28f5-4106-8bc1-dae7ba8122ed"
+      ],
+      "id": "cc05e6d9-11b3-44aa-bc1d-b74373038e9b",
+      "severity": "medium",
+      "summary": "12 evidence item(s) with severity \u2265 low from content analyzer.",
+      "title": "Content issues detected"
+    },
+    {
+      "category": "readiness",
+      "evidence_ids": [
+        "e6195b96-0e93-4485-8000-9db0e84d847d"
+      ],
+      "id": "763794f7-8404-41ee-97c2-ee6564cf40f9",
+      "severity": "medium",
+      "summary": "1 evidence item(s) with severity \u2265 low from entities analyzer.",
+      "title": "Entities issues detected"
+    },
+    {
+      "category": "visibility",
+      "evidence_ids": [],
+      "id": "f9215c1c-7cdb-4485-958b-7c3b2bbbfb1e",
+      "severity": "info",
+      "summary": "Estimated AI citation rate is 0.13 under vis-exp-v1 (sample, not a ranking).",
+      "title": "Low sample AI citation rate"
+    },
+    {
+      "category": "meta",
+      "evidence_ids": [],
+      "id": "f229a071-ff72-482c-a95e-aaa6fbb048b0",
+      "severity": "info",
+      "summary": "Visibility observations are synthetic_demo because no API key was available or demo mode was forced.",
+      "title": "DemoProvider used (no live credentials)"
+    }
+  ],
+  "job_id": "d105d30b-caa8-42cb-bea6-8c2785558f26",
+  "methodology": {
+    "crawl": {
+      "max_depth": 2,
+      "max_pages": 25,
+      "user_agent": "AEOBot/0.1 (+research; respectful)"
+    },
+    "experiment_protocol_version": "vis-exp-v1",
+    "health_formula_version": "health-v1",
+    "prompt_set_id": "prompt-set-v1"
+  },
+  "pages_crawled": 5,
+  "recommendations": [
+    {
+      "code": "REC_CONSOLIDATE_BRAND_NAME",
+      "effort": "M",
+      "evidence_ids": [
+        "a0c5c8b5-f30a-409a-8a9c-dd77bbea39c3",
+        "e6195b96-0e93-4485-8000-9db0e84d847d"
+      ],
+      "finding_ids": [
+        "cc05e6d9-11b3-44aa-bc1d-b74373038e9b"
+      ],
+      "id": "40b5faa5-9031-4aa4-a826-c97353b2108f",
+      "impact": 0.7799999999999999,
+      "priority_score": 0.5459999999999999,
+      "rank": 1,
+      "rationale": "Brand token consistency is weak or titles diverge, reducing entity clarity.",
+      "title": "Consolidate brand naming across titles"
+    },
+    {
+      "code": "REC_FIX_HEADING_HIERARCHY",
+      "effort": "M",
+      "evidence_ids": [
+        "d6190816-7106-449b-b79b-5734355bc088",
+        "5498588e-f12f-49a5-b8aa-31ea46c5be27",
+        "b3cb7e5b-061d-4ba0-8ceb-2369382e0bd8",
+        "66842b8e-8a12-4fa7-a5b3-19bb8cd1f636",
+        "47774244-adae-47c1-9a70-02710dfdafad"
+      ],
+      "finding_ids": [
+        "cc05e6d9-11b3-44aa-bc1d-b74373038e9b"
+      ],
+      "id": "036de339-2d7a-41d3-8f4c-9bfe4dbee01b",
+      "impact": 0.73,
+      "priority_score": 0.511,
+      "rank": 2,
+      "rationale": "Multiple pages have missing/duplicate h1 or skipped heading levels, hurting extractability.",
+      "title": "Fix heading hierarchy"
+    },
+    {
+      "code": "REC_EXPAND_THIN_CONTENT",
+      "effort": "M",
+      "evidence_ids": [
+        "9d5666c3-c3d1-4dd7-ad92-dbbe5856a249",
+        "9f32e30c-eb3e-45a6-bd7d-95c9171de1f5",
+        "e872481f-81fa-4aac-837e-af29c4e92e07",
+        "9a0616c0-5f52-4f83-ae7f-0fe3d51c643e",
+        "f799ee88-ea5a-4b47-a64d-b7354b008d9c"
+      ],
+      "finding_ids": [
+        "cc05e6d9-11b3-44aa-bc1d-b74373038e9b"
+      ],
+      "id": "ebe6f4b6-391e-4c64-9407-b347b3d7804c",
+      "impact": 0.68,
+      "priority_score": 0.476,
+      "rank": 3,
+      "rationale": "Multiple pages fall below recommended visible word-count ranges.",
+      "title": "Expand thin pages"
+    },
+    {
+      "code": "REC_IMPROVE_CITABLE_URLS",
+      "effort": "M",
+      "evidence_ids": [
+        "fec720e6-52f9-4620-8e82-ad323e95fd12"
+      ],
+      "finding_ids": [
+        "f9215c1c-7cdb-4485-958b-7c3b2bbbfb1e"
+      ],
+      "id": "8131d775-7a63-4ba5-96be-46d7d21b8920",
+      "impact": 0.5,
+      "priority_score": 0.35,
+      "rank": 4,
+      "rationale": "Sample citation rate is low; ensure key pages have clear URLs and are referenced in authoritative copy.",
+      "title": "Publish stable, citable URLs in content"
+    },
+    {
+      "code": "REC_REVIEW_DEMO_ONLY",
+      "effort": "S",
+      "evidence_ids": [
+        "05cb9b32-7314-4f02-bcde-6ba20d913693"
+      ],
+      "finding_ids": [
+        "f229a071-ff72-482c-a95e-aaa6fbb048b0"
+      ],
+      "id": "ae40db92-295b-469c-acbe-a0b4272d0bc7",
+      "impact": 0.2,
+      "priority_score": 0.2,
+      "rank": 5,
+      "rationale": "This job used DemoProvider because live credentials were unavailable; visibility rates are synthetic.",
+      "title": "Re-run with live credentials when ready"
+    }
+  ],
+  "scores": {
+    "aeo_health": {
+      "formula_version": "health-v1",
+      "provenance": "synthetic_demo",
+      "value": 87.9
+    },
+    "answerability": {
+      "provenance": "synthetic_demo",
+      "value": 100.0
+    },
+    "content": {
+      "provenance": "synthetic_demo",
+      "value": 57.5
+    },
+    "entity": {
+      "provenance": "synthetic_demo",
+      "value": 92.5
+    },
+    "structured_data": {
+      "provenance": "synthetic_demo",
+      "value": 100.0
+    },
+    "technical": {
+      "provenance": "synthetic_demo",
+      "value": 100.0
+    }
+  },
+  "status": "synthesizing"
 }

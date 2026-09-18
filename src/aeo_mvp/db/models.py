@@ -69,6 +69,9 @@ class Job(Base):
     report: Mapped[Report | None] = relationship(
         back_populates="job", uselist=False, cascade="all, delete-orphan"
     )
+    site_profile: Mapped[SiteProfile | None] = relationship(
+        back_populates="job", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class Page(Base):
@@ -139,6 +142,9 @@ class ExperimentConfig(Base):
     prompt_set_id: Mapped[str] = mapped_column(String(64), nullable=False)
     prompts_json: Mapped[str] = mapped_column(Text, nullable=False)
     runs_per_prompt: Mapped[int] = mapped_column(Integer, nullable=False)
+    experiment_kind: Mapped[str | None] = mapped_column(String(64), nullable=True, default="llm_mention")
+    retrieval_enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    discovered_queries_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now_iso)
 
     job: Mapped[Job] = relationship(back_populates="experiment_configs")
@@ -169,6 +175,13 @@ class VisibilityObservation(Base):
     extraction_methodology: Mapped[str] = mapped_column(Text, nullable=False)
     provenance: Mapped[str] = mapped_column(String(32), nullable=False)
     meta_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    model_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    retrieval_enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    experiment_kind: Mapped[str | None] = mapped_column(String(64), nullable=True, default="llm_mention")
+    search_queries_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_urls_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_domain_appeared: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_domain_cited: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     job: Mapped[Job] = relationship(back_populates="observations")
     experiment_config: Mapped[ExperimentConfig] = relationship(back_populates="observations")
@@ -221,8 +234,26 @@ class Recommendation(Base):
     evidence_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     finding_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    details_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     job: Mapped[Job] = relationship(back_populates="recommendations")
+
+
+
+class SiteProfile(Base):
+    __tablename__ = "site_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id"), nullable=False, unique=True
+    )
+    profile_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    method: Mapped[str] = mapped_column(String(64), nullable=False, default="deterministic_html_v1")
+    provenance: Mapped[str] = mapped_column(String(32), nullable=False, default="derived_metric")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now_iso)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=utc_now_iso)
+
+    job: Mapped[Job] = relationship(back_populates="site_profile")
 
 
 class Report(Base):

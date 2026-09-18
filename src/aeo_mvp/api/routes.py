@@ -22,6 +22,7 @@ from aeo_mvp.api.schemas import (
 from aeo_mvp.db.models import Job, Page, Report, ScoreComponent
 from aeo_mvp.db.session import get_session_factory
 from aeo_mvp.pipeline.orchestrator import JobOrchestrator, create_job_record
+from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,11 @@ def create_job(
     background_tasks: BackgroundTasks,
 ) -> JobCreatedResponse:
     options = body.options.model_dump() if body.options else {}
+    if not body.demo_mode and is_obviously_unsafe_url(body.url):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsafe URL rejected by SSRF policy: {body.url!r}",
+        )
     factory = get_session_factory()
     session = factory()
     try:

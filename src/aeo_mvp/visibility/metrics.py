@@ -1,4 +1,4 @@
-"""Mention/citation rules and aggregate rate formulas (vis-exp-v1)."""
+"""Mention/citation rules and aggregate rate formulas (llm-mention-v1 / ai-search-vis-v1)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from aeo_mvp.visibility.base import VisibilityObservation
 
 URL_RE = re.compile(r"https?://[^\s\)\]\"'<>]+", re.I)
-EXTRACTION_METHODOLOGY = "vis-exp-v1:mention-rule-v1+citation-rule-v1"
+EXTRACTION_METHODOLOGY = "llm-mention-v1:mention-rule-v1+url-mention-rule-v1"
 
 
 def extract_urls(text: str) -> list[str]:
@@ -50,6 +50,7 @@ def detect_mention(text: str, brand_tokens: list[str], *, exclude_suffix: str | 
 
 
 def detect_citation(text: str, site_domain: str, extra_urls: list[str] | None = None) -> tuple[bool, list[str]]:
+    """URL-mention heuristic: target domain appears as URL in text (not retrieval citation)."""
     urls = extract_urls(text)
     if extra_urls:
         for u in extra_urls:
@@ -65,6 +66,8 @@ def detect_citation(text: str, site_domain: str, extra_urls: list[str] | None = 
 
 @dataclass
 class AggregateRates:
+    """Legacy aggregate container; prefer LlmAggregateRates / AiSearchAggregateRates."""
+
     ai_mention_rate: float
     ai_citation_rate: float
     query_coverage: float
@@ -75,22 +78,96 @@ class AggregateRates:
     denominator_prompts: int
 
 
-def aggregate_metrics(observations: list[VisibilityObservation]) -> AggregateRates:
+@dataclass
+class LlmAggregateRates:
+    llm_mention_rate: float
+    llm_url_mention_rate: float
+    query_coverage: float
+    mention_numerator: int
+    url_mention_numerator: int
+    coverage_numerator: int
+    denominator_runs: int
+    denominator_prompts: int
+
+
+@dataclass
+class AiSearchAggregateRates:
+    ai_search_mention_rate: float
+    ai_search_citation_rate: float
+    target_domain_appearance_rate: float
+    query_coverage: float
+    mention_numerator: int
+    citation_numerator: int
+    appearance_numerator: int
+    coverage_numerator: int
+    denominator_runs: int
+    denominator_prompts: int
+
+
+def aggregate_llm_metrics(observations: list[VisibilityObservation]) -> LlmAggregateRates:
+    """Aggregate rates for non-retrieval LLM mention experiments."""
     r = len(observations)
     m = sum(1 for o in observations if o.detected_mention)
     k = sum(1 for o in observations if o.detected_citation)
     prompts = {o.prompt_id for o in observations}
     p = len(prompts)
     qm = len({o.prompt_id for o in observations if o.detected_mention})
-    return AggregateRates(
-        ai_mention_rate=(m / r) if r else 0.0,
-        ai_citation_rate=(k / r) if r else 0.0,
+    return LlmAggregateRates(
+        llm_mention_rate=(m / r) if r else 0.0,
+        llm_url_mention_rate=(k / r) if r else 0.0,
         query_coverage=(qm / p) if p else 0.0,
         mention_numerator=m,
-        citation_numerator=k,
+        url_mention_numerator=k,
         coverage_numerator=qm,
         denominator_runs=r,
         denominator_prompts=p,
+    )
+
+
+def aggregate_ai_search_metrics(observations: list[VisibilityObservation]) -> AiSearchAggregateRates:
+    """Aggregate rates for retrieval-enabled AI search visibility experiments."""
+    r = len(observations)
+    m = sum(1 for o in observations if o.detected_mention)
+    k = sum(
+        1
+        for o in observations
+        if (o.target_domain_cited is True) or (o.target_domain_cited is None and o.detected_citation)
+    )
+    appeared = sum(
+        1
+        for o in observations
+        if (o.target_domain_appeared is True)
+        or (o.target_domain_appeared is None and (o.detected_mention or o.detected_citation))
+    )
+    prompts = {o.prompt_id for o in observations}
+    p = len(prompts)
+    qm = len({o.prompt_id for o in observations if o.detected_mention})
+    return AiSearchAggregateRates(
+        ai_search_mention_rate=(m / r) if r else 0.0,
+        ai_search_citation_rate=(k / r) if r else 0.0,
+        target_domain_appearance_rate=(appeared / r) if r else 0.0,
+        query_coverage=(qm / p) if p else 0.0,
+        mention_numerator=m,
+        citation_numerator=k,
+        appearance_numerator=appeared,
+        coverage_numerator=qm,
+        denominator_runs=r,
+        denominator_prompts=p,
+    )
+
+
+def aggregate_metrics(observations: list[VisibilityObservation]) -> AggregateRates:
+    """Back-compat wrapper; maps LLM rates onto legacy field names (do not emit in reports)."""
+    llm = aggregate_llm_metrics(observations)
+    return AggregateRates(
+        ai_mention_rate=llm.llm_mention_rate,
+        ai_citation_rate=llm.llm_url_mention_rate,
+        query_coverage=llm.query_coverage,
+        mention_numerator=llm.mention_numerator,
+        citation_numerator=llm.url_mention_numerator,
+        coverage_numerator=llm.coverage_numerator,
+        denominator_runs=llm.denominator_runs,
+        denominator_prompts=llm.denominator_prompts,
     )
 
 

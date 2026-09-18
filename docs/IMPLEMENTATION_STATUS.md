@@ -1,7 +1,8 @@
 # Implementation Status — AEO MVP Backend
 
 **Date:** 2026-09-18 (IST)  
-**Formula / protocol:** `health-v1` · `vis-exp-v1` · `rec-catalog-v1`  
+**Formula / protocol:** `health-v1` · `llm-mention-v1` · `rec-catalog-v1`  
+**P1 status:** Implemented 2026-09-18 (AI crawlers, site understanding, query discovery, retrieval stubs, enriched recs, executive summary, signal classification).  
 **Package:** `aeo_mvp` (`src/` layout)
 
 ## What works
@@ -16,6 +17,13 @@
 | 5 Visibility | Done | `AIVisibilityProvider`; `DemoProvider` (deterministic); `OpenAICompatibleProvider` (optional key) |
 | 6 Pipeline + API | Done | Full orchestrator; `POST/GET /api/v1/jobs`, report, pages; `GET /health`; BackgroundTasks |
 | 7 Tests | Done | Unit + analyzer + demo E2E bit-stability + API TestClient — `pytest` green |
+| P1-A AI crawlers | Done | `analyzers/ai_crawlers.py` → report `ai_crawler_access` (allow ≠ visibility) |
+| P1-B Site understanding | Done | `understanding/site.py` + `site_profiles`; LLM default off |
+| P1-C Query discovery | Done | `queries/discovery.py`; demo keeps fixture prompts for bit-stability |
+| P1-D Retrieval interface | Done | `retrieval_base.py`, Perplexity stub (no fake metrics), competitors |
+| P1-E Enriched recommendations | Done | problem/action/pattern/validation + evidence snippets |
+| P1-F Executive summary | Done | `executive_summary` + `page_findings` on report |
+| P1-G Signal classification | Done | `docs/methodology/SIGNAL_CLASSIFICATION.md` (health-v1 immutable) |
 
 ### Demo E2E (verified locally)
 
@@ -24,7 +32,7 @@
 - Sample demo health (fixtures as of 2026-09-18): **87.9**
   - technical 100.0 · content 57.5 · entity 92.5 · structured_data 100.0 · answerability 100.0
 - Visibility (synthetic): mention **0.4** (6/15), citation **≈0.133** (2/15), coverage **0.6** (3/5)
-- Report includes methodology, caveats, scores (with provenance), findings, recommendations, experiment block
+- Report includes methodology, caveats, scores, findings, enriched recommendations, experiment (`experiment_kind=llm_mention`), plus P1 sections: `ai_crawler_access`, `site_understanding`, `discovered_queries`, `executive_summary`, `page_findings`
 
 ### How to run
 

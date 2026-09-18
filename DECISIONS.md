@@ -91,3 +91,15 @@ Assumptions and decisions made without asking the user. Update when overturned.
 ## D018 — Blueprint authority (2026-09-18)
 **Decision:** `docs/blueprint/BLUEPRINT.md` plus methodology siblings and OpenAPI sketch are the implementation source of truth until a later ADR overturns them.
 **Rationale:** Architect deliverable for greenfield MVP; engineers implement without re-litigating scope.
+
+## D019 — Experiment kinds (2026-09-18)
+**Decision:** Split LLM mention experiments (`retrieval_enabled=false`) from AI search visibility experiments (`retrieval_enabled=true`). Rename non-retrieval metrics to `llm_*`. Never market chat-completions probes as AI-search visibility.
+**Rationale:** External review P0; OpenAI-compatible chat has no web retrieval.
+
+## D020 — SSRF hardening (2026-09-18)
+**Decision:** All live crawler fetches go through `aeo_mvp.security.ssrf` validation (scheme, DNS, public IP, redirect revalidation, hop limit).
+**Rationale:** External review P0 before any public deployment.
+
+## D021 — Provider capability declarations (2026-09-18)
+**Decision:** Every visibility provider exposes `ProviderCapabilities` including `retrieval_enabled` and `measures_consumer_ui=False` unless proven otherwise.
+**Rationale:** Extensibility for future Perplexity/Gemini grounding without schema redesign.

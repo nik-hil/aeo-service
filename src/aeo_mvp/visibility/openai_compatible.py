@@ -1,4 +1,4 @@
-"""Optional OpenAI-compatible chat completions provider (stub/live)."""
+"""Optional OpenAI-compatible chat completions provider (non-retrieval LLM mention)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,11 @@ from datetime import datetime, timezone
 import httpx
 
 from aeo_mvp.config import get_settings
-from aeo_mvp.visibility.base import VisibilityContext, VisibilityObservation
+from aeo_mvp.visibility.base import (
+    ProviderCapabilities,
+    VisibilityContext,
+    VisibilityObservation,
+)
 from aeo_mvp.visibility.metrics import (
     EXTRACTION_METHODOLOGY,
     detect_citation,
@@ -19,15 +23,34 @@ from aeo_mvp.visibility.metrics import (
 
 logger = logging.getLogger(__name__)
 
+# Must not imply browsing / AI search retrieval.
 SYSTEM_PROMPT = (
-    "You are a research assistant answering factual questions for an offline evaluation. "
-    "Answer helpfully in 2–4 short paragraphs. If you reference websites, include full https URLs. "
-    "Do not claim to browse unless URLs are provided in the user message."
+    "You are a research assistant answering factual questions for an offline evaluation "
+    "using only your parametric knowledge. "
+    "Answer helpfully in 2–4 short paragraphs. If you reference websites from memory, "
+    "include full https URLs when you know them. "
+    "You cannot browse the web or retrieve live pages in this evaluation."
+)
+
+_CAPABILITIES = ProviderCapabilities(
+    provider_id="openai_compatible",
+    retrieval_enabled=False,
+    experiment_kinds=["llm_mention"],
+    returns_search_queries=False,
+    returns_source_urls=False,
+    returns_citations=False,
+    measures_consumer_ui=False,
+    notes=(
+        "OpenAI-compatible /chat/completions without tools. "
+        "This is an LLM mention experiment, NOT AI search visibility. "
+        "Results are not equivalent to consumer ChatGPT/Gemini/Perplexity UI."
+    ),
 )
 
 
 class OpenAICompatibleProvider:
     name = "openai_compatible"
+    capabilities = _CAPABILITIES
 
     def __init__(
         self,
@@ -60,7 +83,15 @@ class OpenAICompatibleProvider:
         }
         raw = None
         error = False
-        meta: dict = {"model": self.model}
+        meta: dict = {
+            "model": self.model,
+            "retrieval_enabled": False,
+            "experiment_kind": "llm_mention",
+            "notes": (
+                "LLM mention experiment via chat completions; "
+                "NOT AI search visibility / retrieval."
+            ),
+        }
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(url, headers=headers, json=payload)
@@ -109,4 +140,11 @@ class OpenAICompatibleProvider:
             extraction_methodology=EXTRACTION_METHODOLOGY,
             provenance="api_observation",
             meta=meta,
+            model_id=self.model,
+            retrieval_enabled=False,
+            experiment_kind="llm_mention",
+            search_queries=[],
+            source_urls=[],
+            target_domain_appeared=None,
+            target_domain_cited=None,
         )
