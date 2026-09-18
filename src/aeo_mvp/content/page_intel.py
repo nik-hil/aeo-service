@@ -320,6 +320,8 @@ def extract_page_intelligence(
         "has_article": tree.css_first("article") is not None,
         "heading_count": len(headings),
         "h1_count": sum(1 for h in headings if h.level == 1),
+        "image_count": len(tree.css("img")),
+        "figure_count": len(tree.css("figure")),
     }
 
     signals: list[ObservedSignal] = []

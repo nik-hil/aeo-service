@@ -8,6 +8,7 @@ from aeo_mvp.content.models import (
     BRIEF_VERSION,
     GAP_VERSION,
     PAGE_INTEL_VERSION,
+    RESEARCHER_GAP_TAXONOMY,
     ContentChange,
     ContentGapReport,
     ContentOptimizationBrief,
@@ -20,11 +21,22 @@ ANTI_PATTERNS = [
     "fake_citations",
     "fabricated_statistics",
     "coverage_labeled_as_ai_visibility",
+    "coverage_folded_into_health_v1",
     "folding_page_score_into_sov_or_health",
     "unguarded_ranking_or_citation_promises",
+    "guaranteed_inclusion",
     "llms_txt_as_silver_bullet",
     "thin_page_farm_per_query",
     "opaque_content_aeo_score",
+]
+
+DO_PRINCIPLES = [
+    "answer_first_passages",
+    "people_first_structure",
+    "real_citations_only_when_observed",
+    "genre_gated_formats",
+    "evidence_linked_recommendations",
+    "one_strong_answer_unit_per_important_probe",
 ]
 
 AEO_WRITING_REQUIREMENTS = [
@@ -32,7 +44,8 @@ AEO_WRITING_REQUIREMENTS = [
     "People-first: clear H2/H3 sections aligned to real user questions.",
     "One strong answer unit per important probe — not thin page farms.",
     "Real citations only when observed on-page or in provided evidence.",
-    "Genre-gated formats (SaaS compare/pricing; Docs defs/steps; Blog tutorials; Ecommerce specs).",
+    "Genre-gated formats (SaaS compare/pricing/HowTo; Docs defs/steps; Blog tutorials; Ecommerce specs/PDP).",
+    "Evidence-linked recommendations only — never invent proof.",
     "Mark uncertainty; never invent stats, citations, or competitor claims.",
     "Schema must mirror visible content only.",
 ]
@@ -40,10 +53,30 @@ AEO_WRITING_REQUIREMENTS = [
 CAVEATS = [
     "Diagnostics ≠ health-v1.",
     "page_coverage ≠ AI-search / LLM-mention visibility.",
+    "Page intelligence = extractable answer units; queryset = frozen probes × page_coverage.",
     "Draft text is generated — never feed into QSQ-EVD as observed.",
     "No citation or inclusion guarantees.",
     "Not CMS publish.",
 ]
+
+_GENRE_FORMAT_GUIDANCE: dict[str, list[str]] = {
+    "saas_product": [
+        "Prefer compare / pricing / HowTo answer units for SaaS probes.",
+        "Keep the same Researcher gap taxonomy; lean format toward commercial clarity.",
+    ],
+    "documentation": [
+        "Prefer definitions and numbered steps for docs probes.",
+        "Same taxonomy — emphasize evidence + technical extractability.",
+    ],
+    "personal_tech_blog": [
+        "Prefer tutorial-shaped answer units for blog probes.",
+        "Same taxonomy — people-first narrative with clear Q→passage.",
+    ],
+    "ecommerce": [
+        "Prefer specs / PDP structured units for ecommerce probes.",
+        "Same taxonomy — format + entity/identity + media when helpful.",
+    ],
+}
 
 
 def _profile_value(profile: dict[str, Any] | None, key: str) -> Any:
@@ -296,12 +329,20 @@ def build_optimization_brief(
             "intent": r.intent,
             "page_coverage": r.page_coverage,
             "note": r.note,
+            # Honesty: this cell is page coverage, not AI visibility / health
+            "not_ai_visibility": True,
+            "not_health_v1": True,
         }
         for r in gap_report.coverage_by_query
     ]
 
     edit_ops = _build_edit_ops(page, outline, gap_report)
+    # Work queue: prioritize one strong unit per important under-covered probe (no thin farms)
     work_queue = [e for e in edit_ops if e.action in ("add", "rewrite", "expand", "remove")]
+    # Cap add-section ops to avoid thin-page-per-query farms
+    add_sections = [w for w in work_queue if w.target.startswith("section:")]
+    other_work = [w for w in work_queue if not w.target.startswith("section:")]
+    work_queue = other_work + add_sections[:6]
 
     meta = page.meta_description
     if not meta:
@@ -324,8 +365,18 @@ def build_optimization_brief(
     exec_summary = (
         f"Page '{primary}' has {n_gaps} content gaps "
         f"({n_uncovered} under-covered probes vs {gap_report.query_set_version}). "
-        "Optimize answer units on this URL — do not treat page_coverage as AI visibility or health."
+        "Page intelligence = extractable answer units; queryset matrix = page_coverage only — "
+        "not AI visibility and not health-v1."
     )
+
+    genre_guidance = list(_GENRE_FORMAT_GUIDANCE.get(str(genre), []))
+    if not genre_guidance:
+        genre_guidance = [
+            "Apply Researcher taxonomy uniformly; lean formats by genre when known "
+            "(SaaS compare/pricing/HowTo; Docs defs/steps; Blog tutorials; Ecommerce specs/PDP)."
+        ]
+
+    gap_catalog = dict(gap_report.gap_catalog_by_taxonomy or {})
 
     return ContentOptimizationBrief(
         schema_version=BRIEF_VERSION,
@@ -341,9 +392,20 @@ def build_optimization_brief(
             "site_genre": genre,
             "generate_draft": bool(cfg.get("generate_draft", False)),
             "draft_paid": bool(cfg.get("draft_paid", False)),
+            "page_vs_queryset": {
+                "page_intelligence": "extractable_answer_units",
+                "queryset": "frozen_probes_x_page_coverage",
+                "coverage_is_not_ai_visibility": True,
+                "coverage_is_not_health_v1": True,
+            },
         },
         executive_summary=exec_summary,
-        answerability=dict(page.answerability_signals or {}),
+        answerability={
+            **dict(page.answerability_signals or {}),
+            "answer_unit_count": len(page.answer_units),
+            "answer_unit_kinds": sorted({u.kind for u in page.answer_units}),
+        },
+        gap_catalog=gap_catalog,
         gap_catalog_ids=[g.id for g in gap_report.gaps],
         query_content_matrix=matrix,
         work_queue=work_queue,
@@ -360,6 +422,8 @@ def build_optimization_brief(
         faq_suggestions=faq_suggestions,
         schema_suggestions=schema_suggestions,
         internal_link_suggestions=link_suggestions,
+        genre_format_guidance=genre_guidance,
+        do_principles=list(DO_PRINCIPLES),
         aeo_writing_requirements=list(AEO_WRITING_REQUIREMENTS),
         caveats=list(CAVEATS),
         anti_patterns=list(ANTI_PATTERNS),
@@ -371,6 +435,7 @@ def build_optimization_brief(
             "page_url": page.url,
             "gap_count": n_gaps,
             "site_profile_present": bool(site_profile),
+            "researcher_taxonomy": [label for _, label in RESEARCHER_GAP_TAXONOMY],
         },
         warnings=[],
     )

@@ -36,12 +36,12 @@ GapKind = Literal[
 # Page taxonomy (Researcher + D2)
 GapType = Literal[
     "structure",
-    "qa_coverage",
+    "qa_coverage",  # Researcher: on-page question coverage
     "evidence",
-    "entity",
+    "entity",  # Researcher: entity/identity
     "format",
-    "freshness",
-    "technical",
+    "freshness",  # Researcher: freshness/accuracy
+    "technical",  # Researcher: technical extractability
     "media",
     "genre_mismatch",
     "intent_mismatch",
@@ -49,6 +49,21 @@ GapType = Literal[
     "metadata",
     "query",
 ]
+
+# Researcher canonical taxonomy (page readiness) — display labels for gap_type
+RESEARCHER_GAP_TAXONOMY: tuple[tuple[str, str], ...] = (
+    ("structure", "structure"),
+    ("qa_coverage", "on-page question coverage"),
+    ("evidence", "evidence"),
+    ("entity", "entity/identity"),
+    ("format", "format"),
+    ("freshness", "freshness/accuracy"),
+    ("technical", "technical extractability"),
+    ("media", "media"),
+    ("genre_mismatch", "genre mismatch"),
+)
+
+RESEARCHER_TAXONOMY_TYPES: frozenset[str] = frozenset(t for t, _ in RESEARCHER_GAP_TAXONOMY)
 
 GapSeverity = Literal["critical", "high", "medium", "low", "info"]
 ChangeAction = Literal["retain", "rewrite", "expand", "remove", "add"]
@@ -177,6 +192,7 @@ class ContentGap:
     confidence: float = 0.0
     provenance: ContentProvenance = "derived"
     page_coverage: CoverageStatus | None = None
+    taxonomy_label: str | None = None  # Researcher display label when applicable
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -194,6 +210,8 @@ class ContentGapReport:
     coverage_summary: dict[str, int] = field(default_factory=dict)
     readiness_gaps: list[str] = field(default_factory=list)
     queryset_gaps: list[str] = field(default_factory=list)
+    # Researcher taxonomy catalog: {taxonomy_label: [gap_ids]}
+    gap_catalog_by_taxonomy: dict[str, list[str]] = field(default_factory=dict)
     anti_pattern_caveats: list[str] = field(default_factory=list)
     method: str = "deterministic_gap_v1"
     warnings: list[str] = field(default_factory=list)
@@ -208,10 +226,14 @@ class ContentGapReport:
             "coverage_summary": dict(self.coverage_summary),
             "readiness_gaps": list(self.readiness_gaps),
             "queryset_gaps": list(self.queryset_gaps),
+            "gap_catalog_by_taxonomy": dict(self.gap_catalog_by_taxonomy),
             "anti_pattern_caveats": list(self.anti_pattern_caveats),
             "method": self.method,
             "warnings": list(self.warnings),
             "gap_count": len(self.gaps),
+            # Honesty markers — never fold into visibility/health
+            "coverage_is_not_ai_visibility": True,
+            "coverage_is_not_health_v1": True,
         }
 
 
@@ -242,13 +264,32 @@ class OutlineSection:
 
 @dataclass
 class ContentOptimizationBrief:
-    """opt-brief-v1 — deterministic brief (zero LLM)."""
+    """opt-brief-v1 — deterministic brief (zero LLM).
+
+    Researcher section order:
+    Scope+versions → Exec → Answerability → Gap catalog → Query×content matrix
+    → Work queue → Caveats → Anti-patterns
+    """
 
     schema_version: str = BRIEF_VERSION
     page_url: str = ""
+    # Explicit ordered section keys (Researcher brief structure)
+    section_order: list[str] = field(
+        default_factory=lambda: [
+            "scope",
+            "executive_summary",
+            "answerability",
+            "gap_catalog",
+            "query_content_matrix",
+            "work_queue",
+            "caveats",
+            "anti_patterns",
+        ]
+    )
     scope: dict[str, Any] = field(default_factory=dict)
     executive_summary: str = ""
     answerability: dict[str, Any] = field(default_factory=dict)
+    gap_catalog: dict[str, list[str]] = field(default_factory=dict)
     gap_catalog_ids: list[str] = field(default_factory=list)
     query_content_matrix: list[dict[str, Any]] = field(default_factory=list)
     work_queue: list[ContentChange] = field(default_factory=list)
@@ -265,7 +306,9 @@ class ContentOptimizationBrief:
     faq_suggestions: list[dict[str, str]] = field(default_factory=list)
     schema_suggestions: list[str] = field(default_factory=list)
     internal_link_suggestions: list[dict[str, str]] = field(default_factory=list)
+    genre_format_guidance: list[str] = field(default_factory=list)
     aeo_writing_requirements: list[str] = field(default_factory=list)
+    do_principles: list[str] = field(default_factory=list)
     caveats: list[str] = field(default_factory=list)
     anti_patterns: list[str] = field(default_factory=list)
     input_citations: dict[str, Any] = field(default_factory=dict)
@@ -273,15 +316,20 @@ class ContentOptimizationBrief:
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        # Emit Researcher section order first, then supporting fields
+        ordered: dict[str, Any] = {
             "schema_version": self.schema_version,
             "page_url": self.page_url,
+            "section_order": list(self.section_order),
             "scope": dict(self.scope),
             "executive_summary": self.executive_summary,
             "answerability": dict(self.answerability),
+            "gap_catalog": dict(self.gap_catalog),
             "gap_catalog_ids": list(self.gap_catalog_ids),
             "query_content_matrix": list(self.query_content_matrix),
             "work_queue": [w.to_dict() for w in self.work_queue],
+            "caveats": list(self.caveats),
+            "anti_patterns": list(self.anti_patterns),
             "edit_ops": [e.to_dict() for e in self.edit_ops],
             "proposed_title": self.proposed_title,
             "proposed_meta_description": self.proposed_meta_description,
@@ -295,13 +343,14 @@ class ContentOptimizationBrief:
             "faq_suggestions": list(self.faq_suggestions),
             "schema_suggestions": list(self.schema_suggestions),
             "internal_link_suggestions": list(self.internal_link_suggestions),
+            "genre_format_guidance": list(self.genre_format_guidance),
+            "do_principles": list(self.do_principles),
             "aeo_writing_requirements": list(self.aeo_writing_requirements),
-            "caveats": list(self.caveats),
-            "anti_patterns": list(self.anti_patterns),
             "input_citations": dict(self.input_citations),
             "method": self.method,
             "warnings": list(self.warnings),
         }
+        return ordered
 
 
 @dataclass

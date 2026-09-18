@@ -610,3 +610,73 @@ def test_d1_coverage_by_query_field_name():
     d = report.to_dict()
     assert "coverage_by_query" in d
     assert "page_coverage" in d["coverage_by_query"][0]
+
+
+def test_researcher_taxonomy_and_brief_structure():
+    """Researcher brief: taxonomy catalog + section order; coverage ≠ visibility/health."""
+    from aeo_mvp.content.models import RESEARCHER_GAP_TAXONOMY
+
+    result = run_content_optimization(
+        html=_html("saas_product.html"),
+        url="https://acme.example/",
+        queryset=_queryset(
+            ("q1", "AcmeFlow vs Jira", "comparison", "sprint"),
+            ("q2", "quantum knitting", "informational", None),
+        ),
+        site_profile={"site_genre": {"value": "saas_product", "omitted": False}},
+        generate_draft=False,
+    )
+    report = result.gap_report
+    labels = [label for _, label in RESEARCHER_GAP_TAXONOMY]
+    assert report.gap_catalog_by_taxonomy
+    for label in labels:
+        assert label in report.gap_catalog_by_taxonomy
+    d = report.to_dict()
+    assert d["coverage_is_not_ai_visibility"] is True
+    assert d["coverage_is_not_health_v1"] is True
+
+    brief = result.brief
+    assert brief.section_order[:8] == [
+        "scope",
+        "executive_summary",
+        "answerability",
+        "gap_catalog",
+        "query_content_matrix",
+        "work_queue",
+        "caveats",
+        "anti_patterns",
+    ]
+    bd = brief.to_dict()
+    keys = list(bd.keys())
+    assert keys.index("scope") < keys.index("executive_summary")
+    assert keys.index("executive_summary") < keys.index("answerability")
+    assert keys.index("answerability") < keys.index("gap_catalog")
+    assert keys.index("gap_catalog") < keys.index("query_content_matrix")
+    assert keys.index("query_content_matrix") < keys.index("work_queue")
+    assert keys.index("work_queue") < keys.index("caveats")
+    assert keys.index("caveats") < keys.index("anti_patterns")
+    assert "answer_first_passages" in brief.do_principles
+    assert "guaranteed_inclusion" in brief.anti_patterns
+    assert brief.scope["page_vs_queryset"]["coverage_is_not_ai_visibility"] is True
+    assert any("SaaS" in g or "compare" in g.lower() for g in brief.genre_format_guidance)
+    for row in brief.query_content_matrix:
+        assert row.get("not_ai_visibility") is True
+        assert row.get("not_health_v1") is True
+
+
+def test_genre_lean_same_taxonomy_docs_ecommerce():
+    docs = run_content_optimization(
+        html=_html("docs_site.html"),
+        url="https://docs.example/",
+        site_profile={"site_genre": {"value": "documentation", "omitted": False}},
+    )
+    assert any("def" in g.lower() or "step" in g.lower() for g in docs.brief.genre_format_guidance)
+    ecom = run_content_optimization(
+        html=_html("ecommerce.html"),
+        url="https://shop.example/",
+        site_profile={"site_genre": {"value": "ecommerce", "omitted": False}},
+    )
+    assert any("spec" in g.lower() or "PDP" in g for g in ecom.brief.genre_format_guidance)
+    assert set(docs.gap_report.gap_catalog_by_taxonomy) == set(
+        ecom.gap_report.gap_catalog_by_taxonomy
+    )

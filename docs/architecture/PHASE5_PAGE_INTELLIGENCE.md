@@ -39,15 +39,35 @@ Not a generic AI writer. Not CMS / git publish. Not an opaque content AEO score.
 
 ## 4. Gap taxonomy
 
+**Researcher page-readiness taxonomy** (same across genres):
+
+structure · on-page question coverage · evidence · entity/identity · format · freshness/accuracy · technical extractability · media · genre mismatch
+
 **Kinds (Optimizer):** missing_answer · thin_passage · wrong_intent · missing_faq · missing_steps · entity_unclear · outdated_claim · unstructured · unsupported_claim  
 
-**Types (page taxonomy / D2):** structure · qa_coverage · evidence · entity · format · freshness · technical · media · genre_mismatch · intent_mismatch · false_coverage_nav · metadata · query  
+**Types (code):** structure · qa_coverage · evidence · entity · format · freshness · technical · media · genre_mismatch · intent_mismatch · false_coverage_nav · metadata · query  
 
-Report separates `readiness_gaps` vs `queryset_gaps`. Anti-pattern caveats required.
+Report separates `readiness_gaps` vs `queryset_gaps` and emits `gap_catalog_by_taxonomy`.  
+`coverage_by_query.page_coverage` is **never** AI visibility or health.
+
+### Do / Anti-patterns
+
+**Do:** answer-first passages; people-first; real citations only when observed; genre-gated formats; evidence-linked recs; one strong unit per important probe.
+
+**Anti-patterns:** keyword stuffing; fake citations; coverage≠visibility; llms.txt silver bullets; guaranteed inclusion; thin pages per query; folding page score into SOV/health.
+
+### Genre lean (same taxonomy)
+
+| Genre | Lean formats |
+| --- | --- |
+| SaaS | compare / pricing / HowTo |
+| Docs | defs / steps |
+| Blog | tutorials |
+| Ecommerce | specs / PDP |
 
 ## 5. Brief structure
 
-Scope+versions → Exec → Answerability → Gap catalog → Query×content matrix → Work queue / edit_ops (retain\|rewrite\|expand\|remove\|add) → Caveats → Anti-patterns.
+Scope+versions → Exec → Answerability → Gap catalog → Query×content matrix → Work queue → Caveats → Anti-patterns.
 
 ## 6. Draft
 

@@ -8,6 +8,7 @@ from typing import Any, Iterable
 
 from aeo_mvp.content.models import (
     GAP_VERSION,
+    RESEARCHER_GAP_TAXONOMY,
     ContentGap,
     ContentGapReport,
     CoverageStatus,
@@ -30,6 +31,8 @@ _STOP = frozenset(
     }
 )
 
+_TAXONOMY_LABEL = dict(RESEARCHER_GAP_TAXONOMY)
+
 ANTI_PATTERN_CAVEATS = [
     "page_coverage_is_not_ai_visibility",
     "page_coverage_is_not_health_v1",
@@ -39,8 +42,17 @@ ANTI_PATTERN_CAVEATS = [
     "no_llms_txt_silver_bullet",
     "no_opaque_content_aeo_score",
     "no_thin_page_farms_per_query",
+    "no_folding_page_score_into_sov",
     "cite_miss_requires_visibility_observations",
 ]
+
+# Genre → expected format cues (same taxonomy; lean formats differ)
+_GENRE_FORMAT_CUES: dict[str, tuple[str, ...]] = {
+    "saas_product": ("pricing", "compare", "vs", "howto", "how to", "trial", "plan"),
+    "documentation": ("definition", "step", "install", "reference", "api"),
+    "personal_tech_blog": ("tutorial", "guide", "how to", "notes"),
+    "ecommerce": ("spec", "specs", "buy", "cart", "product", "price"),
+}
 
 
 def _tokens(text: str | None) -> set[str]:
@@ -260,6 +272,39 @@ def summarize_coverage(rows: Iterable[QueryCoverageRow]) -> dict[str, int]:
 def _gap_id(kind: str, *parts: str) -> str:
     h = hashlib.sha256("|".join([kind, *parts]).encode()).hexdigest()[:10]
     return f"gap_{kind}_{h}"
+
+
+def _taxonomy_label(gap_type: GapType) -> str | None:
+    return _TAXONOMY_LABEL.get(gap_type)
+
+
+def _make_gap(
+    *,
+    id: str,
+    kind: GapKind,
+    gap_type: GapType,
+    severity: GapSeverity,
+    explanation: str,
+    evidence: list[dict[str, Any]],
+    action: str,
+    confidence: float,
+    query_ids: list[str] | None = None,
+    page_coverage: CoverageStatus | None = None,
+) -> ContentGap:
+    return ContentGap(
+        id=id,
+        kind=kind,
+        gap_type=gap_type,
+        severity=severity,
+        query_ids=list(query_ids or []),
+        explanation=explanation,
+        evidence=evidence,
+        action=action,
+        confidence=confidence,
+        provenance="derived",
+        page_coverage=page_coverage,
+        taxonomy_label=_taxonomy_label(gap_type),
+    )
 
 
 def _sev_rank(s: GapSeverity) -> int:
@@ -625,9 +670,98 @@ def build_content_gap_report(
                 action="Wrap primary content in <main> for clearer extraction.",
                 confidence=0.42,
                 provenance="derived",
+                taxonomy_label=_taxonomy_label("technical"),
             )
         )
         readiness_ids.append(gid)
+
+    # --- freshness / accuracy (Researcher) ---
+    # Heuristic: year tokens in title/meta that look stale relative to none — flag
+    # only when page asserts a year and has commercial/outdated cue without update signal.
+    year_hits = re.findall(r"\b(20[0-1]\d)\b", blob)
+    if year_hits and not re.search(r"\b(updated|as of|revised|202[4-9]|203\d)\b", blob):
+        gid = _gap_id("freshness", "stale_year")
+        gaps.append(
+            _make_gap(
+                id=gid,
+                kind="outdated_claim",
+                gap_type="freshness",
+                severity="low",
+                explanation=f"Page references year(s) {sorted(set(year_hits))} without an update cue",
+                evidence=[
+                    {
+                        "evidence_class": "article_body",
+                        "provenance": "derived",
+                        "snippet": f"years={sorted(set(year_hits))}",
+                    }
+                ],
+                action="Verify claims remain accurate; add an observed 'updated' date if true.",
+                confidence=0.35,
+            )
+        )
+        readiness_ids.append(gid)
+
+    # --- media (Researcher) ---
+    # Thin media eligibility: ecommerce/docs with zero images/figures in body_signals
+    media_count = int(page.body_signals.get("image_count") or 0)
+    genre = None
+    gf = profile.get("site_genre") or {}
+    if isinstance(gf, dict):
+        genre = gf.get("value")
+    elif isinstance(gf, str):
+        genre = gf
+    if genre in ("ecommerce", "documentation", "saas_product") and media_count == 0 and page.word_count > 40:
+        gid = _gap_id("media", "missing")
+        gaps.append(
+            _make_gap(
+                id=gid,
+                kind="thin_passage",
+                gap_type="media",
+                severity="info",
+                explanation="No observed images/figures — weaker multimodal extractability for this genre",
+                evidence=[
+                    {
+                        "evidence_class": "article_body",
+                        "provenance": "derived",
+                        "snippet": f"image_count={media_count};genre={genre}",
+                    }
+                ],
+                action="Add descriptive figures/screenshots only when they clarify the answer unit.",
+                confidence=0.3,
+            )
+        )
+        readiness_ids.append(gid)
+
+    # --- genre mismatch (Researcher) — same taxonomy; lean formats differ ---
+    if genre and genre in _GENRE_FORMAT_CUES:
+        cues = _GENRE_FORMAT_CUES[genre]
+        if not any(c in blob for c in cues) and page.word_count > 30:
+            gid = _gap_id("genre_mismatch", str(genre))
+            gaps.append(
+                _make_gap(
+                    id=gid,
+                    kind="wrong_intent",
+                    gap_type="genre_mismatch",
+                    severity="low",
+                    explanation=(
+                        f"Site genre '{genre}' expects format cues {list(cues)[:4]}… "
+                        "not observed on this page"
+                    ),
+                    evidence=[
+                        {
+                            "evidence_class": "metadata",
+                            "provenance": "derived",
+                            "snippet": f"genre={genre};cues_missing=true",
+                        }
+                    ],
+                    action=(
+                        "Add genre-appropriate answer formats (SaaS: compare/pricing/HowTo; "
+                        "Docs: defs/steps; Blog: tutorials; Ecommerce: specs/PDP) — same taxonomy."
+                    ),
+                    confidence=0.38,
+                )
+            )
+            readiness_ids.append(gid)
 
     # --- false coverage nav: only nav/chrome tokens, thin body ---
     if page.word_count < 80 and page.internal_links and not page.h1:
@@ -653,6 +787,11 @@ def build_content_gap_report(
         )
         readiness_ids.append(gid)
 
+    # Stamp Researcher taxonomy labels on readiness-taxonomy gaps
+    for g in gaps:
+        if g.taxonomy_label is None:
+            g.taxonomy_label = _taxonomy_label(g.gap_type)
+
     # Never invent cite_miss gaps without observations
     if not visibility_observations:
         for row in coverage_rows:
@@ -661,6 +800,17 @@ def build_content_gap_report(
             )
 
     gaps.sort(key=lambda g: (_sev_rank(g.severity), _type_rank(g.gap_type), g.id))
+
+    # Researcher gap catalog keyed by display label (page readiness taxonomy)
+    catalog: dict[str, list[str]] = {label: [] for _, label in RESEARCHER_GAP_TAXONOMY}
+    for g in gaps:
+        label = g.taxonomy_label or g.gap_type
+        if label not in catalog and g.gap_type in _TAXONOMY_LABEL:
+            label = _TAXONOMY_LABEL[g.gap_type]
+        if label in catalog:
+            catalog[label].append(g.id)
+        else:
+            catalog.setdefault(label, []).append(g.id)
 
     return ContentGapReport(
         schema_version=GAP_VERSION,
@@ -671,6 +821,7 @@ def build_content_gap_report(
         coverage_summary=summary,
         readiness_gaps=sorted(set(readiness_ids)),
         queryset_gaps=sorted(set(queryset_ids)),
+        gap_catalog_by_taxonomy=catalog,
         anti_pattern_caveats=list(ANTI_PATTERN_CAVEATS),
         warnings=[],
     )
