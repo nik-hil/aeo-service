@@ -1,0 +1,3 @@
+recursive-include src/aeo_mvp/demo/fixtures *
+include README.md
+include .env.example
