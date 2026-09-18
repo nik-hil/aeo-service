@@ -2,7 +2,7 @@
 
 Modules: ``page_intel``, ``gaps``, ``brief``, ``draft``.
 
-Contracts:
+Contracts (AUTHORITATIVE):
 - ``page-intel-v1``
 - ``content-gap-v1``
 - ``opt-brief-v1``
@@ -29,6 +29,7 @@ from aeo_mvp.content.models import (
     DRAFT_VERSION,
     GAP_VERSION,
     PAGE_INTEL_VERSION,
+    BriefAction,
     ChangeAction,
     ClaimSupport,
     ContentChange,
@@ -37,11 +38,16 @@ from aeo_mvp.content.models import (
     ContentOptimizationBrief,
     ContentProvenance,
     CoverageStatus,
+    DraftStatus,
+    EditAction,
+    EditOp,
     GapKind,
     GapType,
     OptimizedContentDraft,
+    PageCoverage,
     PageIntelligence,
     UnsupportedClaim,
+    UnsupportedClaimWarning,
 )
 from aeo_mvp.content.page_intel import extract_page_intelligence
 from aeo_mvp.content.pipeline import run_content_optimization
@@ -52,19 +58,25 @@ __all__ = [
     "BRIEF_VERSION",
     "DRAFT_VERSION",
     "CONTENT_OPTIMIZATION_METHODOLOGY",
+    "PageCoverage",
     "CoverageStatus",
     "GapKind",
     "GapType",
+    "BriefAction",
+    "EditAction",
     "ChangeAction",
     "ClaimSupport",
+    "DraftStatus",
     "ContentProvenance",
     "PageIntelligence",
     "ContentGap",
     "ContentGapReport",
     "ContentChange",
+    "EditOp",
     "ContentOptimizationBrief",
     "OptimizedContentDraft",
     "UnsupportedClaim",
+    "UnsupportedClaimWarning",
     "extract_page_intelligence",
     "page_coverage_status",
     "build_content_gap_report",

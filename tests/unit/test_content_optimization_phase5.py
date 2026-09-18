@@ -282,7 +282,10 @@ def test_o_empty_page_fixture_pipeline():
         html=_html("empty_page.html"),
         url="https://empty.example/",
     )
-    assert any(g.gap_type == "structure" for g in result.gap_report.gaps)
+    assert any(
+        g.gap_type in ("structure_gap", "structure", "thin_coverage", "missing_page")
+        for g in result.gap_report.gaps
+    )
 
 
 def test_p_deterministic_same_inputs():
@@ -931,13 +934,17 @@ def test_d1_d7_alignment_deltas():
     # D2: extended gap_type taxonomy includes page readiness + mismatch types
     types = set(get_args(GapType))
     for required in (
-        "structure",
-        "format",
-        "evidence",
+        "structure_gap",
+        "format_gap",
+        "evidence_gap",
         "intent_mismatch",
         "false_coverage_nav",
-        "qa_coverage",
+        "question_coverage_gap",
         "genre_mismatch",
+        "cite_miss",
+        "orphan_strength",
+        "schema_gap",
+        "missing_page",
     ):
         assert required in types
     assert any(g.gap_type in types for g in report.gaps)
@@ -947,13 +954,19 @@ def test_d1_d7_alignment_deltas():
     assert allowed == {"retain", "rewrite", "expand", "remove", "add"}
     assert brief.edit_ops
     assert {e.action for e in brief.edit_ops} <= allowed
-    assert not any("farm" in (e.reason or "").lower() for e in brief.edit_ops)
+    assert not any(
+        "farm"
+        in ((getattr(e, "instruction", None) or getattr(e, "reason", None) or "")).lower()
+        for e in brief.edit_ops
+    )
 
     # D4: unsupported_claims; generated never observed; paid=false
     assert draft.unsupported_claims
     assert draft.content_provenance == "generated"
     assert draft.content_provenance != "observed"
     assert draft.paid_llm is False
+    assert draft.paid is False
+    assert draft.status in ("generated", "skipped_paid_false", "failed")
 
     # D5: readiness vs queryset split + anti-pattern caveats
     assert isinstance(report.readiness_gaps, list)
@@ -963,7 +976,9 @@ def test_d1_d7_alignment_deltas():
 
     # Job options defaults (AUTHORITATIVE sheet)
     opts = JobOptions()
-    assert opts.content_optimization is False
+    assert opts.content_optimization is True
+    assert opts.content_draft is False
+    assert opts.content_draft_provider is None
     assert opts.generate_draft is False
     assert opts.draft_paid is False
 
@@ -972,4 +987,20 @@ def test_d1_d7_alignment_deltas():
     assert GAP_VERSION == "content-gap-v1"
     assert BRIEF_VERSION == "opt-brief-v1"
     assert DRAFT_VERSION == "opt-draft-v1"
+
+    # AUTHORITATIVE report keys
+    wire = result.to_dict()
+    assert "page_intelligence" in wire
+    assert "content_gaps" in wire and isinstance(wire["content_gaps"], list)
+    assert "optimization_briefs" in wire and isinstance(wire["optimization_briefs"], list)
+    assert "content_drafts" in wire and isinstance(wire["content_drafts"], list)
+    assert wire["content_gaps"][0]["coverage_summary"]["queries"] >= 0
+    assert wire["page_intelligence"]["page_intel_version"] == PAGE_INTEL_VERSION
+    assert wire["optimization_briefs"][0]["brief_version"] == BRIEF_VERSION
+    assert wire["content_drafts"][0]["draft_version"] == DRAFT_VERSION
+    assert wire["content_drafts"][0]["generator"] in (
+        "null",
+        "deterministic_skeleton",
+        "deterministic_skeleton_v1",
+    )
 

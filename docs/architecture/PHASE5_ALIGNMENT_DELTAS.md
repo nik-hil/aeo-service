@@ -2,7 +2,7 @@
 
 **Status:** Accepted into Architect memo §8 + **D034**.  
 **Package lock unchanged:** `aeo_mvp.content` · `page-intel-v1` · `content-gap-v1` · `opt-brief-v1` · `opt-draft-v1`.  
-**Authoritative sheet:** [`PHASE5_RECONCILED_CONTRACTS.md`](./PHASE5_RECONCILED_CONTRACTS.md)
+**Authoritative sheet:** [`PHASE5_RECONCILED_CONTRACTS.md`](./PHASE5_RECONCILED_CONTRACTS.md) (prefer over earlier partial deltas).
 
 ## Checklist
 

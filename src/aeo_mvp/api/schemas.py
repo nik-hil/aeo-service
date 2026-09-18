@@ -33,8 +33,11 @@ class JobOptions(BaseModel):
     semantic_dedup: Literal["lexical", "simhash", "simhash_v1"] | None = "lexical"
     mmr_lambda: float | None = None
     max_per_topic: int | None = None
-    # Phase 5 content optimization (Architect / Optimizer)
-    content_optimization: bool = False
+    # Phase 5 content optimization (AUTHORITATIVE reconciled sheet)
+    content_optimization: bool = True
+    content_draft: bool = False
+    content_draft_provider: str | None = None
+    # Aliases
     generate_draft: bool = False
     draft_paid: bool = False
 
@@ -126,9 +129,11 @@ class ContentOptimizationRequest(BaseModel):
     queryset: dict[str, Any] | list[Any] | None = None
     site_profile: dict[str, Any] | None = None
     config: dict[str, Any] | None = None
-    # Job-option aliases (Architect / Optimizer)
+    # Job-option aliases (AUTHORITATIVE sheet)
     content_optimization: bool = True
-    generate_draft: bool = False
+    content_draft: bool = False
+    content_draft_provider: str | None = None
+    generate_draft: bool = False  # alias → content_draft
     draft_paid: bool = False
     paid_llm_opt_in: bool = False  # alias → draft_paid
 
@@ -147,8 +152,12 @@ class ContentOptimizationResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     page_intelligence: dict[str, Any]
-    gap_report: dict[str, Any]
-    brief: dict[str, Any]
-    draft: dict[str, Any]
+    content_gaps: list[dict[str, Any]] | None = None
+    optimization_briefs: list[dict[str, Any]] | None = None
+    content_drafts: list[dict[str, Any]] | None = None
+    # Compat singular aliases
+    gap_report: dict[str, Any] | None = None
+    brief: dict[str, Any] | None = None
+    draft: dict[str, Any] | None = None
     paid_retrieval: bool = False
     paid_llm: bool = False

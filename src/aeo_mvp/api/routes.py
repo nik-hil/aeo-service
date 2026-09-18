@@ -253,10 +253,13 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
 
         settings = get_settings()
         draft_paid = bool(body.draft_paid or body.paid_llm_opt_in)
-        generate_draft = bool(body.generate_draft)
+        content_draft = bool(body.content_draft or body.generate_draft)
+        generate_draft = content_draft
         api_key = settings.openai_api_key if draft_paid else None
         cfg = dict(body.config or {})
         cfg["generate_draft"] = generate_draft
+        cfg["content_draft"] = content_draft
+        cfg["content_draft_provider"] = body.content_draft_provider
         cfg["draft_paid"] = draft_paid
 
         return run_from_resolved(

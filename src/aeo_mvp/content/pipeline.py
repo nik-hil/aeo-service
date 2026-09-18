@@ -53,6 +53,8 @@ def run_content_optimization(
     generator = resolve_draft_generator(
         generate_draft=bool(cfg.get("generate_draft", False)),
         draft_paid=bool(cfg.get("draft_paid", False)),
+        content_draft=cfg.get("content_draft"),
+        content_draft_provider=cfg.get("content_draft_provider"),
         api_key=llm_api_key,
         model=cfg.get("llm_model"),
     )

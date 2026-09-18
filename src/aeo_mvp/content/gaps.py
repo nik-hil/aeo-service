@@ -17,6 +17,8 @@ from aeo_mvp.content.models import (
     GapType,
     PageIntelligence,
     QueryCoverageRow,
+    normalize_gap_type,
+    normalize_severity,
 )
 from aeo_mvp.queries.evidence import normalize_provenance
 
@@ -307,25 +309,33 @@ def _make_gap(
     )
 
 
-def _sev_rank(s: GapSeverity) -> int:
-    return {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}[s]
+def _sev_rank(s: GapSeverity | str) -> int:
+    s = normalize_severity(str(s))
+    return {"high": 0, "medium": 1, "low": 2}.get(s, 9)
 
 
-def _type_rank(t: GapType) -> int:
+def _type_rank(t: GapType | str) -> int:
+    from aeo_mvp.content.models import normalize_gap_type
+
+    t = normalize_gap_type(str(t))
     order = [
-        "structure",
-        "qa_coverage",
-        "evidence",
-        "entity",
-        "format",
-        "freshness",
-        "technical",
-        "media",
+        "missing_page",
+        "thin_coverage",
+        "no_answer_block",
+        "entity_mismatch",
+        "schema_gap",
+        "cite_miss",
+        "structure_gap",
+        "question_coverage_gap",
+        "evidence_gap",
+        "format_gap",
+        "freshness_gap",
+        "technical_extractability_gap",
         "genre_mismatch",
         "intent_mismatch",
+        "unsupported_claim",
+        "orphan_strength",
         "false_coverage_nav",
-        "metadata",
-        "query",
     ]
     return order.index(t) if t in order else 99
 
@@ -792,8 +802,41 @@ def build_content_gap_report(
         if g.taxonomy_label is None:
             g.taxonomy_label = _taxonomy_label(g.gap_type)
 
-    # Never invent cite_miss gaps without observations
-    if not visibility_observations:
+    # Never invent cite_miss gaps without observations; emit cite_miss only with obs
+    if visibility_observations:
+        for row in coverage_rows:
+            vis = row.visibility_enrichment or row.visibility or {}
+            if vis.get("cite_miss"):
+                gid = _gap_id("cite_miss", row.query_id)
+                gaps.append(
+                    ContentGap(
+                        id=gid,
+                        gap_id=gid,
+                        query_id=row.query_id,
+                        intent=row.intent or "informational",
+                        topic=row.topic,
+                        kind="missing_answer",
+                        gap_type="cite_miss",
+                        severity="medium",
+                        explanation="Mentioned or probed but not cited in visibility observations",
+                        rationale="Mentioned or probed but not cited in visibility observations",
+                        evidence=[
+                            {
+                                "evidence_class": "visibility_observation",
+                                "provenance": "observed",
+                                "snippet": str(vis)[:240],
+                            }
+                        ],
+                        action="Improve cite-worthy answer blocks; do not invent citations.",
+                        confidence=0.45,
+                        page_coverage=row.page_coverage,
+                        impact_class="experiment_informed",
+                        best_page_url=page.url or None,
+                        page_id=page.page_id or None,
+                    )
+                )
+                queryset_ids.append(gid)
+    else:
         for row in coverage_rows:
             assert row.visibility_enrichment is None or "cite_miss" not in (
                 row.visibility_enrichment or {}
@@ -812,13 +855,36 @@ def build_content_gap_report(
         else:
             catalog.setdefault(label, []).append(g.id)
 
+    qs_id = ""
+    if isinstance(queryset, dict):
+        qs_id = str(queryset.get("query_set_id") or "")
+    elif hasattr(queryset, "query_set_id"):
+        qs_id = str(getattr(queryset, "query_set_id") or "")
+
+    covered = sum(
+        1 for r in coverage_rows if r.page_coverage in ("full", "partial")
+    )
+    n_queries = len(coverage_rows)
+    architect_summary = {
+        "queries": n_queries,
+        "covered": covered,
+        "gapped": max(0, n_queries - covered),
+        **dict(summary),
+    }
+    fingerprint = hashlib.sha1(
+        f"{qs_id}|{qs_version}|{page.url}|{len(gaps)}".encode()
+    ).hexdigest()[:16]
+
     return ContentGapReport(
+        gap_report_version=GAP_VERSION,
         schema_version=GAP_VERSION,
-        page_url=page.url,
+        query_set_id=qs_id,
         query_set_version=qs_version,
+        queryset_fingerprint=fingerprint,
+        page_url=page.url,
         gaps=gaps,
         coverage_by_query=coverage_rows,
-        coverage_summary=summary,
+        coverage_summary=architect_summary,
         readiness_gaps=sorted(set(readiness_ids)),
         queryset_gaps=sorted(set(queryset_ids)),
         gap_catalog_by_taxonomy=catalog,

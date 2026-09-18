@@ -248,10 +248,14 @@ def extract_page_intelligence(
     warnings: list[str] = []
     if not html or not str(html).strip():
         return PageIntelligence(
+            page_intel_version=PAGE_INTEL_VERSION,
             schema_version=PAGE_INTEL_VERSION,
             url=url,
             hostname=hostname,
             title=title_hint,
+            method="deterministic_page_intel_v1+page-intel-v1",
+            limits=["thin_copy", "no_answer_first"],
+            content_hash=hashlib.sha256(b"").hexdigest()[:16],
             warnings=["empty_page_html"],
             body_signals={"empty": True},
             faq_coverage={"has_faq_schema": False, "question_headings": [], "question_count": 0},
@@ -363,17 +367,66 @@ def extract_page_intelligence(
     )
     signals.sort(key=lambda s: (s.key, str(s.provenance)))
 
+    content_hash = hashlib.sha256(
+        (html or "").encode("utf-8", errors="replace")
+    ).hexdigest()[:16]
+    answer_blocks = [u.to_answer_block() for u in units]
+    heading_outline = [h.text for h in headings]
+    limits: list[str] = []
+    if wc < 80:
+        limits.append("thin_copy")
+    if not answerability.get("answer_first_heuristic"):
+        limits.append("no_answer_first")
+    if body_signals.get("paragraph_count", 0) == 0 and body_signals.get("has_main") is False:
+        limits.append("js_heavy_heuristic")
+    # heading skip: large level jumps
+    levels = [h.level for h in headings]
+    if any(abs(a - b) > 1 for a, b in zip(levels, levels[1:])):
+        limits.append("heading_skip")
+
+    content_type = "other"
+    type_set = {t.lower() for t in types}
+    if "faqpage" in type_set or faq.get("question_count", 0) >= 2:
+        content_type = "faq"
+    elif "techarticle" in type_set or "documentation" in " ".join(topics).lower():
+        content_type = "docs"
+    elif "article" in type_set or "blogposting" in type_set:
+        content_type = "article"
+    elif h1 and wc < 200 and links:
+        content_type = "landing"
+    elif "about" in (url or "").lower():
+        content_type = "about"
+
+    primary_topic = {
+        "value": topics[0] if topics else (h1 or title),
+        "confidence": 0.35 if topics else 0.2,
+        "provenance": "derived" if topics else "compatibility",
+        "evidence": [],
+    }
+
     return PageIntelligence(
+        page_intel_version=PAGE_INTEL_VERSION,
         schema_version=PAGE_INTEL_VERSION,
+        page_id="",
         url=url,
         hostname=hostname,
         title=title,
+        primary_topic=primary_topic,
+        entities=entities,
+        content_type=content_type,  # type: ignore[arg-type]
+        answer_blocks=answer_blocks,
+        heading_outline=heading_outline,
+        word_count=wc,
+        schema_types=list(types),
+        query_affinities=[],
+        limits=limits,
+        content_hash=content_hash,
+        method="deterministic_page_intel_v1+page-intel-v1",
         meta_description=meta_desc,
         h1=h1,
         headings=headings,
         body_signals=body_signals,
         topics=topics,
-        entities=entities,
         faq_coverage=faq,
         structured_data={
             "types": types,
@@ -388,7 +441,6 @@ def extract_page_intelligence(
         answer_units=units,
         internal_links=links,
         signals=signals,
-        word_count=wc,
         target_match_scope="hostname",
         warnings=warnings,
     )

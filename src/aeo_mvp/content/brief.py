@@ -11,9 +11,11 @@ from aeo_mvp.content.models import (
     GAP_VERSION,
     PAGE_INTEL_VERSION,
     RESEARCHER_GAP_TAXONOMY,
+    BriefAction,
     ContentChange,
     ContentGapReport,
     ContentOptimizationBrief,
+    EditOp,
     OutlineSection,
     PageIntelligence,
 )
@@ -380,8 +382,71 @@ def build_optimization_brief(
 
     gap_catalog = dict(gap_report.gap_catalog_by_taxonomy or {})
 
+    # Map primary BriefAction from dominant gaps (deterministic; no thin farms)
+    brief_action: BriefAction = "expand_section"
+    if any(g.gap_type == "schema_gap" for g in gap_report.gaps):
+        brief_action = "add_schema"
+    elif any(g.gap_type == "no_answer_block" for g in gap_report.gaps):
+        brief_action = (
+            "add_faq"
+            if any((g.kind or "") == "missing_faq" for g in gap_report.gaps)
+            else "add_howto"
+        )
+    elif any(g.gap_type == "entity_mismatch" for g in gap_report.gaps):
+        brief_action = "clarify_entity"
+    elif page.word_count < 40 and n_uncovered > 2:
+        brief_action = "create_page"
+
+    sheet_edit_ops: list[EditOp] = [c.to_edit_op(idx=i) for i, c in enumerate(edit_ops)]
+    section_ops = [
+        e for e in sheet_edit_ops if (e.target_locator or "").startswith("section:")
+    ]
+    other_ops = [
+        e for e in sheet_edit_ops if not (e.target_locator or "").startswith("section:")
+    ]
+    sheet_edit_ops = other_ops + section_ops[:6]
+
+    target_qids = sorted(
+        {
+            qid
+            for g in gap_report.gaps
+            for qid in (g.query_ids or ([g.query_id] if g.query_id else []))
+        }
+    )
+    answer_shape = None
+    if brief_action == "add_faq":
+        answer_shape = "faq"
+    elif brief_action == "add_howto":
+        answer_shape = "steps"
+    elif any(u.kind == "definition" for u in page.answer_units):
+        answer_shape = "definition"
+
+    import hashlib
+
+    brief_id = "brief_" + hashlib.sha1(
+        f"{page.url}|{qs_id}|{brief_action}|{n_gaps}".encode()
+    ).hexdigest()[:12]
+
     return ContentOptimizationBrief(
+        brief_version=BRIEF_VERSION,
         schema_version=BRIEF_VERSION,
+        brief_id=brief_id,
+        gap_ids=[g.gap_id or g.id for g in gap_report.gaps],
+        target_query_ids=target_qids,
+        action=brief_action,
+        target_url=page.url or None,
+        outline=[o.heading for o in outline],
+        must_include_entities=list(entities),
+        must_include_answer_shape=answer_shape,  # type: ignore[arg-type]
+        provenance_notes="derived from gap+page-intel; not a ranking promise",
+        priority=float(min(1.0, 0.2 + 0.1 * n_uncovered)),
+        edit_ops=sheet_edit_ops,
+        legacy_edit_ops=list(edit_ops),
+        success_criteria=[
+            "one_strong_answer_unit_per_important_probe",
+            "page_coverage_improved_without_visibility_claim",
+            "no_thin_page_farm_per_query",
+        ],
         page_url=page.url,
         scope={
             "methodology": CONTENT_OPTIMIZATION_METHODOLOGY,
@@ -395,6 +460,9 @@ def build_optimization_brief(
             "site_genre": genre,
             "generate_draft": bool(cfg.get("generate_draft", False)),
             "draft_paid": bool(cfg.get("draft_paid", False)),
+            "content_draft": bool(
+                cfg.get("content_draft", cfg.get("generate_draft", False))
+            ),
             "page_vs_queryset": {
                 "page_intelligence": "extractable_answer_units",
                 "queryset": "frozen_probes_x_page_coverage",
@@ -409,14 +477,13 @@ def build_optimization_brief(
             "answer_unit_kinds": sorted({u.kind for u in page.answer_units}),
         },
         gap_catalog=gap_catalog,
-        gap_catalog_ids=[g.id for g in gap_report.gaps],
+        gap_catalog_ids=[g.gap_id or g.id for g in gap_report.gaps],
         query_content_matrix=matrix,
         work_queue=work_queue,
-        edit_ops=edit_ops,
         proposed_title=title[:70],
         proposed_meta_description=meta[:160],
         proposed_h1=primary[:120],
-        outline=outline,
+        outline_sections=outline,
         retain=retain,
         improve=improve,
         add=add,
@@ -432,7 +499,8 @@ def build_optimization_brief(
         anti_patterns=list(ANTI_PATTERNS),
         input_citations={
             "page_intel_version": PAGE_INTEL_VERSION,
-            "gap_report_version": gap_report.schema_version,
+            "gap_report_version": gap_report.gap_report_version
+            or gap_report.schema_version,
             "query_set_version": gap_report.query_set_version,
             "query_set_id": qs_id,
             "page_url": page.url,
@@ -440,5 +508,6 @@ def build_optimization_brief(
             "site_profile_present": bool(site_profile),
             "researcher_taxonomy": [label for _, label in RESEARCHER_GAP_TAXONOMY],
         },
+        method="deterministic_brief_v1",
         warnings=[],
     )
