@@ -54,9 +54,25 @@ normalize_provenance(raw) → observed | derived | compatibility
 | observed + compatibility | FAIL |
 | derived-only / compatibility-only / missing | FAIL |
 
+## Phase 4.1.1 Evaluator gates (`query-set-quality-v1.1.1`)
+
+Verifier owns `VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18` (do not overwrite 4.1).
+
+| Gate | Assert | Blocks merge |
+| --- | --- | --- |
+| P1 | missing/unknown → compatibility (never silent observed) | yes |
+| P2 | no implicit observed (`setdefault` / stamp-to-observed banned in adapters) | yes |
+| P3 | QSQ-EVD ≥2 distinct observed only | yes |
+| P4 | generator preserves explicit; fills missing → compatibility | yes |
+| P5 | missing/unknown regression → EVD fail | yes |
+| P6 | arbitrary-site synthetic same rules | no |
+| P7 | freezes held | no |
+| P8 | no paid DO | yes |
+
 ## Out of scope
 
 - Phase 5
 - Paid DigitalOcean calls
 - Overwriting `VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.*`
   (Verifier creates `VERIFY-PHASE4.1.1-PROVENANCE-*`)
+- Bumping frozen `query-quality-v1` / `query-set-v3` (methodology patch id only)

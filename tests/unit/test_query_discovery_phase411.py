@@ -431,3 +431,388 @@ def test_no_unsafe_observed_promotion_in_generate_v2():
     ) is None
     # Positive: uses stamp / normalize path
     assert "stamp_evidence_dict" in text
+
+
+# =============================================================================
+# Evaluator Phase 4.1.1 — query-set-quality-v1.1.1 gates (P1–P8)
+# P1/P2/P3/P4/P5/P8 FAIL blocks merge. Does not claim full VERIFY.
+# =============================================================================
+
+
+_REPO = Path(__file__).resolve().parents[2]
+_QUERIES = _REPO / "src/aeo_mvp/queries"
+_FREEZE_PATHS = (
+    "src/aeo_mvp/security/ssrf.py",
+    "src/aeo_mvp/target_site.py",
+    "src/aeo_mvp/domains.py",
+    "src/aeo_mvp/scoring/health.py",
+    "src/aeo_mvp/visibility/digitalocean_web_search.py",
+)
+
+
+def _adapter_sources() -> dict[str, str]:
+    return {
+        p.name: p.read_text(encoding="utf-8")
+        for p in (
+            _QUERIES / "generate_v2.py",
+            _QUERIES / "generate.py",
+            _QUERIES / "evidence.py",
+        )
+    }
+
+
+def test_p1_normalize_missing_unknown_to_compatibility_never_observed():
+    """P1 (blocking): missing/unknown → compatibility; never silent observed."""
+    from aeo_mvp.queries.quality import QUERY_SET_QUALITY_METHODOLOGY
+
+    assert QUERY_SET_QUALITY_METHODOLOGY == "query-set-quality-v1.1.1"
+    for raw in (None, "", "unknown", "api_observation", "synthetic_demo", "estimate"):
+        assert normalize_provenance(raw) == "compatibility"
+        assert normalize_provenance(raw) != "observed"
+    rec = EvidenceRecord.from_dict({"evidence_class": "title_h1"})
+    assert rec is not None and rec.provenance == "compatibility"
+    assert stamp_evidence_dict({"evidence_class": "og_meta"})["provenance"] == (
+        "compatibility"
+    )
+
+
+def test_p2_no_implicit_observed_setdefault_or_stamp_to_observed():
+    """P2 (blocking): ban setdefault/stamp-to-observed in query adapters."""
+    banned = (
+        'setdefault("provenance", "observed")',
+        "setdefault('provenance', 'observed')",
+        'setdefault("provenance",\'observed\')',
+        '["provenance"] = "observed"',
+        "['provenance'] = 'observed'",
+    )
+    for name, text in _adapter_sources().items():
+        for pat in banned:
+            assert pat not in text, f"{name} contains banned pattern: {pat}"
+        # No branch that assigns observed when provenance missing/not-in
+        assert (
+            re.search(
+                r'if\s+.*provenance.*not in[\s\S]{0,120}'
+                r'\[["\']provenance["\']\]\s*=\s*["\']observed["\']',
+                text,
+            )
+            is None
+        ), f"{name}: implicit observed promotion branch"
+        assert "normalize_provenance" in text or "stamp_evidence_dict" in text
+
+
+def test_p3_qsq_evd_requires_two_distinct_observed_only():
+    """P3 (blocking): QSQ-EVD ≥2 distinct observed; derived/compat do not count."""
+    u = _saas_u()
+    assert (
+        _evd_status(
+            _cand(
+                text="What is distributed tracing in SignalWatch?",
+                evidence=[
+                    {"evidence_class": "title_h1", "provenance": "observed"},
+                    {"evidence_class": "article_body", "provenance": "observed"},
+                ],
+            ),
+            u,
+        )
+        == "pass"
+    )
+    for evidence in (
+        [
+            {"evidence_class": "title_h1", "provenance": "observed"},
+            {"evidence_class": "article_body", "provenance": "derived"},
+        ],
+        [
+            {"evidence_class": "title_h1", "provenance": "observed"},
+            {"evidence_class": "article_body", "provenance": "compatibility"},
+        ],
+        [
+            {"evidence_class": "title_h1", "provenance": "derived"},
+            {"evidence_class": "og_meta", "provenance": "derived"},
+        ],
+        [
+            {"evidence_class": "title_h1", "provenance": "observed"},
+            {"evidence_class": "title_h1", "provenance": "observed"},
+        ],
+    ):
+        q = _cand(text="What is distributed tracing in SignalWatch?", evidence=evidence)
+        assert _evd_status(q, u) == "fail"
+        assert len(observed_evidence_classes(q.source_evidence)) < 2
+
+
+def test_p4_generator_preserves_explicit_fills_missing_compatibility():
+    """P4 (blocking): preserve observed|derived|compatibility; missing → compatibility."""
+    u = SiteUnderstanding(
+        organization_brand="AcmeGarden",
+        topics=["Tomato pruning calendar", "Soil amendments for clay"],
+        site_genre="personal_tech_blog",
+        structured={
+            "primary_topics": {
+                "evidence": [
+                    {
+                        "evidence_class": "title_h1",
+                        "provenance": "observed",
+                        "snippet": "Tomato pruning",
+                    },
+                    {
+                        "evidence_class": "tags_series",
+                        "provenance": "derived",
+                        "snippet": "soil",
+                    },
+                    {"evidence_class": "article_body", "snippet": "clay"},  # missing
+                ]
+            },
+            "org_name": {
+                "evidence": [
+                    {
+                        "evidence_class": "og_meta",
+                        "provenance": "compatibility",
+                        "snippet": "AcmeGarden",
+                    }
+                ]
+            },
+        },
+        evidence_hash="phase411-p4",
+    )
+    classes = _evidence_classes_from_understanding(u)
+    by_snip = {
+        i.get("snippet"): i.get("provenance")
+        for items in classes.values()
+        for i in items
+        if isinstance(i, dict) and i.get("snippet")
+    }
+    assert by_snip.get("Tomato pruning") == "observed"
+    assert by_snip.get("soil") == "derived"
+    assert by_snip.get("clay") == "compatibility"
+    assert by_snip.get("AcmeGarden") == "compatibility"
+    assert "observed" not in {
+        by_snip.get("clay"),
+        by_snip.get("AcmeGarden"),
+        by_snip.get("soil"),
+    }
+
+    cands, _ = generate_candidates_v2(u)
+    for q in cands:
+        for ev in q.source_evidence:
+            if not isinstance(ev, dict):
+                continue
+            assert ev.get("provenance") in (
+                "observed",
+                "derived",
+                "compatibility",
+            )
+            if ev.get("snippet") == "clay":
+                assert ev["provenance"] == "compatibility"
+
+
+def test_p5_missing_unknown_regression_evd_fail():
+    """P5 (blocking): missing/unknown provenance on candidates → EVD fail."""
+    u = _saas_u()
+    missing = _cand(
+        text="What is distributed tracing in SignalWatch?",
+        evidence=[
+            {"evidence_class": "title_h1", "snippet": "x"},
+            {"evidence_class": "article_body", "snippet": "y"},
+        ],
+    )
+    assert _evd_status(missing, u) == "fail"
+    assert len(observed_evidence_classes(missing.source_evidence)) == 0
+
+    unknown = _cand(
+        text="What is distributed tracing in SignalWatch?",
+        evidence=[
+            {"evidence_class": "title_h1", "provenance": "bogus"},
+            {"evidence_class": "article_body", "provenance": "api_observation"},
+        ],
+    )
+    # from_dict / observed_evidence_classes treat unknown as compatibility
+    assert len(observed_evidence_classes(unknown.source_evidence)) == 0
+    assert _evd_status(unknown, u) == "fail"
+
+    # Generator path: missing structured → candidates cannot pass EVD
+    weak = SiteUnderstanding(
+        organization_brand="SignalWatch",
+        topics=["Distributed tracing overview", "Metrics cardinality"],
+        site_genre="saas_product",
+        structured={
+            "primary_topics": {
+                "evidence": [
+                    {"evidence_class": "title_h1", "snippet": "t"},
+                    {"evidence_class": "tags_series", "snippet": "m"},
+                ]
+            }
+        },
+        evidence_hash="phase411-p5",
+    )
+    cands, _ = generate_candidates_v2(weak)
+    assert cands  # viability may still generate
+    for q in cands:
+        assert _evd_status(q, weak) == "fail"
+        assert len(observed_evidence_classes(q.source_evidence)) == 0
+
+
+def test_p6_arbitrary_site_synthetic_same_provenance_rules():
+    """P6: arbitrary non-Hashnode synthetic site follows same trust boundary."""
+    u = SiteUnderstanding(
+        organization_brand="CedarLedger",
+        products_services=["Cedar Books", "Cedar Invoicing"],
+        topics=[
+            "Double-entry bookkeeping basics",
+            "Invoice reconciliation workflows",
+            "Multi-currency ledgers",
+            "Audit trail retention",
+        ],
+        audience_hints=["for accountants"],
+        industry_category_guess="accounting",
+        site_genre="saas_product",
+        commercial_intents=["pricing", "trial"],
+        structured={
+            "primary_topics": {
+                "evidence": [
+                    {
+                        "evidence_class": "title_h1",
+                        "provenance": "observed",
+                        "snippet": "Double-entry",
+                    },
+                    {
+                        "evidence_class": "article_body",
+                        "provenance": "observed",
+                        "snippet": "reconciliation",
+                    },
+                ]
+            },
+            "org_name": {
+                "evidence": [
+                    {
+                        "evidence_class": "og_meta",
+                        "provenance": "observed",
+                        "snippet": "CedarLedger",
+                    }
+                ]
+            },
+            "products": {
+                "evidence": [
+                    {
+                        "evidence_class": "jsonld",
+                        "provenance": "observed",
+                        "snippet": "Cedar Books",
+                    }
+                ]
+            },
+        },
+        evidence_hash="phase411-cedar",
+        important_pages=[{"url": "https://cedarledger.example/"}] * 8,
+    )
+    # Missing provenance must not become observed
+    weak = SiteUnderstanding(
+        organization_brand="CedarLedger",
+        topics=["Double-entry bookkeeping basics", "Invoice reconciliation"],
+        site_genre="saas_product",
+        structured={
+            "primary_topics": {
+                "evidence": [
+                    {"evidence_class": "title_h1", "snippet": "books"},
+                    {"evidence_class": "jsonld", "snippet": "schema"},
+                ]
+            }
+        },
+        evidence_hash="phase411-cedar-weak",
+    )
+    classes = _evidence_classes_from_understanding(weak)
+    for items in classes.values():
+        for i in items:
+            if isinstance(i, dict) and i.get("snippet") in ("books", "schema"):
+                assert i["provenance"] == "compatibility"
+
+    r = discover_queries(
+        u, top_n=20, options={"selection_seed": 11}, discovery_only=True
+    )
+    assert r.selected_count >= 8
+    joined = " ".join(q.query.lower() for q in r.queries)
+    assert "cedar" in joined
+    assert "hashnode" not in joined
+    for q in r.queries:
+        assert len(observed_evidence_classes(q.source_evidence)) >= 2
+
+
+def test_p7_freezes_held_no_query_set_v4():
+    """P7: freezes intact; query-set-v3 / query-quality-v1; no v4 bump."""
+    import subprocess
+
+    from aeo_mvp.queries.quality import QUALITY_VERSION, QUERY_SET_QUALITY_METHODOLOGY
+    from aeo_mvp.queries.select_v2 import (
+        QUERY_SET_VERSION,
+        SELECTION_SEED_METHOD,
+        DISCOVERY_METHOD_V2,
+    )
+    from aeo_mvp.queries.intent_budget import INTENT_BUDGET_ID
+    from aeo_mvp.scoring.health import HEALTH_FORMULA_VERSION
+
+    assert QUALITY_VERSION == "query-quality-v1"
+    assert QUERY_SET_QUALITY_METHODOLOGY == "query-set-quality-v1.1.1"
+    assert QUERY_SET_VERSION == "query-set-v3"
+    assert QUERY_SET_VERSION != "query-set-v4"
+    assert SELECTION_SEED_METHOD == "sha256_seeded_tiebreak_v1"
+    assert DISCOVERY_METHOD_V2 == "query-discovery-v2"
+    assert INTENT_BUDGET_ID == "intent-budget-v1"
+    assert HEALTH_FORMULA_VERSION == "health-v1"
+    for rel in _FREEZE_PATHS:
+        assert (_REPO / rel).is_file(), rel
+    # Freeze paths must be byte-identical to main tip
+    diff = subprocess.run(
+        ["git", "diff", "main", "--", *_FREEZE_PATHS],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert diff.returncode == 0
+    assert diff.stdout == "", f"freeze diff non-empty:\n{diff.stdout[:500]}"
+    verify_corrective = (
+        _REPO / "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.md"
+    )
+    assert verify_corrective.is_file()
+    # Engineering must not invent the Verifier's Phase 4.1.1 VERIFY artifact
+    assert not (
+        _REPO / "docs/verification/VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18.md"
+    ).exists()
+    # Must not overwrite Phase 4.1 corrective VERIFY in this branch
+    vdiff = subprocess.run(
+        [
+            "git",
+            "diff",
+            "main",
+            "--",
+            "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.md",
+            "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.json",
+        ],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert vdiff.stdout == ""
+
+
+def test_p8_no_paid_digitalocean_in_discovery_dry_run():
+    """P8 (blocking): discovery_only / dry-run makes zero paid DO / httpx calls."""
+    from unittest.mock import patch
+
+    u = _saas_u()
+    with patch("httpx.AsyncClient") as mock_async:
+        with patch("httpx.Client") as mock_client:
+            r = discover_queries(
+                u,
+                top_n=20,
+                options={
+                    "selection_seed": 42,
+                    "discovery_only": True,
+                    "paid_retrieval_opt_in": True,
+                },
+                discovery_only=True,
+                paid_retrieval_opt_in=True,
+            )
+            mock_client.assert_not_called()
+            mock_async.assert_not_called()
+    assert r.paid_retrieval_opt_in is False
+    assert r.paid_retrieval_ready is False
+    assert r.method == "query-discovery-v2"

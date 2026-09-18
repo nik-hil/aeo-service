@@ -61,6 +61,9 @@ ADR-027, ADR-028, ADR-029. Decisions D027–D029.
 
 ## Phase 4.1.1 provenance lock (D031)
 
-Binding: `PHASE4_1_1_PROVENANCE_LOCK.md`. Single `normalize_provenance`;
-missing → compatibility; SiteProfile heuristic/derived_metric/llm_assist →
-derived; never invent observed from structured presence.
+Binding: `PHASE4_1_1_PROVENANCE_LOCK.md`. Methodology patch
+`query-set-quality-v1.1.1` (frozen code gate remains `query-quality-v1`).
+Single `normalize_provenance`; missing → compatibility; SiteProfile
+heuristic/derived_metric/llm_assist → derived; never invent observed from
+structured presence. Evaluator gates P1–P8 (P1/P2/P3/P4/P5/P8 block merge).
+Verifier writes new `VERIFY-PHASE4.1.1-PROVENANCE-*` (do not overwrite 4.1).
