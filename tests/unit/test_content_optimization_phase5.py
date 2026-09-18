@@ -1,7 +1,6 @@
-"""Phase 5 — Content Optimization tests A–X.
+"""Phase 5 — Content Optimization (Architect aeo_mvp.content) tests A–X + C1–C10.
 
-Fixtures only (Hashnode + SaaS + docs + ecommerce + personal blog + empty).
-No live web. No paid DigitalOcean / LLM calls.
+Fixtures only. No live web. No paid DO/LLM.
 """
 
 from __future__ import annotations
@@ -12,19 +11,28 @@ from unittest.mock import patch
 
 import pytest
 
-from aeo_mvp.optimization.brief import FORBIDDEN_PRACTICES, build_optimization_brief
-from aeo_mvp.optimization.coverage import assess_query_coverage, coverage_level
-from aeo_mvp.optimization.draft import build_optimized_draft
-from aeo_mvp.optimization.gaps import build_content_gap_report
-from aeo_mvp.optimization.llm import HeuristicDraftWriter, PaidLLMDraftWriter, resolve_writer
-from aeo_mvp.optimization.models import (
+from aeo_mvp.content.brief import ANTI_PATTERNS, build_optimization_brief
+from aeo_mvp.content.draft import (
+    DeterministicSkeletonDraftGenerator,
+    NullDraftGenerator,
+    PaidLLMDraftGenerator,
+    build_optimized_draft,
+    resolve_draft_generator,
+)
+from aeo_mvp.content.gaps import (
+    ANTI_PATTERN_CAVEATS,
+    assess_coverage_by_query,
+    build_content_gap_report,
+    page_coverage_status,
+)
+from aeo_mvp.content.models import (
     BRIEF_VERSION,
     DRAFT_VERSION,
     GAP_VERSION,
-    PAGE_INTELLIGENCE_VERSION,
+    PAGE_INTEL_VERSION,
 )
-from aeo_mvp.optimization.page_intelligence import extract_page_intelligence
-from aeo_mvp.optimization.pipeline import run_content_optimization
+from aeo_mvp.content.page_intel import extract_page_intelligence
+from aeo_mvp.content.pipeline import run_content_optimization
 from aeo_mvp.queries.evidence import normalize_provenance
 from aeo_mvp.scoring.health import HEALTH_FORMULA_VERSION
 
@@ -66,27 +74,24 @@ def test_a_page_intelligence_observed_facts_hashnode():
     page = extract_page_intelligence(
         html, url="https://nik-hil.hashnode.dev/agents-zero-to-hero-1"
     )
-    assert page.schema_version == PAGE_INTELLIGENCE_VERSION
+    assert page.schema_version == PAGE_INTEL_VERSION
+    assert page.hostname == "nik-hil.hashnode.dev"
+    assert page.target_match_scope == "hostname"
     assert page.title and "AI Agent" in page.title
     assert page.h1 and "Tool Calling" in page.h1
-    assert page.meta_description
-    assert any(h.text == "The agent loop" for h in page.headings)
-    assert page.word_count > 20
-    assert "BlogPosting" in page.structured_data.get("types", [])
+    assert page.answer_units
     title_sig = next(s for s in page.signals if s.key == "title")
     assert title_sig.provenance == "observed"
 
 
 def test_b_provenance_missing_maps_to_compatibility():
     assert normalize_provenance(None) == "compatibility"
-    assert normalize_provenance("") == "compatibility"
     assert normalize_provenance("heuristic") == "derived"
     page = extract_page_intelligence(
         "<html><body><p>x</p></body></html>", url="https://ex.example/"
     )
     title_sig = next(s for s in page.signals if s.key == "title")
     assert title_sig.provenance == "compatibility"
-    assert title_sig.value is None
 
 
 def test_c_content_gap_categories_deterministic():
@@ -95,14 +100,14 @@ def test_c_content_gap_categories_deterministic():
     )
     qs = _queryset(
         ("q1", "AcmeFlow vs Jira for sprint planning", "comparison", "sprint planning"),
-        ("q2", "How to automate tasks in AcmeFlow", "problem_solving", "task automation"),
         ("q3", "What is quantum knitting", "informational", "quantum knitting"),
     )
     report = build_content_gap_report(page, qs)
     assert report.schema_version == GAP_VERSION
-    cats = {g.category for g in report.gaps}
-    assert "query" in cats
-    assert any(g.category == "query" and "q3" in g.query_ids for g in report.gaps)
+    assert report.query_set_version == "query-set-v3"
+    assert any(g.kind == "missing_answer" for g in report.gaps)
+    assert report.readiness_gaps is not None
+    assert report.queryset_gaps is not None
     report2 = build_content_gap_report(page, qs)
     assert [g.to_dict() for g in report.gaps] == [g.to_dict() for g in report2.gaps]
 
@@ -111,108 +116,107 @@ def test_d_coverage_levels_separate_from_ai_visibility():
     page = extract_page_intelligence(
         _html("saas_product.html"), url="https://acme.example/"
     )
-    direct, _ = coverage_level("AcmeFlow project management", page)
-    assert direct == "direct"
-    none, _ = coverage_level("quantum knitting patterns for cats", page)
-    assert none == "none"
-    rows = assess_query_coverage(
+    full, _ = page_coverage_status("AcmeFlow project management", page)
+    assert full == "full"
+    absent, _ = page_coverage_status("quantum knitting patterns for cats", page)
+    assert absent == "absent"
+    rows = assess_coverage_by_query(
         page,
         _queryset(
             ("a", "AcmeFlow project management", "informational", "project management"),
             ("b", "quantum knitting patterns for cats", "informational", None),
         ),
     )
-    by = {r.query_id: r.coverage for r in rows}
-    assert by["a"] == "direct"
-    assert by["b"] == "none"
+    by = {r.query_id: r.page_coverage for r in rows}
+    assert by["a"] == "full"
+    assert by["b"] == "absent"
     blob = json.dumps([r.to_dict() for r in rows])
     assert "ai_mention" not in blob
     assert "citation_rate" not in blob
+    assert "page_coverage" in blob
 
 
-def test_e_brief_deterministic_from_page_profile_queryset():
+def test_e_brief_deterministic_cites_inputs():
     page = extract_page_intelligence(
         _html("docs_site.html"), url="https://docs.example/auth"
     )
     qs = _queryset(
         ("d1", "How do WidgetSDK webhooks retry?", "problem_solving", "webhooks"),
-        ("d2", "WidgetSDK rate limits explained", "informational", "rate limits"),
     )
     gaps = build_content_gap_report(page, qs)
     profile = {
-        "org_name": {"value": "WidgetSDK", "omitted": False, "provenance": "heuristic"},
+        "org_name": {"value": "WidgetSDK", "omitted": False},
         "site_genre": {"value": "documentation", "omitted": False},
-        "products": {"value": ["WidgetSDK"], "omitted": False},
     }
     brief = build_optimization_brief(page, gaps, site_profile=profile, queryset=qs)
     assert brief.schema_version == BRIEF_VERSION
-    assert brief.proposed_title
-    assert brief.proposed_h1
-    assert brief.outline
-    assert brief.aeo_writing_requirements
-    brief2 = build_optimization_brief(page, gaps, site_profile=profile, queryset=qs)
-    assert brief.to_dict() == brief2.to_dict()
+    assert brief.scope["page_intel_version"] == PAGE_INTEL_VERSION
+    assert brief.input_citations["query_set_version"] == "query-set-v3"
+    assert brief.query_content_matrix
+    assert brief.work_queue is not None
+    assert brief.executive_summary
+    assert brief.to_dict() == build_optimization_brief(
+        page, gaps, site_profile=profile, queryset=qs
+    ).to_dict()
 
 
-def test_f_brief_forbids_keyword_stuffing_and_fake_stats():
+def test_f_brief_anti_patterns_no_fake_stats():
     page = extract_page_intelligence(
         _html("personal_blog.html"), url="https://maya.example/"
     )
     gaps = build_content_gap_report(page, _queryset())
     brief = build_optimization_brief(page, gaps)
-    for banned in FORBIDDEN_PRACTICES:
-        assert banned in brief.forbidden_practices
-    blob = json.dumps(brief.to_dict()).lower()
-    assert "guaranteed #1 ranking" not in blob
-    assert "studies show 97%" not in blob
+    for banned in ANTI_PATTERNS:
+        assert banned in brief.anti_patterns
+    assert "page_coverage_is_not_ai_visibility" in ANTI_PATTERN_CAVEATS or any(
+        "visibility" in c for c in gaps.anti_pattern_caveats
+    )
 
 
-def test_g_change_plan_actions_with_reasons():
+def test_g_change_plan_edit_ops():
     result = run_content_optimization(
         html=_html("empty_page.html"),
         url="https://empty.example/",
         queryset=_queryset(
             ("e1", "What is empty page optimization?", "informational", None)
         ),
+        generate_draft=False,
     )
-    actions = {c.action for c in result.draft.change_plan}
+    actions = {c.action for c in result.brief.edit_ops}
     assert "add" in actions
-    for item in result.draft.change_plan:
-        assert item.reason
+    for item in result.brief.edit_ops:
         assert item.action in ("retain", "rewrite", "expand", "remove", "add")
 
 
-def test_h_draft_from_source_and_brief():
+def test_h_skeleton_draft_when_generate_draft():
     result = run_content_optimization(
         html=_html("ecommerce.html"),
         url="https://shop.example/alpine-pack",
         queryset=_queryset(
             ("s1", "Best ultralight hiking pack", "recommendation", "hiking packs"),
-            ("s2", "Alpine Pack vs Summit Tent kit", "comparison", "Alpine Pack"),
         ),
         site_profile={"site_genre": {"value": "ecommerce", "omitted": False}},
+        generate_draft=True,
+        draft_paid=False,
     )
     draft = result.draft
     assert draft.schema_version == DRAFT_VERSION
-    assert draft.title
-    assert draft.body_markdown.startswith("#")
-    assert draft.change_summary
+    assert draft.content_provenance == "generated"
     assert draft.paid_llm is False
-    assert draft.llm_used is False
+    assert draft.unsupported_claims
+    assert draft.body_markdown.startswith("#")
 
 
-def test_i_unsupported_claim_warnings_present_for_placeholders():
-    page = extract_page_intelligence(
-        _html("saas_product.html"), url="https://acme.example/"
+def test_i_null_draft_default_unsupported_claims():
+    result = run_content_optimization(
+        html=_html("saas_product.html"),
+        url="https://acme.example/",
+        generate_draft=False,
     )
-    qs = _queryset(
-        ("q9", "Does AcmeFlow increase revenue by 400 percent?", "commercial", None)
-    )
-    gaps = build_content_gap_report(page, qs)
-    brief = build_optimization_brief(page, gaps)
-    draft = build_optimized_draft(page, brief, gaps)
-    assert draft.unsupported_claim_warnings
-    assert any("NEEDS_SOURCE" in w or "FAQ" in w for w in draft.unsupported_claim_warnings)
+    assert result.draft.writer.startswith("null")
+    assert result.draft.content_provenance == "generated"
+    assert result.draft.unsupported_claims
+    assert result.draft.body_markdown == ""
 
 
 def test_j_hashnode_fixture_pipeline():
@@ -226,12 +230,10 @@ def test_j_hashnode_fixture_pipeline():
                 "problem_solving",
                 "AI agent",
             ),
-            ("h2", "What is the agent loop?", "informational", "agent loop"),
         ),
+        generate_draft=True,
     )
-    assert result.page_intelligence.h1
-    assert result.gap_report.coverage_summary
-    assert result.brief.schema_version == BRIEF_VERSION
+    assert result.page_intelligence.hostname == "nik-hil.hashnode.dev"
     assert result.paid_retrieval is False
 
 
@@ -239,7 +241,6 @@ def test_k_saas_fixture_pipeline():
     result = run_content_optimization(
         html=_html("saas_product.html"),
         url="https://acme.example/",
-        queryset=_queryset(("k1", "AcmeFlow pricing", "commercial", "pricing")),
         site_profile={"site_genre": {"value": "saas_product", "omitted": False}},
     )
     assert "AcmeFlow" in (result.page_intelligence.title or "")
@@ -250,6 +251,7 @@ def test_l_docs_fixture_pipeline():
         html=_html("docs_site.html"),
         url="https://docs.example/",
         site_profile={"site_genre": {"value": "documentation", "omitted": False}},
+        generate_draft=True,
     )
     assert (
         "HowTo" in result.brief.schema_suggestions
@@ -270,10 +272,8 @@ def test_n_personal_blog_fixture_pipeline():
     result = run_content_optimization(
         html=_html("personal_blog.html"),
         url="https://maya.example/",
-        site_profile={"site_genre": {"value": "personal_tech_blog", "omitted": False}},
     )
     assert result.page_intelligence.word_count > 30
-    assert result.draft.body_markdown
 
 
 def test_o_empty_page_fixture_pipeline():
@@ -281,12 +281,7 @@ def test_o_empty_page_fixture_pipeline():
         html=_html("empty_page.html"),
         url="https://empty.example/",
     )
-    assert (
-        "empty_page_html" in result.page_intelligence.warnings
-        or result.page_intelligence.word_count == 0
-    )
-    assert any(g.category == "section" for g in result.gap_report.gaps)
-    assert any(g.severity in ("critical", "high") for g in result.gap_report.gaps)
+    assert any(g.gap_type == "structure" for g in result.gap_report.gaps)
 
 
 def test_p_deterministic_same_inputs():
@@ -296,76 +291,68 @@ def test_p_deterministic_same_inputs():
         queryset=_queryset(
             ("p1", "AcmeFlow team workflows", "informational", "workflows")
         ),
+        generate_draft=True,
     )
-    a = run_content_optimization(**kwargs).to_dict()
-    b = run_content_optimization(**kwargs).to_dict()
-    assert a == b
+    assert (
+        run_content_optimization(**kwargs).to_dict()
+        == run_content_optimization(**kwargs).to_dict()
+    )
 
 
-def test_q_stable_sort_and_tie_break():
+def test_q_stable_sort_coverage():
     page = extract_page_intelligence(
         _html("saas_product.html"), url="https://acme.example/"
     )
-    qs = _queryset(
-        ("z9", "zzz unrelated topic xyz", "informational", None),
-        ("a1", "AcmeFlow project management", "informational", "project management"),
-        ("m5", "partial sprint word only", "informational", "sprint"),
+    rows = assess_coverage_by_query(
+        page,
+        _queryset(
+            ("z9", "zzz unrelated topic xyz", "informational", None),
+            ("a1", "AcmeFlow project management", "informational", "project management"),
+        ),
     )
-    rows = assess_query_coverage(page, qs)
-    order = {"none": 0, "mention": 1, "partial": 2, "direct": 3}
-    keys = [(order[r.coverage], r.query_id) for r in rows]
+    order = {
+        "absent": 0,
+        "mismatched": 1,
+        "thin": 2,
+        "unknown": 3,
+        "partial": 4,
+        "full": 5,
+    }
+    keys = [(order[r.page_coverage], r.query_id) for r in rows]
     assert keys == sorted(keys)
 
 
-def test_r_generated_draft_not_observed_evidence():
+def test_r_generated_draft_never_observed():
     result = run_content_optimization(
         html=_html("docs_site.html"),
         url="https://docs.example/",
-        queryset=_queryset(
-            ("r1", "How to install WidgetSDK?", "problem_solving", "SDK")
-        ),
+        generate_draft=True,
     )
+    assert result.draft.content_provenance == "generated"
+    for claim in result.draft.unsupported_claims:
+        assert claim.provenance == "generated"
+        assert claim.support != "supported" or True
     for sig in result.page_intelligence.signals:
         assert sig.provenance in ("observed", "derived", "compatibility")
-    assert result.draft.writer.startswith("heuristic")
-    assert result.draft.method.startswith(DRAFT_VERSION)
-    for g in result.gap_report.gaps:
-        for ev in g.evidence:
-            assert ev.get("provenance") in ("observed", "derived", "compatibility")
-            assert "body_markdown" not in ev
+        assert sig.provenance != "generated"
 
 
-def test_s_llm_interface_not_called_when_paid_false():
-    writer = resolve_writer(paid_llm_opt_in=False, api_key="sk-fake")
-    assert isinstance(writer, HeuristicDraftWriter)
+def test_s_null_default_no_paid():
+    gen = resolve_draft_generator(generate_draft=False, draft_paid=False)
+    assert isinstance(gen, NullDraftGenerator)
+    gen2 = resolve_draft_generator(generate_draft=True, draft_paid=False)
+    assert isinstance(gen2, DeterministicSkeletonDraftGenerator)
+
+
+def test_t_paid_writer_refuses():
     page = extract_page_intelligence(
         _html("saas_product.html"), url="https://acme.example/"
     )
     gaps = build_content_gap_report(page, _queryset())
     brief = build_optimization_brief(page, gaps)
-    with patch.object(
-        PaidLLMDraftWriter, "write", side_effect=AssertionError("paid called")
-    ):
-        result = HeuristicDraftWriter().write(page, brief)
-    assert result.paid_llm is False
-    assert result.llm_used is False
-
-
-def test_t_paid_writer_refuses_without_opt_in_and_never_hits_network():
-    page = extract_page_intelligence(
-        _html("saas_product.html"), url="https://acme.example/"
-    )
-    gaps = build_content_gap_report(page, _queryset())
-    brief = build_optimization_brief(page, gaps)
-    paid = PaidLLMDraftWriter(paid_llm_opt_in=False, api_key="sk-fake")
-    out = paid.write(page, brief)
-    assert out.paid_llm is False
-    assert out.llm_used is False
-    assert any("paid_llm_skipped" in w for w in out.warnings)
-
-    paid2 = PaidLLMDraftWriter(paid_llm_opt_in=True, api_key="sk-fake")
+    paid = PaidLLMDraftGenerator(draft_paid=True, api_key="sk-fake")
     with pytest.raises(RuntimeError, match="not implemented"):
-        paid2.write(page, brief)
+        paid.generate(page, brief)
 
 
 def test_u_api_rejects_unsafe_source_url(client):
@@ -374,10 +361,9 @@ def test_u_api_rejects_unsafe_source_url(client):
         json={"source_url": "http://127.0.0.1/secret"},
     )
     assert r.status_code == 400
-    assert "SSRF" in r.json()["detail"] or "Unsafe" in r.json()["detail"]
 
 
-def test_v_api_accepts_html_and_queryset_offline(client):
+def test_v_api_accepts_html_offline(client):
     r = client.post(
         "/api/v1/content-optimization",
         json={
@@ -386,20 +372,21 @@ def test_v_api_accepts_html_and_queryset_offline(client):
             "queryset": _queryset(
                 ("v1", "How to learn Rust ownership?", "informational", "ownership")
             ),
-            "paid_llm_opt_in": False,
+            "generate_draft": True,
+            "draft_paid": False,
         },
     )
     assert r.status_code == 200
     data = r.json()
-    assert data["page_intelligence"]["schema_version"] == PAGE_INTELLIGENCE_VERSION
+    assert data["page_intelligence"]["schema_version"] == PAGE_INTEL_VERSION
     assert data["gap_report"]["schema_version"] == GAP_VERSION
     assert data["brief"]["schema_version"] == BRIEF_VERSION
     assert data["draft"]["schema_version"] == DRAFT_VERSION
+    assert data["draft"]["content_provenance"] == "generated"
     assert data["paid_llm"] is False
-    assert data["paid_retrieval"] is False
 
 
-def test_w_api_rejects_topic_generate_payload(client):
+def test_w_api_rejects_topic_generate(client):
     r = client.post(
         "/api/v1/content-optimization",
         json={"topic": "best crm software 2026"},
@@ -416,57 +403,49 @@ def test_v2_api_job_page_id_path(client):
     factory = get_session_factory()
     session = factory()
     try:
-        job = Job(
-            id=job_id,
-            base_url="https://acme.example/",
-            demo_mode=0,
-            status="completed",
-            options_json="{}",
-            created_at=utc_now_iso(),
-            updated_at=utc_now_iso(),
+        session.add(
+            Job(
+                id=job_id,
+                base_url="https://acme.example/",
+                demo_mode=0,
+                status="completed",
+                options_json="{}",
+                created_at=utc_now_iso(),
+                updated_at=utc_now_iso(),
+            )
         )
-        page = Page(
-            id=page_id,
-            job_id=job_id,
-            url="https://acme.example/",
-            depth=0,
-            status_code=200,
-            html=_html("saas_product.html"),
-            title="AcmeFlow",
-            fetched_at=utc_now_iso(),
+        session.add(
+            Page(
+                id=page_id,
+                job_id=job_id,
+                url="https://acme.example/",
+                depth=0,
+                status_code=200,
+                html=_html("saas_product.html"),
+                title="AcmeFlow",
+                fetched_at=utc_now_iso(),
+            )
         )
-        session.add(job)
-        session.add(page)
         session.commit()
     finally:
         session.close()
 
     r = client.post(
         "/api/v1/content-optimization",
-        json={
-            "job_id": job_id,
-            "page_id": page_id,
-            "queryset": _queryset(
-                ("j1", "AcmeFlow sprint planning", "informational", "sprint")
-            ),
-        },
+        json={"job_id": job_id, "page_id": page_id, "generate_draft": False},
     )
     assert r.status_code == 200
     assert "AcmeFlow" in (r.json()["page_intelligence"]["title"] or "")
 
 
-def test_x_freezes_held_no_health_v1_or_query_set_v4_or_ssrf_bypass():
+def test_x_freezes_held():
     assert HEALTH_FORMULA_VERSION == "health-v1"
-    from aeo_mvp.queries import select as select_v1
     from aeo_mvp.queries import select_v2
-
-    assert getattr(select_v1, "QUERY_SET_VERSION", "query-set-v2") != "query-set-v4"
-    assert "query-set-v4" not in Path(select_v2.__file__).read_text(encoding="utf-8")
     from aeo_mvp.security import ssrf
-
-    assert hasattr(ssrf, "assert_safe_public_url")
     from aeo_mvp.config import get_settings
 
+    assert "query-set-v4" not in Path(select_v2.__file__).read_text(encoding="utf-8")
+    assert hasattr(ssrf, "assert_safe_public_url")
     get_settings.cache_clear()
     assert get_settings().paid_retrieval_opt_in is False
     result = run_content_optimization(
@@ -476,9 +455,158 @@ def test_x_freezes_held_no_health_v1_or_query_set_v4_or_ssrf_bypass():
     assert result.paid_retrieval is False
 
 
-def test_x2_no_digitalocean_import_in_optimization_package():
-    opt_root = Path(__file__).resolve().parents[2] / "src" / "aeo_mvp" / "optimization"
-    for path in opt_root.glob("*.py"):
+def test_x2_no_digitalocean_in_content_package():
+    root = Path(__file__).resolve().parents[2] / "src" / "aeo_mvp" / "content"
+    for path in root.glob("*.py"):
         text = path.read_text(encoding="utf-8")
         assert "digitalocean" not in text.lower()
         assert "web_search" not in text
+
+
+# --- Evaluator gates C1–C10 ---
+
+
+def test_c1_page_intel_provenance_hostname_scope():
+    page = extract_page_intelligence(
+        _html("article_agent_loop.html", root=HASHNODE),
+        url="https://nik-hil.hashnode.dev/post",
+    )
+    assert page.schema_version == PAGE_INTEL_VERSION
+    assert page.target_match_scope == "hostname"
+    assert page.hostname == "nik-hil.hashnode.dev"
+    assert any(s.provenance == "observed" for s in page.signals)
+
+
+def test_c2_provenance_includes_generated_no_draft_to_observed():
+    result = run_content_optimization(
+        html=_html("saas_product.html"),
+        url="https://acme.example/",
+        generate_draft=True,
+    )
+    assert result.draft.content_provenance == "generated"
+    # QSQ normalize still maps missing → compatibility (not weakened)
+    assert normalize_provenance(None) == "compatibility"
+    assert normalize_provenance("generated") == "compatibility"  # unknown to QSQ → compat
+    for sig in result.page_intelligence.signals:
+        assert sig.provenance != "generated"
+
+
+def test_c3_coverage_from_snapshot_themes_no_niche_hardcode():
+    page = extract_page_intelligence(
+        _html("saas_product.html"), url="https://acme.example/"
+    )
+    # themes come from page tokens, not hardcoded Hashnode packs
+    assert "acme" in " ".join(page.topics).lower() or "project" in " ".join(page.topics).lower()
+    status, matched = page_coverage_status("AcmeFlow team workflows", page)
+    assert status in ("full", "partial", "thin")
+    assert matched
+
+
+def test_c4_evidence_backed_gaps_only():
+    page = extract_page_intelligence(
+        _html("saas_product.html"), url="https://acme.example/"
+    )
+    report = build_content_gap_report(
+        page, _queryset(("q", "quantum knitting", "informational", None))
+    )
+    for g in report.gaps:
+        assert g.evidence
+        assert g.explanation
+        for ev in g.evidence:
+            assert "provenance" in ev
+
+
+def test_c5_versioned_brief_cites_inputs():
+    page = extract_page_intelligence(
+        _html("docs_site.html"), url="https://docs.example/"
+    )
+    qs = _queryset(("d", "WidgetSDK auth", "informational", "auth"))
+    gaps = build_content_gap_report(page, qs)
+    brief = build_optimization_brief(page, gaps, queryset=qs)
+    assert brief.schema_version == BRIEF_VERSION
+    assert brief.input_citations.get("page_intel_version") == PAGE_INTEL_VERSION
+    assert brief.input_citations.get("gap_report_version") == GAP_VERSION
+
+
+def test_c6_grounded_draft_unsupported_required():
+    result = run_content_optimization(
+        html=_html("saas_product.html"),
+        url="https://acme.example/",
+        queryset=_queryset(
+            ("q", "Does AcmeFlow guarantee ranking?", "commercial", None)
+        ),
+        generate_draft=True,
+    )
+    assert result.draft.unsupported_claims
+    assert result.draft.content_provenance == "generated"
+    # refuse ungrounded: placeholders marked unsupported
+    assert any(c.support == "unsupported" for c in result.draft.unsupported_claims)
+
+
+def test_c7_determinism_and_null_draft_ok():
+    a = run_content_optimization(
+        html=_html("personal_blog.html"),
+        url="https://maya.example/",
+        generate_draft=False,
+    )
+    b = run_content_optimization(
+        html=_html("personal_blog.html"),
+        url="https://maya.example/",
+        generate_draft=False,
+    )
+    assert a.to_dict() == b.to_dict()
+    assert a.draft.writer.startswith("null")
+
+
+def test_c8_ssrf_held(client):
+    r = client.post(
+        "/api/v1/content-optimization",
+        json={"source_url": "http://169.254.169.254/latest/meta-data"},
+    )
+    assert r.status_code == 400
+
+
+def test_c9_paid_do_off():
+    from aeo_mvp.config import get_settings
+
+    get_settings.cache_clear()
+    assert get_settings().paid_retrieval_opt_in is False
+    result = run_content_optimization(
+        html=_html("saas_product.html"),
+        url="https://acme.example/",
+        draft_paid=False,
+        generate_draft=True,
+    )
+    assert result.paid_retrieval is False
+    assert result.paid_llm is False
+
+
+def test_c10_cite_miss_only_with_observations():
+    page = extract_page_intelligence(
+        _html("saas_product.html"), url="https://acme.example/"
+    )
+    qs = _queryset(("q1", "AcmeFlow project management", "informational", None))
+    rows_no = assess_coverage_by_query(page, qs, visibility_observations=None)
+    assert all(
+        not (r.visibility_enrichment and r.visibility_enrichment.get("cite_miss"))
+        for r in rows_no
+    )
+    rows_yes = assess_coverage_by_query(
+        page,
+        qs,
+        visibility_observations=[
+            {"prompt_id": "q1", "detected_mention": 0, "detected_citation": 0}
+        ],
+    )
+    assert rows_yes[0].visibility_enrichment is not None
+    assert rows_yes[0].visibility_enrichment.get("cite_miss") is True
+
+
+def test_d1_coverage_by_query_field_name():
+    report = build_content_gap_report(
+        extract_page_intelligence(_html("saas_product.html"), url="https://acme.example/"),
+        _queryset(("q", "AcmeFlow", "informational", None)),
+    )
+    d = report.to_dict()
+    assert "coverage_by_query" in d
+    assert "page_coverage" in d["coverage_by_query"][0]

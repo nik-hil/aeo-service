@@ -147,9 +147,9 @@ paths:
       tags: [jobs]
       summary: Grounded content optimization (Phase 5)
       description: |
-        Page intelligence → content gaps → brief → optimized draft.
-        Accepts job_id/page_id, SSRF-safe source_url, or offline html.
-        Rejects free-form topic generation. paid_llm_opt_in defaults false.
+        page-intel-v1 → content-gap-v1 → opt-brief-v1 → opt-draft-v1
+        via aeo_mvp.content. Accepts job_id/page_id, SSRF-safe source_url, or offline html.
+        Rejects free-form topic generation. generate_draft/draft_paid default false.
       operationId: contentOptimization
       requestBody:
         required: true
@@ -167,13 +167,17 @@ paths:
                 queryset: { type: object }
                 site_profile: { type: object }
                 config: { type: object }
+                content_optimization: { type: boolean, default: true }
+                generate_draft: { type: boolean, default: false }
+                draft_paid: { type: boolean, default: false }
                 paid_llm_opt_in: { type: boolean, default: false }
             examples:
               offline:
                 value:
                   html: "<html><body><h1>Demo</h1></body></html>"
                   url: https://demo.example/
-                  paid_llm_opt_in: false
+                  generate_draft: true
+                  draft_paid: false
       responses:
         "200":
           description: Optimization result

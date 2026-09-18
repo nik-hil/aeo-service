@@ -9,9 +9,9 @@ import httpx
 from sqlalchemy.orm import Session
 
 from aeo_mvp.config import USER_AGENT, get_settings
+from aeo_mvp.content.pipeline import run_content_optimization
 from aeo_mvp.crawler.fetch import fetch_url
 from aeo_mvp.db.models import ExperimentConfig, Job, Page, SiteProfile
-from aeo_mvp.optimization.pipeline import run_content_optimization
 from aeo_mvp.security.ssrf import SSRFError, assert_safe_public_url, is_obviously_unsafe_url
 
 
@@ -35,7 +35,7 @@ def _load_queryset_from_job(session: Session, job: Job) -> dict[str, Any] | None
     if isinstance(data, dict):
         return data
     if isinstance(data, list):
-        return {"members": [{"query": q} for q in data]}
+        return {"members": [{"query": q} for q in data], "query_set_version": "query-set-v3"}
     return None
 
 
@@ -58,14 +58,10 @@ def resolve_page_html(
     html: str | None,
     url_hint: str | None,
 ) -> tuple[str | None, str, str | None]:
-    """Return (html, url, title_hint). Raises OptimizationRequestError / SSRFError."""
-    if html is not None and (job_id or page_id or source_url):
-        # Allow html override only when not mixing conflicting sources awkwardly —
-        # html+url_hint is the offline path; reject with live url simultaneously.
-        if source_url:
-            raise OptimizationRequestError(
-                "Provide either html (offline) or source_url (live), not both"
-            )
+    if html is not None and source_url:
+        raise OptimizationRequestError(
+            "Provide either html (offline) or source_url (live), not both"
+        )
 
     if job_id:
         job = session.get(Job, job_id)
@@ -93,8 +89,7 @@ def resolve_page_html(
     if source_url:
         if is_obviously_unsafe_url(source_url):
             raise SSRFError(f"Unsafe URL rejected by SSRF policy: {source_url!r}")
-        # DNS-validated assert happens inside fetch_url
-        return None, source_url, None  # signal live fetch needed
+        return None, source_url, None
 
     if html is not None:
         return html, url_hint or "", None
@@ -113,8 +108,7 @@ async def fetch_html_ssrf_safe(url: str) -> tuple[str | None, str, str | None]:
         raise OptimizationRequestError(
             f"Failed to fetch source_url: {result.error or 'empty_body'}"
         )
-    title = None
-    return result.text, result.final_url or url, title
+    return result.text, result.final_url or url, None
 
 
 def run_from_resolved(
@@ -125,7 +119,8 @@ def run_from_resolved(
     queryset: Any,
     site_profile: dict[str, Any] | None,
     config: dict[str, Any] | None,
-    paid_llm_opt_in: bool,
+    generate_draft: bool,
+    draft_paid: bool,
     llm_api_key: str | None,
 ) -> dict[str, Any]:
     result = run_content_optimization(
@@ -135,7 +130,8 @@ def run_from_resolved(
         queryset=queryset,
         site_profile=site_profile,
         config=config,
-        paid_llm_opt_in=paid_llm_opt_in,
+        generate_draft=generate_draft,
+        draft_paid=draft_paid,
         llm_api_key=llm_api_key,
     )
     return result.to_dict()
@@ -150,4 +146,4 @@ def prepare_queryset(
         return queryset
     if job is not None:
         return _load_queryset_from_job(session, job)
-    return {"members": []}
+    return {"members": [], "query_set_version": "query-set-v3"}

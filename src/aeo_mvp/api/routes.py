@@ -24,7 +24,7 @@ from aeo_mvp.api.schemas import (
 from aeo_mvp.config import get_settings
 from aeo_mvp.db.models import Job, Page, Report, ScoreComponent
 from aeo_mvp.db.session import get_session_factory
-from aeo_mvp.optimization.service import (
+from aeo_mvp.content.service import (
     OptimizationRequestError,
     fetch_html_ssrf_safe,
     load_site_profile,
@@ -252,8 +252,12 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
             site_profile = load_site_profile(session, job)
 
         settings = get_settings()
-        paid = bool(body.paid_llm_opt_in)
-        api_key = settings.openai_api_key if paid else None
+        draft_paid = bool(body.draft_paid or body.paid_llm_opt_in)
+        generate_draft = bool(body.generate_draft)
+        api_key = settings.openai_api_key if draft_paid else None
+        cfg = dict(body.config or {})
+        cfg["generate_draft"] = generate_draft
+        cfg["draft_paid"] = draft_paid
 
         return run_from_resolved(
             html=html,
@@ -261,8 +265,9 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
             title_hint=title_hint,
             queryset=queryset,
             site_profile=site_profile,
-            config=body.config,
-            paid_llm_opt_in=paid,
+            config=cfg,
+            generate_draft=generate_draft,
+            draft_paid=draft_paid,
             llm_api_key=api_key,
         )
     finally:

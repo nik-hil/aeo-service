@@ -1,15 +1,14 @@
-"""Phase 5 pipeline: intelligence → gaps → brief → draft."""
+"""Phase 5 pipeline: page_intel → gaps → brief → draft."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from aeo_mvp.optimization.brief import build_optimization_brief
-from aeo_mvp.optimization.draft import build_optimized_draft
-from aeo_mvp.optimization.gaps import build_content_gap_report
-from aeo_mvp.optimization.llm import resolve_writer
-from aeo_mvp.optimization.models import ContentOptimizationResult, PageIntelligence
-from aeo_mvp.optimization.page_intelligence import extract_page_intelligence
+from aeo_mvp.content.brief import build_optimization_brief
+from aeo_mvp.content.draft import build_optimized_draft, resolve_draft_generator
+from aeo_mvp.content.gaps import build_content_gap_report
+from aeo_mvp.content.models import ContentOptimizationResult, PageIntelligence
+from aeo_mvp.content.page_intel import extract_page_intelligence
 
 
 def run_content_optimization(
@@ -21,20 +20,29 @@ def run_content_optimization(
     site_profile: dict[str, Any] | None = None,
     config: dict[str, Any] | None = None,
     page_intelligence: PageIntelligence | None = None,
-    paid_llm_opt_in: bool = False,
+    generate_draft: bool = False,
+    draft_paid: bool = False,
     llm_api_key: str | None = None,
+    visibility_observations: list[dict[str, Any]] | None = None,
     source_excerpts: list[str] | None = None,
 ) -> ContentOptimizationResult:
-    """Run grounded optimization stages. Paid LLM/DO default OFF.
+    """Grounded optimization. Gaps+brief deterministic. Draft behind Protocol.
 
-    Pure-ish orchestration: coverage/gaps/brief/change-plan are deterministic
-    given the same inputs. Writer is isolated behind an interface.
+    Defaults: generate_draft=false, draft_paid=false, paid_retrieval=false.
     """
     cfg = dict(config or {})
+    cfg.setdefault("generate_draft", generate_draft)
+    cfg.setdefault("draft_paid", draft_paid)
+
     page = page_intelligence or extract_page_intelligence(
         html, url=url, title_hint=title_hint
     )
-    gaps = build_content_gap_report(page, queryset, site_profile=site_profile)
+    gaps = build_content_gap_report(
+        page,
+        queryset,
+        site_profile=site_profile,
+        visibility_observations=visibility_observations,
+    )
     brief = build_optimization_brief(
         page,
         gaps,
@@ -42,8 +50,9 @@ def run_content_optimization(
         queryset=queryset,
         config=cfg,
     )
-    writer = resolve_writer(
-        paid_llm_opt_in=paid_llm_opt_in,
+    generator = resolve_draft_generator(
+        generate_draft=bool(cfg.get("generate_draft", False)),
+        draft_paid=bool(cfg.get("draft_paid", False)),
         api_key=llm_api_key,
         model=cfg.get("llm_model"),
     )
@@ -51,7 +60,7 @@ def run_content_optimization(
         page,
         brief,
         gaps,
-        writer=writer,
+        generator=generator,
         source_excerpts=source_excerpts,
     )
     return ContentOptimizationResult(

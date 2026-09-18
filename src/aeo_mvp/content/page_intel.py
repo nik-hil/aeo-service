@@ -1,67 +1,39 @@
-"""Stage 5.0 — PageIntelligence extraction (observed facts from HTML)."""
+"""page-intel-v1 — extract observed page facts + answer units."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from aeo_mvp.analyzers.base import parse_html, visible_text, word_count
-from aeo_mvp.queries.evidence import normalize_provenance
-from aeo_mvp.optimization.models import (
-    PAGE_INTELLIGENCE_VERSION,
+from aeo_mvp.content.models import (
+    PAGE_INTEL_VERSION,
+    AnswerUnit,
     HeadingNode,
     ObservedSignal,
     PageIntelligence,
 )
+from aeo_mvp.queries.evidence import normalize_provenance
 
 _Q_HEAD_RE = re.compile(r"^(who|what|when|where|why|how)\b", re.I)
 _DEF_RE = re.compile(r"\b(is|are|means|refers to)\b", re.I)
 _STOP = frozenset(
     {
-        "the",
-        "and",
-        "for",
-        "with",
-        "from",
-        "this",
-        "that",
-        "your",
-        "our",
-        "into",
-        "about",
-        "using",
-        "have",
-        "will",
-        "are",
-        "was",
-        "were",
-        "been",
-        "being",
-        "their",
-        "they",
-        "them",
-        "what",
-        "when",
-        "where",
-        "which",
-        "while",
-        "a",
-        "an",
-        "of",
-        "to",
-        "in",
-        "on",
-        "at",
-        "by",
-        "or",
-        "as",
-        "is",
-        "it",
-        "be",
+        "the", "and", "for", "with", "from", "this", "that", "your", "our",
+        "into", "about", "using", "have", "will", "are", "was", "were",
+        "been", "being", "their", "they", "them", "what", "when", "where",
+        "which", "while", "a", "an", "of", "to", "in", "on", "at", "by",
+        "or", "as", "is", "it", "be",
     }
 )
+
+
+def _content_prov(raw: Any) -> str:
+    """Map through 4.1.1 normalize_provenance; never invent observed."""
+    return normalize_provenance(raw)
 
 
 def _meta_content(tree, *, name: str | None = None, prop: str | None = None) -> str | None:
@@ -122,7 +94,7 @@ def _signal(
     return ObservedSignal(
         key=key,
         value=value,
-        provenance=normalize_provenance(provenance),
+        provenance=_content_prov(provenance),  # type: ignore[arg-type]
         evidence_class=evidence_class,
         locator=locator,
         snippet=(snippet[:240] if snippet else None),
@@ -158,8 +130,7 @@ def _entity_candidates(tree, jsonld_nodes: list[dict[str, Any]]) -> list[str]:
     for a in tree.css("a[href*='/tag/'], a[rel='tag']"):
         t = (a.text() or "").strip().lstrip("#")
         if t:
-            names.append(t if t.startswith("#") else f"#{t}" if "/tag/" in (a.attributes.get("href") or "") else t)
-    # Stable unique
+            names.append(f"#{t}" if "/tag/" in (a.attributes.get("href") or "") else t)
     seen: set[str] = set()
     out: list[str] = []
     for n in names:
@@ -171,25 +142,23 @@ def _entity_candidates(tree, jsonld_nodes: list[dict[str, Any]]) -> list[str]:
     return out[:20]
 
 
-def _faq_from_page(tree, html: str, jsonld_nodes: list[dict[str, Any]]) -> dict[str, Any]:
+def _faq(tree, jsonld_nodes: list[dict[str, Any]]) -> dict[str, Any]:
     faq_schema = any("FAQPage" in _types(n) for n in jsonld_nodes)
     questions: list[str] = []
     for node in tree.css("h1, h2, h3, h4, strong, b, summary"):
         text = (node.text() or "").strip()
-        if not text:
-            continue
-        if text.endswith("?") or _Q_HEAD_RE.match(text):
+        if text and (text.endswith("?") or _Q_HEAD_RE.match(text)):
             questions.append(text)
     questions = sorted(set(questions), key=lambda s: s.lower())
     return {
         "has_faq_schema": faq_schema,
         "question_headings": questions,
         "question_count": len(questions),
-        "provenance": normalize_provenance("observed" if questions or faq_schema else None),
+        "provenance": _content_prov("observed" if questions or faq_schema else None),
     }
 
 
-def _answerability(tree, text: str, headings: list[HeadingNode]) -> dict[str, Any]:
+def _answerability(text: str, headings: list[HeadingNode]) -> dict[str, Any]:
     has_def = bool(_DEF_RE.search(text[:800])) if text else False
     q_heads = sum(1 for h in headings if h.text.endswith("?") or _Q_HEAD_RE.match(h.text))
     steps = bool(re.search(r"\b(step\s*\d|first,|then,|finally,)\b", text, re.I)) if text else False
@@ -202,8 +171,46 @@ def _answerability(tree, text: str, headings: list[HeadingNode]) -> dict[str, An
         "question_heading_count": q_heads,
         "has_howto_steps": steps,
         "answer_first_heuristic": answer_first,
-        "provenance": normalize_provenance("derived"),
+        "provenance": _content_prov("derived"),
     }
+
+
+def _answer_units(headings: list[HeadingNode], text: str, faq: dict[str, Any]) -> list[AnswerUnit]:
+    units: list[AnswerUnit] = []
+    for h in headings:
+        kind = "section"
+        if h.text.endswith("?") or _Q_HEAD_RE.match(h.text):
+            kind = "faq"
+        elif re.search(r"\b(how to|steps?|guide)\b", h.text, re.I):
+            kind = "howto"
+        elif re.search(r"\b(vs|versus|compare)\b", h.text, re.I):
+            kind = "comparison"
+        elif _DEF_RE.search(h.text):
+            kind = "definition"
+        uid = hashlib.sha256(f"{kind}|{h.level}|{h.text}".encode()).hexdigest()[:10]
+        units.append(
+            AnswerUnit(
+                unit_id=f"au_{uid}",
+                kind=kind,
+                heading=h.text,
+                passage_preview=(text[:160] if text else None),
+                provenance="observed",
+            )
+        )
+    for q in faq.get("question_headings") or []:
+        if any(u.heading == q for u in units):
+            continue
+        uid = hashlib.sha256(f"faq|{q}".encode()).hexdigest()[:10]
+        units.append(
+            AnswerUnit(
+                unit_id=f"au_{uid}",
+                kind="faq",
+                heading=q,
+                provenance="observed",
+            )
+        )
+    units.sort(key=lambda u: (u.kind, u.heading or "", u.unit_id))
+    return units
 
 
 def _internal_links(tree, base_url: str) -> list[dict[str, str]]:
@@ -236,15 +243,14 @@ def extract_page_intelligence(
     url: str = "",
     title_hint: str | None = None,
 ) -> PageIntelligence:
-    """Extract page-intelligence-v1 from HTML. Observed facts only for crawl signals.
-
-    Provenance uses ``normalize_provenance`` (missing/unknown → compatibility).
-    """
+    """Extract page-intel-v1. Observed crawl signals only; missing→compatibility."""
+    hostname = urlparse(url).hostname if url else None
     warnings: list[str] = []
     if not html or not str(html).strip():
         return PageIntelligence(
-            schema_version=PAGE_INTELLIGENCE_VERSION,
+            schema_version=PAGE_INTEL_VERSION,
             url=url,
+            hostname=hostname,
             title=title_hint,
             warnings=["empty_page_html"],
             body_signals={"empty": True},
@@ -257,9 +263,8 @@ def extract_page_intelligence(
                 "answer_first_heuristic": False,
                 "provenance": "compatibility",
             },
-            signals=[
-                _signal("empty_html", True, provenance=None, evidence_class="metadata"),
-            ],
+            signals=[_signal("empty_html", True, provenance=None, evidence_class="metadata")],
+            target_match_scope="hostname",
         )
 
     tree = parse_html(html)
@@ -278,10 +283,10 @@ def extract_page_intelligence(
         tag = node.tag or ""
         if not tag.startswith("h") or not tag[1:].isdigit():
             continue
-        text = (node.text() or "").strip()
-        if not text:
+        text_h = (node.text() or "").strip()
+        if not text_h:
             continue
-        headings.append(HeadingNode(level=int(tag[1]), text=text, provenance="observed"))
+        headings.append(HeadingNode(level=int(tag[1]), text=text_h, provenance="observed"))
 
     text = visible_text(tree)
     wc = word_count(text)
@@ -297,7 +302,6 @@ def extract_page_intelligence(
     types.sort()
 
     topics = _topic_tokens(title, h1, meta_desc, " ".join(h.text for h in headings[:12]))
-    # Prefer hashtag / series style topics from anchors
     for a in tree.css("a[href*='/tag/']"):
         t = (a.text() or "").strip()
         if t and t.lower() not in {x.lower() for x in topics}:
@@ -305,8 +309,9 @@ def extract_page_intelligence(
     topics = topics[:16]
 
     entities = _entity_candidates(tree, jsonld_nodes)
-    faq = _faq_from_page(tree, html, jsonld_nodes)
-    answerability = _answerability(tree, text, headings)
+    faq = _faq(tree, jsonld_nodes)
+    answerability = _answerability(text, headings)
+    units = _answer_units(headings, text, faq)
     links = _internal_links(tree, url or "https://example.invalid/")
 
     body_signals = {
@@ -352,19 +357,14 @@ def extract_page_intelligence(
             )
         )
     signals.append(
-        _signal(
-            "word_count",
-            wc,
-            provenance="derived",
-            evidence_class="article_body",
-        )
+        _signal("word_count", wc, provenance="derived", evidence_class="article_body")
     )
-    # Stable order
     signals.sort(key=lambda s: (s.key, str(s.provenance)))
 
     return PageIntelligence(
-        schema_version=PAGE_INTELLIGENCE_VERSION,
+        schema_version=PAGE_INTEL_VERSION,
         url=url,
+        hostname=hostname,
         title=title,
         meta_description=meta_desc,
         h1=h1,
@@ -380,11 +380,13 @@ def extract_page_intelligence(
                 {"@type": _types(n), "name": n.get("name") or n.get("headline")}
                 for n in jsonld_nodes[:5]
             ],
-            "provenance": normalize_provenance("observed" if jsonld_nodes else None),
+            "provenance": _content_prov("observed" if jsonld_nodes else None),
         },
         answerability_signals=answerability,
+        answer_units=units,
         internal_links=links,
         signals=signals,
         word_count=wc,
+        target_match_scope="hostname",
         warnings=warnings,
     )

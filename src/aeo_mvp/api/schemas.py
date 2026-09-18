@@ -122,7 +122,11 @@ class ContentOptimizationRequest(BaseModel):
     queryset: dict[str, Any] | list[Any] | None = None
     site_profile: dict[str, Any] | None = None
     config: dict[str, Any] | None = None
-    paid_llm_opt_in: bool = False
+    # Job-option aliases (Architect / Optimizer)
+    content_optimization: bool = True
+    generate_draft: bool = False
+    draft_paid: bool = False
+    paid_llm_opt_in: bool = False  # alias → draft_paid
 
     @field_validator("source_url", "url")
     @classmethod
