@@ -93,5 +93,15 @@ def registrable_domain(url: str) -> str:
 
 
 def domain_label(url: str) -> str:
-    host = registrable_domain(url)
+    """Brand-ish label from the scanned site — not the multi-tenant platform apex.
+
+    For ``nik-hil.hashnode.dev`` returns ``nik-hil``, not ``hashnode``.
+    """
+    from aeo_mvp.target_site import resolve_target_site_identity
+
+    identity = resolve_target_site_identity(url)
+    if identity.multi_tenant_host and identity.identity_kind != "platform_apex":
+        host = identity.hostname_apex_normalized or identity.hostname
+        return host.split(".")[0] if host else ""
+    host = identity.registrable_domain or registrable_domain(url)
     return host.split(".")[0] if host else ""

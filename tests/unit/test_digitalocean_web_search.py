@@ -430,6 +430,159 @@ def test_ai_search_aggregate_rates_separate_from_llm():
 
 
 @pytest.mark.asyncio
+async def test_hashnode_publication_does_not_credit_platform_or_siblings(monkeypatch):
+    """domain-match-v1: nik-hil.hashnode.dev must not match hashnode.dev / siblings."""
+    monkeypatch.setenv("DO_MODEL_ACCESS_KEY", "test-key-not-real")
+    from aeo_mvp.config import get_settings
+
+    get_settings.cache_clear()
+
+    data = {
+        "id": "resp_hn",
+        "output": [
+            {
+                "type": "web_search_call",
+                "status": "completed",
+                "action": {
+                    "queries": ["nik hil agents"],
+                    "sources": [
+                        {"url": "https://hashnode.dev/"},
+                        {"url": "https://other-user.hashnode.dev/post"},
+                        {"url": "https://maliciousnik-hil.hashnode.dev/x"},
+                        {"url": "https://nik-hil.hashnode.dev/article"},
+                    ],
+                },
+            },
+            {
+                "type": "message",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "Nik Hil writes about agents on Hashnode.",
+                        "annotations": [
+                            {
+                                "type": "url_citation",
+                                "url": "https://www.nik-hil.hashnode.dev/article",
+                                "title": "Article",
+                                "start_index": 0,
+                                "end_index": 10,
+                            },
+                            {
+                                "type": "url_citation",
+                                "url": "https://other-user.hashnode.dev/post",
+                                "title": "Sibling",
+                                "start_index": 11,
+                                "end_index": 20,
+                            },
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = data
+    mock_resp.text = json.dumps(data)
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+    mock_client.post = AsyncMock(return_value=mock_resp)
+
+    with patch(
+        "aeo_mvp.visibility.digitalocean_web_search.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
+        p = DigitalOceanWebSearchProvider(api_key="test-key-not-real")
+        obs = await p.run_query(
+            "agents",
+            context=_ctx(
+                base_url="https://nik-hil.hashnode.dev/",
+                brand_tokens=["Nik", "Hil"],
+                site_registrable_domain="hashnode.dev",
+                target_hostname="nik-hil.hashnode.dev",
+                target_domain_scope="hostname",
+                multi_tenant_host=True,
+                match_rule_version="domain-match-v1",
+            ),
+        )
+
+    assert obs.target_domain_appeared is True
+    assert obs.target_domain_cited is True
+    assert all("nik-hil.hashnode.dev" in u for u in obs.cited_urls)
+    assert not any("other-user" in u for u in obs.cited_urls)
+    audit = obs.meta["target_site_match"]
+    assert audit["match_rule_version"] == "domain-match-v1"
+    assert audit["match_scope"] == "hostname"
+    assert audit["target_hostname"] == "nik-hil.hashnode.dev"
+    assert audit["target_registrable_domain"] == "hashnode.dev"
+    assert audit["cited"] is True
+    assert any("nik-hil.hashnode.dev" in u for u in audit["matched_urls_appeared"])
+    assert not any(u.startswith("https://hashnode.dev") for u in audit["matched_urls_appeared"])
+    assert obs.meta["target_site"]["multi_tenant_host"] is True
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_text_mention_without_matching_urls_not_appeared(monkeypatch):
+    monkeypatch.setenv("DO_MODEL_ACCESS_KEY", "test-key-not-real")
+    from aeo_mvp.config import get_settings
+
+    get_settings.cache_clear()
+
+    data = {
+        "output": [
+            {
+                "type": "web_search_call",
+                "action": {
+                    "queries": ["q"],
+                    "sources": [{"url": "https://unrelated.example/x"}],
+                },
+            },
+            {
+                "type": "message",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "Nik Hil is a writer on Hashnode.",
+                        "annotations": [],
+                    }
+                ],
+            },
+        ]
+    }
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = data
+    mock_resp.text = json.dumps(data)
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+    mock_client.post = AsyncMock(return_value=mock_resp)
+
+    with patch(
+        "aeo_mvp.visibility.digitalocean_web_search.httpx.AsyncClient",
+        return_value=mock_client,
+    ):
+        p = DigitalOceanWebSearchProvider(api_key="test-key-not-real")
+        obs = await p.run_query(
+            "q",
+            context=_ctx(
+                base_url="https://nik-hil.hashnode.dev/",
+                brand_tokens=["Nik", "Hil", "Hashnode"],
+                site_registrable_domain="hashnode.dev",
+                target_domain_scope="hostname",
+            ),
+        )
+
+    assert obs.detected_mention is True
+    assert obs.target_domain_appeared is False
+    assert obs.target_domain_cited is False
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
 @pytest.mark.skipif(
     not (
         (os.environ.get("DO_MODEL_ACCESS_KEY") or os.environ.get("MODEL_ACCESS_KEY"))

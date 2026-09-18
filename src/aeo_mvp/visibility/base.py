@@ -31,6 +31,13 @@ class VisibilityContext(BaseModel):
     prompt_id: str
     run_index: int
     protocol_version: str = "llm-mention-v1"
+    # Target-site identity (AI-search); optional for LLM-mention back-compat.
+    target_hostname: str | None = None
+    target_origin: str | None = None
+    target_domain_scope: str | None = None
+    multi_tenant_host: bool | None = None
+    match_rule_version: str | None = None
+    target_site: dict[str, Any] | None = None
 
 
 class VisibilityObservation(BaseModel):

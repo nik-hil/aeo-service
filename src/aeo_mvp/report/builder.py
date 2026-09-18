@@ -223,6 +223,7 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
     site_understanding = pipeline_extras.get("site_understanding")
     discovered_queries = pipeline_extras.get("discovered_queries")
     competitors = pipeline_extras.get("competitors")
+    target_site = pipeline_extras.get("target_site")
 
     if site_understanding is None and site_profile_row:
         try:
@@ -398,6 +399,14 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
 
     if retrieval_enabled and competitors and competitors.get("applicable"):
         report["competitors"] = competitors
+
+    if target_site:
+        report["target_site"] = target_site
+    elif retrieval_enabled:
+        # Derive from base_url when stash missing (older jobs / partial runs).
+        from aeo_mvp.target_site import resolve_target_site_identity
+
+        report["target_site"] = resolve_target_site_identity(job.base_url).to_audit_dict()
 
     emitted = report["emitted_at"]
     existing = session.query(Report).filter(Report.job_id == job.id).one_or_none()

@@ -22,11 +22,16 @@ from typing import Any
 import httpx
 
 from aeo_mvp.config import get_settings
+from aeo_mvp.target_site import (
+    MATCH_RULE_VERSION,
+    build_target_site_match_audit,
+    resolve_target_site_identity,
+    target_match,
+)
 from aeo_mvp.visibility.base import VisibilityContext, VisibilityObservation
 from aeo_mvp.visibility.metrics import (
     AI_SEARCH_EXTRACTION_METHODOLOGY,
     detect_mention,
-    domain_matches_target,
     filter_brand_tokens,
 )
 from aeo_mvp.visibility.retrieval_base import retrieval_capabilities
@@ -34,6 +39,7 @@ from aeo_mvp.visibility.retrieval_base import retrieval_capabilities
 logger = logging.getLogger(__name__)
 
 EXTRACTION_METHODOLOGY = AI_SEARCH_EXTRACTION_METHODOLOGY
+# Tagged in observation meta as match_rule_version=domain-match-v1 (D023).
 
 
 class DigitalOceanWebSearchError(RuntimeError):
@@ -326,18 +332,29 @@ class DigitalOceanWebSearchProvider:
                 "Refusing to treat as AI search visibility."
             )
 
-        target = context.site_registrable_domain
+        # Target site identity (domain-match-v1) — not bare PSL equality.
+        identity = resolve_target_site_identity(
+            context.base_url,
+            scope=(
+                context.target_domain_scope  # type: ignore[arg-type]
+                if context.target_domain_scope
+                in {"registrable_domain", "hostname", "origin"}
+                else None
+            ),
+        )
+
         citations = parsed["citations"]
         source_urls = list(parsed["source_urls"])
-        cited_target_urls = [
+        citation_urls = [
             c["url"]
             for c in citations
-            if domain_matches_target(c["url"], target)
+            if isinstance(c.get("url"), str)
         ]
+        cited_target_urls = [u for u in citation_urls if target_match(u, identity)]
+        matched_sources = [u for u in source_urls if target_match(u, identity)]
         target_domain_cited = len(cited_target_urls) > 0
-        target_domain_appeared = any(
-            domain_matches_target(u, target) for u in source_urls
-        ) or target_domain_cited
+        # Appearance from sources; structured citations also count as appearance.
+        target_domain_appeared = len(matched_sources) > 0 or target_domain_cited
 
         answer = parsed["answer_text"] or ""
         tokens = filter_brand_tokens(context.brand_tokens)
@@ -346,6 +363,23 @@ class DigitalOceanWebSearchProvider:
         sanitized = _sanitize_for_storage(copy.deepcopy(data))
         # Never persist the request Authorization header; raw is response body only.
         raw_response = json.dumps(sanitized, sort_keys=True)[:50000]
+
+        match_audit = build_target_site_match_audit(
+            identity=identity,
+            source_urls=source_urls,
+            citation_urls=citation_urls,
+        )
+        # Align appeared/cited flags with provider OR semantics for citations.
+        match_audit["appeared"] = target_domain_appeared
+        match_audit["cited"] = target_domain_cited
+        if target_domain_cited and not match_audit["matched_urls_appeared"]:
+            # Citations counted as appearance — reflect in audit lists.
+            match_audit["matched_urls_appeared"] = list(
+                match_audit["matched_urls_cited"]
+            )
+            match_audit["matched_source_urls"] = list(
+                match_audit["matched_citation_urls"]
+            )
 
         meta: dict[str, Any] = {
             "model": self.model,
@@ -364,6 +398,9 @@ class DigitalOceanWebSearchProvider:
                 "Not consumer ChatGPT/Gemini/Perplexity UI. measures_consumer_ui=false."
             ),
             "answer_text": answer[:8000] if answer else None,
+            "match_rule_version": MATCH_RULE_VERSION,
+            "target_site": identity.to_audit_dict(),
+            "target_site_match": match_audit,
         }
 
         return VisibilityObservation(

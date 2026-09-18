@@ -1,0 +1,100 @@
+{
+  "verification_id": "VERIFY-TARGET-SITE-IDENTITY-2026-09-18",
+  "date": "2026-09-18",
+  "pr_url": "https://github.com/nik-hil/aeo-service/pull/2",
+  "branch": "cursor/target-site-identity-2e31",
+  "commit_sha": "54874df8c130fcdf8522eee263c70543e2e48fa2",
+  "base_branch": "main",
+  "base_sha": "e2528cbf73a607db57d908b7b07a6bc17f3812b6",
+  "overall": "PASS",
+  "gates": {
+    "A_identity_core": "PASS",
+    "B_ai_search_competitors": "PASS",
+    "C_audit_metadata": "PASS",
+    "D_regression": "PASS",
+    "E_report": "PASS"
+  },
+  "criteria": {
+    "1_target_site_identity_separate_from_psl": "PASS",
+    "2_registrable_domain_nik_hil_hashnode_dev_equals_hashnode_dev": "PASS",
+    "3_hostname_scope_hashnode_matrix": "PASS",
+    "4_example_vs_malicious_www_policy": "PASS",
+    "5_label_boundary_no_naive_endswith": "PASS",
+    "6_allowlist_and_include_psl_private_domains_true": "PASS",
+    "7_appeared_cited_use_hostname_scope_not_bare_psl": "PASS",
+    "8_psl_available_separately_for_audit": "PASS",
+    "9_competitors_site_key_no_sibling_self_count": "PASS",
+    "10_audit_includes_scope_hostname_registrable_matched_url_match_bool": "PASS",
+    "11_full_pytest_independent_counts": "PASS",
+    "12_ssrf_tests_pass": "PASS",
+    "13_health_v1_weights_unchanged": "PASS",
+    "14_no_live_paid_do_experiment": "PASS"
+  },
+  "psl_correction": {
+    "hashnode_dev_on_psl_private": false,
+    "registrable_domain_nik_hil_hashnode_dev": "hashnode.dev",
+    "expected": true,
+    "fail_if_ai_search_uses_bare_psl_as_match_key": false,
+    "fix_uses_hostname_scope_plus_supplemental_allowlist": true,
+    "include_psl_private_domains": true
+  },
+  "pytest": {
+    "full": {
+      "command": "python3 -m pytest --tb=line -q",
+      "passed": 93,
+      "skipped": 1,
+      "failed": 0,
+      "warnings": 2,
+      "skipped_tests": [
+        {
+          "nodeid": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional",
+          "reason": "Live DO retrieval test requires DO_MODEL_ACCESS_KEY and AEO_LIVE_RETRIEVAL_TEST=true"
+        }
+      ]
+    },
+    "targeted": {
+      "command": "python3 -m pytest tests/unit/test_target_site.py tests/unit/test_ssrf.py tests/unit/test_digitalocean_web_search.py tests/unit/test_scoring.py -v --tb=short",
+      "passed": 65,
+      "skipped": 1,
+      "failed": 0
+    }
+  },
+  "health_v1_weights": {
+    "technical": 0.25,
+    "content": 0.25,
+    "entity": 0.2,
+    "structured_data": 0.15,
+    "answerability": 0.15,
+    "unchanged_vs_main": true
+  },
+  "manual_hashnode_matrix": {
+    "target": "https://nik-hil.hashnode.dev/",
+    "scope": "hostname",
+    "site_key": "nik-hil.hashnode.dev",
+    "registrable_domain": "hashnode.dev",
+    "results": [
+      {"candidate": "https://nik-hil.hashnode.dev/article", "expect": true, "got": true},
+      {"candidate": "https://www.nik-hil.hashnode.dev/x", "expect": true, "got": true},
+      {"candidate": "https://other-user.hashnode.dev/x", "expect": false, "got": false},
+      {"candidate": "https://hashnode.dev/", "expect": false, "got": false},
+      {"candidate": "https://blog.hashnode.dev/", "expect": false, "got": false},
+      {"candidate": "https://maliciousnik-hil.hashnode.dev/", "expect": false, "got": false},
+      {"candidate": "https://blog.nik-hil.hashnode.dev/", "expect": false, "got": false}
+    ],
+    "overall": "PASS"
+  },
+  "top_fail_issues": [],
+  "engineering_claim_93_1": {
+    "claimed": {"passed": 93, "skipped": 1},
+    "independently_observed": {"passed": 93, "skipped": 1, "failed": 0},
+    "matches_claim": true,
+    "trusted_a_priori": false
+  },
+  "artifact_paths": [
+    "docs/verification/VERIFY-TARGET-SITE-IDENTITY-2026-09-18.md",
+    "docs/verification/VERIFY-TARGET-SITE-IDENTITY-2026-09-18.json",
+    "/opt/cursor/artifacts/pytest-full.txt",
+    "/opt/cursor/artifacts/pytest-targeted.txt",
+    "/opt/cursor/artifacts/manual-hashnode-matrix.txt"
+  ]
+}

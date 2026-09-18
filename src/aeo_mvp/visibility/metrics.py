@@ -11,7 +11,7 @@ from aeo_mvp.visibility.base import VisibilityObservation
 URL_RE = re.compile(r"https?://[^\s\)\]\"'<>]+", re.I)
 EXTRACTION_METHODOLOGY = "llm-mention-v1:mention-rule-v1+url-mention-rule-v1"
 AI_SEARCH_EXTRACTION_METHODOLOGY = (
-    "ai-search-vis-v1:do-web-search+url-citation-v1+mention-rule-v1"
+    "ai-search-vis-v1:do-web-search+url-citation-v1+mention-rule-v1+domain-match-v1"
 )
 
 
@@ -59,7 +59,11 @@ def detect_citation(text: str, site_domain: str, extra_urls: list[str] | None = 
 
 
 def domain_matches_target(url_or_host: str, target_domain: str) -> bool:
-    """True iff url_or_host's registrable domain equals the target's (PSL-based)."""
+    """True iff url_or_host's registrable domain equals the target's (PSL-based).
+
+    Legacy PSL equality helper (lookalike / domain-level checks).
+    AI-search appeared/cited MUST use ``aeo_mvp.target_site.target_match`` instead.
+    """
     left = registrable_domain(url_or_host)
     right = registrable_domain(target_domain)
     return bool(left) and left == right
@@ -126,20 +130,17 @@ def aggregate_llm_metrics(observations: list[VisibilityObservation]) -> LlmAggre
 
 
 def aggregate_ai_search_metrics(observations: list[VisibilityObservation]) -> AiSearchAggregateRates:
-    """Aggregate rates for retrieval-enabled AI search visibility experiments."""
+    """Aggregate rates for retrieval-enabled AI search visibility experiments.
+
+    domain-match-v1: ``target_domain_appeared`` / ``target_domain_cited`` are the
+    sole inputs for appearance/citation rates. Do **not** fall back to
+    ``detected_mention`` / ``detected_citation`` when those flags are null —
+    brand-token text mention must not set appearance/citation.
+    """
     r = len(observations)
     m = sum(1 for o in observations if o.detected_mention)
-    k = sum(
-        1
-        for o in observations
-        if (o.target_domain_cited is True) or (o.target_domain_cited is None and o.detected_citation)
-    )
-    appeared = sum(
-        1
-        for o in observations
-        if (o.target_domain_appeared is True)
-        or (o.target_domain_appeared is None and (o.detected_mention or o.detected_citation))
-    )
+    k = sum(1 for o in observations if o.target_domain_cited is True)
+    appeared = sum(1 for o in observations if o.target_domain_appeared is True)
     prompts = {o.prompt_id for o in observations}
     p = len(prompts)
 
