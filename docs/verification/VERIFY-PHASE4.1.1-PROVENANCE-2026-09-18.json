@@ -1,0 +1,300 @@
+{
+  "report": "VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18",
+  "date": "2026-09-18",
+  "overall": "PASS",
+  "merge_recommendation": "PASS",
+  "blocking_gates": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"],
+  "blocking_gates_all_pass": true,
+  "pr_under_review": "https://github.com/nik-hil/aeo-service/pull/15",
+  "verified_sha": "339ec1567e543dc4491cb2be9a1432ea9710de46",
+  "verified_sha_requested": "339ec1567e543dc4491cb2be9a1432ea9710de46",
+  "pr_tip_at_recheck": "677cc4f3091e7d1c6d1333fc5cd0caa3a80ee480",
+  "tip_moved": true,
+  "tip_delta_vs_verified_sha": {
+    "product_provenance_code_unchanged": true,
+    "files_changed": [
+      "docs/verification/VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18.md",
+      "docs/verification/VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18.json",
+      "tests/unit/test_query_discovery_phase411.py"
+    ],
+    "note": "tip adds prior VERIFY docs + test_p7 assertion flip only"
+  },
+  "sha_requirement_met": true,
+  "base_ref": "main",
+  "base_sha": "e593b4b1be8ecc3d5b47dcdb2ead8ff5a2269518",
+  "method": "independent_read_and_run_tests_and_probe",
+  "engineering_claims_trusted_a_priori": false,
+  "paid_digitalocean_apis_run": false,
+  "product_code_changed_by_verifier": false,
+  "docs_only": true,
+  "checklist_version": "query-set-quality-v1.1.1",
+  "gate_rows_labeled_by": "assert_intent",
+  "gate_rows_not_labeled_by": "test_function_names",
+  "corrective_verify_untouched": true,
+  "corrective_verify_diff_bytes_vs_main": 0,
+  "pytest": {
+    "at_verified_sha": {
+      "sha": "339ec1567e543dc4491cb2be9a1432ea9710de46",
+      "full_suite": {
+        "passed": 163,
+        "skipped": 1,
+        "failed": 0,
+        "duration_s": 3.31,
+        "command": "pytest -q",
+        "line": "163 passed, 1 skipped, 2 warnings in 3.31s"
+      },
+      "phase411": {
+        "passed": 21,
+        "failed": 0,
+        "command": "pytest tests/unit/test_query_discovery_phase411.py -v",
+        "line": "21 passed"
+      }
+    },
+    "at_tip": {
+      "sha": "677cc4f3091e7d1c6d1333fc5cd0caa3a80ee480",
+      "full_suite": {
+        "passed": 163,
+        "skipped": 1,
+        "failed": 0,
+        "duration_s": 2.78,
+        "command": "pytest -q",
+        "line": "163 passed, 1 skipped, 2 warnings in 2.78s"
+      },
+      "phase411": {
+        "passed": 21,
+        "failed": 0,
+        "line": "21 passed"
+      }
+    },
+    "skipped_test": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
+  },
+  "freeze_diff_vs_main": {
+    "base_sha": "e593b4b1be8ecc3d5b47dcdb2ead8ff5a2269518",
+    "ssrf": "empty",
+    "target_site": "empty",
+    "domains": "empty",
+    "health": "empty",
+    "digitalocean_web_search": "empty",
+    "select_v2": "empty",
+    "diff_bytes": 0,
+    "selection_seed_method": "sha256_seeded_tiebreak_v1",
+    "quality_version": "query-quality-v1",
+    "diagnostics_not_health_score": true,
+    "llm_mention_vs_ai_search_pinned": true,
+    "domain_match_v1_pinned": true
+  },
+  "unsafe_promotion_rg": {
+    "setdefault_observed": "NONE",
+    "setdefault_provenance": "NONE",
+    "setdefault_in_generate": "evidence_class/classes only — not provenance",
+    "provenance_eq_observed_hits": [
+      "src/aeo_mvp/queries/evidence.py:170 (comparison in observed_evidence_classes)",
+      "src/aeo_mvp/queries/generate_v2.py:150,277 (comparison when preferring observed)",
+      "src/aeo_mvp/understanding/builder.py:229,926 (explicit crawl EvidenceRef stamp at construction)"
+    ],
+    "implicit_presence_promotion_found": false
+  },
+  "gates": {
+    "P1": {
+      "assert_intent": "missing/unknown provenance → compatibility; never silent observed",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "none_empty_unknown_foobar_to_compatibility": true,
+        "never_maps_blank_unknown_to_observed": true,
+        "siteprofile_heuristic_to_derived": true,
+        "explicit_triad_preserved": true,
+        "from_dict_missing_compatibility": true,
+        "stamp_missing_compatibility": true
+      },
+      "evidence": {
+        "files": ["src/aeo_mvp/queries/evidence.py"],
+        "evidence_paths": [
+          "tests/unit/test_query_discovery_phase411.py::test_p1_normalize_missing_unknown_to_compatibility_never_observed",
+          "tests/unit/test_query_discovery_phase411.py::test_a_missing_provenance_maps_to_compatibility",
+          "tests/unit/test_query_discovery_phase411.py::test_b_unknown_provenance_maps_to_compatibility"
+        ],
+        "probe_matrix_ok_count": 13,
+        "probe_matrix_fail_count": 0
+      }
+    },
+    "P2": {
+      "assert_intent": "no implicit observed (ban setdefault/stamp/origin-based promotion to observed)",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "no_setdefault_observed": true,
+        "stamp_presence_only_compatibility": true,
+        "stamp_heuristic_field_derived": true,
+        "explicit_observed_retained": true,
+        "builder_crawl_stamp_is_explicit_not_presence_promotion": true
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/evidence.py",
+          "src/aeo_mvp/queries/generate_v2.py",
+          "src/aeo_mvp/queries/generate.py",
+          "src/aeo_mvp/understanding/builder.py",
+          "src/aeo_mvp/understanding/profile.py"
+        ],
+        "evidence_paths": [
+          "tests/unit/test_query_discovery_phase411.py::test_p2_no_implicit_observed_setdefault_or_stamp_to_observed",
+          "tests/unit/test_query_discovery_phase411.py::test_no_unsafe_observed_promotion_in_generate_v2"
+        ],
+        "rg_setdefault_observed": "NONE"
+      }
+    },
+    "P3": {
+      "assert_intent": "QSQ-EVD strongest accept requires ≥2 DISTINCT classes with provenance==observed; derived/compatibility/missing never count",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "obs_plus_derived_fails": true,
+        "two_same_observed_class_fails": true,
+        "two_distinct_observed_passes": true,
+        "obs_plus_compatibility_fails": true,
+        "derived_plus_compatibility_fails": true
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/quality.py",
+          "src/aeo_mvp/queries/evidence.py"
+        ],
+        "evidence_paths": [
+          "tests/unit/test_query_discovery_phase411.py::test_p3_qsq_evd_requires_two_distinct_observed_only",
+          "tests/unit/test_query_discovery_phase411.py::test_c_observed_plus_derived_fails_evd",
+          "tests/unit/test_query_discovery_phase411.py::test_e_two_distinct_observed_passes_evd",
+          "tests/unit/test_query_discovery_phase411.py::test_f_two_same_observed_class_fails_evd"
+        ],
+        "probe": {
+          "obs_plus_derived": {"status": "fail", "observed_classes": ["title_h1"]},
+          "two_same_observed_class": {"status": "fail", "observed_classes": ["title_h1"]},
+          "two_distinct_observed": {"status": "pass", "observed_classes": ["article_body", "title_h1"]},
+          "obs_plus_compatibility": {"status": "fail", "observed_classes": ["title_h1"]},
+          "derived_plus_compatibility": {"status": "fail", "observed_classes": []}
+        }
+      }
+    },
+    "P4": {
+      "assert_intent": "generator preserves explicit observed|derived|compatibility; fills missing → compatibility",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "explicit_observed_retained": true,
+        "missing_to_compatibility": true,
+        "derived_preserved": true,
+        "field_heuristic_inherits_derived_not_observed": true,
+        "no_false_observed_from_missing": true,
+        "candidates_generated": 30
+      },
+      "evidence": {
+        "files": [
+          "src/aeo_mvp/queries/generate_v2.py",
+          "src/aeo_mvp/queries/evidence.py"
+        ],
+        "evidence_paths": [
+          "tests/unit/test_query_discovery_phase411.py::test_p4_generator_preserves_explicit_fills_missing_compatibility",
+          "tests/unit/test_query_discovery_phase411.py::test_g_preserve_explicit_observed",
+          "tests/unit/test_query_discovery_phase411.py::test_h_generate_v2_missing_provenance_becomes_compatibility_not_observed"
+        ]
+      }
+    },
+    "P5": {
+      "assert_intent": "missing/unknown / foobar → compatibility + strongest EVD fail",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "missing_field_normalized_compatibility": true,
+        "missing_field_evd_fail": true,
+        "foobar_evd_fail": true,
+        "no_strongest_evd_pass_on_missing_or_foobar": true
+      },
+      "evidence": {
+        "evidence_paths": [
+          "tests/unit/test_query_discovery_phase411.py::test_p5_missing_unknown_regression_evd_fail"
+        ],
+        "probe": {
+          "missing_field": {
+            "evd": "fail",
+            "observed": [],
+            "normalized": ["compatibility", "compatibility"]
+          },
+          "foobar": {"evd": "fail", "observed": []}
+        }
+      }
+    },
+    "P6": {
+      "assert_intent": "arbitrary-site synthetic non-Hashnode (SignalWatch/SaaS) same rules; generation works; no false observed",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "signalwatch_candidates_gt_0": true,
+        "acme_candidates_gt_0": true,
+        "weak_evd_fail": true,
+        "acme_false_observed_count": 0,
+        "hashnode_assumption": false,
+        "discovery_only_paid_false": true
+      },
+      "evidence": {
+        "evidence_paths": [
+          "tests/unit/test_query_discovery_phase411.py::test_p6_arbitrary_site_synthetic_same_provenance_rules",
+          "tests/unit/test_query_discovery_phase411.py::test_j_signalwatch_saas_regression_with_explicit_observed"
+        ],
+        "probe": {
+          "signalwatch_candidates": 31,
+          "acme_candidates": 31,
+          "weak_evd_status": "fail",
+          "discovery_query_count": 20,
+          "acme_false_observed_count": 0
+        }
+      }
+    },
+    "P7": {
+      "assert_intent": "freezes held (health-v1, domain-match-v1, SSRF, llm-mention vs AI-search, diagnostics≠score, sha256_seeded_tiebreak_v1); CORRECTIVE VERIFY untouched",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "freeze_diff_bytes_0": true,
+        "selection_seed_method_unchanged": true,
+        "corrective_verify_untouched": true,
+        "no_query_set_v4": true
+      },
+      "evidence": {
+        "freeze_paths": [
+          "src/aeo_mvp/security/ssrf.py",
+          "src/aeo_mvp/target_site.py",
+          "src/aeo_mvp/domains.py",
+          "src/aeo_mvp/scoring/health.py",
+          "src/aeo_mvp/visibility/digitalocean_web_search.py",
+          "src/aeo_mvp/queries/select_v2.py"
+        ],
+        "evidence_paths": [
+          "tests/unit/test_query_discovery_phase411.py::test_p7_freezes_held_no_query_set_v4"
+        ],
+        "corrective_files": [
+          "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.md",
+          "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.json"
+        ]
+      }
+    },
+    "P8": {
+      "assert_intent": "no paid DigitalOcean; offline; discovery_only; no httpx/web_search",
+      "result": "PASS",
+      "blocks_merge_if_fail": true,
+      "checks": {
+        "httpx_calls": 0,
+        "discovery_only": true,
+        "paid_retrieval_opt_in": false,
+        "paid_retrieval_ready": false,
+        "paid_digitalocean_apis_run": false,
+        "no_web_search_invoked": true
+      },
+      "evidence": {
+        "evidence_paths": [
+          "tests/unit/test_query_discovery_phase411.py::test_p8_no_paid_digitalocean_in_discovery_dry_run"
+        ],
+        "probe": "httpx.Client/AsyncClient patched; discover_queries discovery_only=True → 0 calls"
+      }
+    }
+  }
+}
