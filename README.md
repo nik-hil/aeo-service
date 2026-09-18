@@ -54,9 +54,19 @@ source .venv/bin/activate
 pytest -q
 ```
 
-## Optional live visibility provider
+## Optional live visibility providers
 
-Set `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL`, `OPENAI_MODEL`) then create a job with `"demo_mode": false` and `"options": {"provider": "auto"}`. API observations are **not** consumer ChatGPT UI results.
+**LLM mention** (`experiment_kind=llm_mention`): set `OPENAI_API_KEY` (optional
+`OPENAI_BASE_URL`, `OPENAI_MODEL`). Chat completions only — **not** AI search visibility.
+
+**AI search visibility** (`experiment_kind=ai_search_visibility`): set
+`DO_MODEL_ACCESS_KEY` (or `MODEL_ACCESS_KEY`) and optionally
+`AEO_VISIBILITY_PROVIDER=digitalocean_web_search`. Uses DigitalOcean Inference
+Responses API + `web_search`. **Does not** measure consumer ChatGPT/Gemini/Perplexity UI
+(`measures_consumer_ui=false`). See `docs/methodology/AI_SEARCH_VISIBILITY_DO.md`.
+
+Under `provider=auto` / `AEO_VISIBILITY_PROVIDER=auto`: DO key → DigitalOcean web_search;
+else OpenAI key → LLM mention; else DemoProvider. Demo mode always stays deterministic.
 
 ## Docs
 
