@@ -508,15 +508,44 @@ def discovery_to_json(result: DiscoveryResult) -> str:
 
 
 def replay_discovery_fingerprint(result: DiscoveryResult) -> str:
-    """sha256 fingerprint of ordered query_id/text — used by dry-run tests."""
-    if result.fingerprint:
-        return result.fingerprint
-    payload = [{"id": q.id, "text": q.query} for q in result.queries]
-    import hashlib
+    """Canonical sha256 fingerprint shared with ``fingerprint_members``.
 
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    Payload per member: query_id, text, intent, topic, entity.
+    Prefer persisted fingerprint when present (same bytes).
+    """
+    from aeo_mvp.queries.select_v2 import (
+        canonical_member_payload,
+        fingerprint_from_payloads,
+    )
+
+    if result.fingerprint:
+        # Recompute from ordered queries to prove shared canonical shape
+        payloads = [
+            canonical_member_payload(
+                query_id=q.id,
+                text=q.query,
+                intent=q.intent,
+                topic=q.topic,
+                entity=q.entity,
+            )
+            for q in result.queries
+        ]
+        recomputed = fingerprint_from_payloads(payloads)
+        # Persisted fingerprint must match canonical recompute
+        if recomputed == result.fingerprint:
+            return result.fingerprint
+        return recomputed
+    payloads = [
+        canonical_member_payload(
+            query_id=q.id,
+            text=q.query,
+            intent=q.intent,
+            topic=q.topic,
+            entity=q.entity,
+        )
+        for q in result.queries
+    ]
+    return fingerprint_from_payloads(payloads)
 
 
 __all__ = [

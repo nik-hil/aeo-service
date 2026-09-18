@@ -173,3 +173,15 @@ folding diagnostics into `health-v1`.
 `discovery_only`/`dry_run` with fingerprint replay and zero paid calls.
 **Rationale:** Stop PS/topic monopoly; require offline replay before paid live.
 **Doc:** ADR-029.
+
+## D030 — Phase 4.1 seed tie-break + evidence provenance (2026-09-18)
+**Decision:** Corrective only (no Phase 5). `effective_seed` influences selection
+solely via `selection_seed_method=sha256_seeded_tiebreak_v1`
+(`SHA-256(seed|query_id)`), never global random. Canonical fingerprint payload
+`(query_id,text,intent,topic,entity)` shared by members + replay.
+`EvidenceRecord.provenance` ∈ observed|derived|compatibility; only **observed**
+counts for strongest QSQ-EVD. Genre policies split into `quality_policy.py`.
+Kept `query-set-v3` (additive field; no version bump).
+**Rationale:** Phase 4 persisted seeds but ignored them in selection; fingerprint
+and evidence honesty gaps.
+**Doc:** `docs/methodology/QUERY_DISCOVERY.md`, `QUERY_SET_QUALITY.md`.

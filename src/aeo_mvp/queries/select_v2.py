@@ -1,7 +1,12 @@
-"""Coverage-aware query selection ``query-set-v3`` (Phase 4).
+"""Coverage-aware query selection ``query-set-v3`` (Phase 4 + 4.1 corrective).
 
 Pipeline: intent budgets → coverage cell fill → lexical MMR → max-per-topic caps.
 Deterministic given effective_seed + candidate pool.
+
+Phase 4.1: ``effective_seed`` influences selection **only** via
+``sha256_seeded_tiebreak_v1`` (SHA-256(seed|query_id)) — never global random.
+Order: coverage/intent → MMR → seeded tie-break → query_id.
+Seed never bypasses quality / intent / topic / MMR / evidence gates.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ MIN_TOP_K = 8
 MAX_TOP_K = 30
 QUERY_SET_VERSION = "query-set-v3"
 SELECTION_METHOD = "coverage_mmr_intent_budget_v1"
+SELECTION_SEED_METHOD = "sha256_seeded_tiebreak_v1"
 DISCOVERY_METHOD_V2 = "query-discovery-v2"
 DEFAULT_MMR_LAMBDA = 0.65
 DEFAULT_MAX_PER_TOPIC = 3
@@ -89,6 +95,7 @@ class QuerySetV3:
     representativeness: dict[str, Any] = field(default_factory=dict)
     generator_version: str = "candidate-gen-v2"
     dedup_method: str = "lexical_jaccard_v1"
+    selection_seed_method: str = SELECTION_SEED_METHOD
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -99,6 +106,7 @@ class QuerySetV3:
             "effective_seed": self.effective_seed,
             "seed_resolution": self.seed_resolution,
             "selection_method": self.selection_method,
+            "selection_seed_method": self.selection_seed_method,
             "status": self.status,
             "members": [m.to_dict() for m in self.members],
             "candidates_count": self.candidates_count,
@@ -145,19 +153,46 @@ def _set_id(seed: int, evidence_hash: str | None, version: str) -> str:
     return f"qs_{h}"
 
 
+def seeded_tiebreak_key(effective_seed: int, query_id: str) -> str:
+    """SHA-256(seed|query_id) hex — deterministic tie-break only (no RNG)."""
+    return hashlib.sha256(f"{effective_seed}|{query_id}".encode()).hexdigest()
+
+
+def canonical_member_payload(
+    *,
+    query_id: str,
+    text: str,
+    intent: str | None,
+    topic: str | None,
+    entity: str | None,
+) -> dict[str, Any]:
+    """Single canonical fingerprint payload shape (Phase 4.1)."""
+    return {
+        "query_id": query_id,
+        "text": text,
+        "intent": intent,
+        "topic": topic,
+        "entity": entity,
+    }
+
+
+def fingerprint_from_payloads(payloads: list[dict[str, Any]]) -> str:
+    raw = json.dumps(payloads, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 def fingerprint_members(members: list[QuerySetMember]) -> str:
-    payload = [
-        {
-            "query_id": m.query.query_id,
-            "text": m.query.text,
-            "intent": m.query.intent,
-            "topic": m.query.topic,
-            "entity": m.query.entity,
-        }
+    payloads = [
+        canonical_member_payload(
+            query_id=m.query.query_id,
+            text=m.query.text,
+            intent=m.query.intent,
+            topic=m.query.topic,
+            entity=m.query.entity,
+        )
         for m in members
     ]
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(raw.encode()).hexdigest()
+    return fingerprint_from_payloads(payloads)
 
 
 def content_hash_for_set(
@@ -200,11 +235,14 @@ def _mmr_pick(
     profile_tokens: set[str],
     *,
     lam: float,
+    effective_seed: int,
 ) -> CandidateQuery | None:
+    """Pick next candidate by MMR; ties broken by sha256_seeded_tiebreak_v1 then query_id."""
     if not pool:
         return None
     best: CandidateQuery | None = None
     best_score = -math.inf
+    best_tb = ""
     for q in pool:
         rel = _rel_score(q, profile_tokens)
         if not selected:
@@ -214,17 +252,19 @@ def _mmr_pick(
                 jaccard(tokenize(q.text), tokenize(s.text)) for s in selected
             )
         score = lam * rel - (1.0 - lam) * sim
-        # Deterministic tie-break: higher score, then lower query_id
-        key = (score, -ord(q.query_id[0]) if q.query_id else 0)
+        tb = seeded_tiebreak_key(effective_seed, q.query_id)
+        if best is None:
+            best = q
+            best_score = score
+            best_tb = tb
+            continue
         if score > best_score or (
-            math.isclose(score, best_score) and best is not None and q.query_id < best.query_id
+            math.isclose(score, best_score)
+            and (tb < best_tb or (tb == best_tb and q.query_id < best.query_id))
         ):
             best_score = score
             best = q
-        elif best is None:
-            best = q
-            best_score = score
-        _ = key
+            best_tb = tb
     return best
 
 
@@ -271,6 +311,7 @@ def select_query_set_v2(
         effective_seed=seed,
         seed_resolution=seed_resolution.to_dict(),
         selection_method=SELECTION_METHOD,
+        selection_seed_method=SELECTION_SEED_METHOD,
         candidates_count=candidates_count,
         accepted_count=0,
         rejected_count=rejected_count,
@@ -296,10 +337,14 @@ def select_query_set_v2(
         )
 
     gate_by_id = {q.query_id: g for q, g in accepted}
-    # Stable order: confidence desc, query_id asc — no wall-clock / random
+    # Stable order: confidence desc → seeded tie-break → query_id
     unique = sorted(
         [q for q, _ in accepted],
-        key=lambda q: (-q.confidence, q.query_id),
+        key=lambda q: (
+            -q.confidence,
+            seeded_tiebreak_key(seed, q.query_id),
+            q.query_id,
+        ),
     )
 
     profile_tokens: set[str] = set()
@@ -351,6 +396,7 @@ def select_query_set_v2(
                 key=lambda q: (
                     0 if (q.topic or "_none", q.intent) not in covered_cells else 1,
                     -_rel_score(q, profile_tokens),
+                    seeded_tiebreak_key(seed, q.query_id),
                     q.query_id,
                 )
             )
@@ -368,7 +414,9 @@ def select_query_set_v2(
             if (q.topic or "_none", q.intent) not in covered_cells
         ]
         focus = uncovered or pool
-        pick = _mmr_pick(focus, selected, profile_tokens, lam=mmr_lambda)
+        pick = _mmr_pick(
+            focus, selected, profile_tokens, lam=mmr_lambda, effective_seed=seed
+        )
         if pick is None:
             break
         take(pick, "mmr_coverage")
@@ -381,7 +429,13 @@ def select_query_set_v2(
             if q.query_id not in used_ids
             and topic_counts.get(q.topic or "_none", 0) < topic_cap
         ]
-        relaxed.sort(key=lambda q: (-_rel_score(q, profile_tokens), q.query_id))
+        relaxed.sort(
+            key=lambda q: (
+                -_rel_score(q, profile_tokens),
+                seeded_tiebreak_key(seed, q.query_id),
+                q.query_id,
+            )
+        )
         for q in relaxed:
             if len(selected) >= k:
                 break
@@ -420,6 +474,7 @@ def select_query_set_v2(
         effective_seed=seed,
         seed_resolution=seed_resolution.to_dict(),
         selection_method=SELECTION_METHOD,
+        selection_seed_method=SELECTION_SEED_METHOD,
         status="ready" if ready else "insufficient_evidence",
         members=members,
         candidates_count=candidates_count,
@@ -455,3 +510,5 @@ def select_query_set_v2(
 
 # Keep QUERY_DISCOVERY_METHOD import used for compat docs
 _ = QUERY_DISCOVERY_METHOD
+# IntentBudgetPolicy retained for type-checkers / external importers
+_ = IntentBudgetPolicy

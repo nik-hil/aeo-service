@@ -50,3 +50,11 @@ Frozen: `security/ssrf`, `target_site`, `scoring/health`, DO provider internals.
 ## ADRs
 
 ADR-027, ADR-028, ADR-029. Decisions D027–D029.
+
+## Phase 4.1 corrective (D030)
+
+- Seed is a real control: `sha256_seeded_tiebreak_v1` only (no RNG).
+- Canonical fingerprint shared by selection + replay.
+- Evidence provenance for strongest QSQ-EVD (`observed` only).
+- `quality_policy.py` genre split. No Phase 5. Freezes unchanged.
+- No `query-set-v4` bump — additive `selection_seed_method` field only.

@@ -53,6 +53,7 @@ def query_set_summary(qs: QuerySet) -> dict[str, Any]:
         "quality_version",
         "mmr_lambda",
         "max_per_topic",
+        "selection_seed_method",
     ):
         if key in d:
             base[key] = d[key]

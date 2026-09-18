@@ -74,6 +74,11 @@ def _stable_id(*parts: str) -> str:
 def _evidence_classes_from_understanding(
     u: SiteUnderstanding,
 ) -> dict[str, list[dict[str, Any]]]:
+    """Map evidence classes; stamp provenance for QSQ-EVD.
+
+    Structured SiteProfile evidence → ``observed`` (unless already set).
+    Legacy SiteUnderstanding synthetic fillers → ``compatibility``.
+    """
     classes: dict[str, list[dict[str, Any]]] = {}
     structured = u.structured or {}
     for field_name in (
@@ -88,14 +93,27 @@ def _evidence_classes_from_understanding(
     ):
         fld = structured.get(field_name) or {}
         for ev in fld.get("evidence") or []:
+            if not isinstance(ev, dict):
+                continue
             cls = ev.get("evidence_class") or "metadata"
-            classes.setdefault(cls, []).append(ev)
+            item = dict(ev)
+            item.setdefault("evidence_class", cls)
+            # Structured profile evidence is crawl-observed unless tagged otherwise
+            if item.get("provenance") not in (
+                "observed",
+                "derived",
+                "compatibility",
+            ):
+                item["provenance"] = "observed"
+            classes.setdefault(cls, []).append(item)
+    # Compatibility fillers for bare SiteUnderstanding projections
     if u.topics:
         classes.setdefault("title_h1", []).append(
             {
                 "snippet": u.topics[0],
                 "evidence_class": "title_h1",
                 "locator": "legacy_topic",
+                "provenance": "compatibility",
             }
         )
     if u.organization_brand:
@@ -104,6 +122,7 @@ def _evidence_classes_from_understanding(
                 "snippet": u.organization_brand,
                 "evidence_class": "og_meta",
                 "locator": "legacy_brand",
+                "provenance": "compatibility",
             }
         )
     if u.site_genre:
@@ -112,14 +131,29 @@ def _evidence_classes_from_understanding(
                 "snippet": u.site_genre,
                 "evidence_class": "jsonld",
                 "locator": "legacy_genre",
+                "provenance": "compatibility",
             }
         )
     return classes
 
 
 def _has_min_evidence(classes: dict[str, list]) -> tuple[bool, list[str]]:
-    present = {c for c, items in classes.items() if items and c != "chrome"}
-    return len(present) >= 2, sorted(present)
+    observed: list[str] = []
+    other: list[str] = []
+    for c, items in classes.items():
+        if not items or c == "chrome":
+            continue
+        if any(
+            isinstance(i, dict) and i.get("provenance") == "observed" for i in items
+        ):
+            observed.append(c)
+        else:
+            other.append(c)
+    # Prefer observed class list for seeding; fall back to any ≥2 for grace
+    if len(observed) >= 2:
+        return True, sorted(observed)
+    present = sorted(set(observed) | set(other))
+    return len(present) >= 2, present
 
 
 def _clean_topic_phrase(raw: str) -> str:
@@ -233,7 +267,13 @@ def generate_candidates_v2(
             return
         ev: list[dict[str, Any]] = []
         for k in used[:3]:
-            ev.extend(classes[k][:1])
+            items = classes[k]
+            preferred = [
+                i
+                for i in items
+                if isinstance(i, dict) and i.get("provenance") == "observed"
+            ] or items
+            ev.extend(preferred[:1])
         qid = _stable_id(intent, text, QUERY_VERSION)
         out.append(
             CandidateQuery(

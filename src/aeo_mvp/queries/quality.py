@@ -10,12 +10,14 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from aeo_mvp.queries.evidence import observed_evidence_classes
 from aeo_mvp.queries.generate import CandidateQuery
 from aeo_mvp.queries.normalize import (
     is_near_duplicate,
     normalize_query_text,
     tokenize,
 )
+from aeo_mvp.queries.quality_policy import industry_leak_detail
 from aeo_mvp.understanding.site import SiteUnderstanding
 
 QUALITY_VERSION = "query-quality-v1"
@@ -36,15 +38,7 @@ QSQ_IDS = (
 DimStatus = Literal["pass", "fail", "warn"]
 GateStatus = Literal["accept", "reject", "accept_with_warning"]
 
-PM_LEAK_RE = re.compile(
-    r"\bproject management\b|\btask board\b|\bbest .{0,40}\btool for teams\b",
-    re.I,
-)
-FORBIDDEN_BLOG_RE = re.compile(
-    r"how much does .+ cost\?|alternatives to .+|what products or services does .+ offer\?",
-    re.I,
-)
-# Title-wrap / double-interrogative garbage
+# Title-wrap / double-interrogative garbage (generic — not genre policy)
 DOUBLE_INTERROGATIVE_RE = re.compile(
     r"\b(how does|what is|why does|how to|explain)\s+"
     r"(who|what|when|where|why|how|is|are|does|do)\b",
@@ -163,12 +157,34 @@ def _dim_entity(q: CandidateQuery, u: SiteUnderstanding) -> DimensionResult:
 
 
 def _dim_evidence(q: CandidateQuery) -> DimensionResult:
-    classes = {c for c in q.evidence_classes if c != "chrome"}
-    if len(classes) >= 2:
-        return DimensionResult("evidence_support", "pass", f"classes={sorted(classes)}")
-    if len(classes) == 1:
-        return DimensionResult("evidence_support", "fail", "only one evidence class")
-    return DimensionResult("evidence_support", "fail", "no evidence classes")
+    """Strongest QSQ-EVD: only provenance=observed classes count (≥2 required)."""
+    observed = observed_evidence_classes(q.source_evidence)
+    # Fallback: evidence_classes alone without source_evidence → treat as
+    # compatibility (legacy), which does NOT satisfy strongest QSQ-EVD.
+    if not q.source_evidence and q.evidence_classes:
+        return DimensionResult(
+            "evidence_support",
+            "fail",
+            "evidence_classes without observed provenance (compatibility/legacy)",
+        )
+    if len(observed) >= 2:
+        return DimensionResult(
+            "evidence_support",
+            "pass",
+            f"observed_classes={sorted(observed)}",
+        )
+    if len(observed) == 1:
+        return DimensionResult(
+            "evidence_support",
+            "fail",
+            f"only one observed evidence class ({sorted(observed)}); "
+            "derived/compatibility do not count toward strongest QSQ-EVD",
+        )
+    return DimensionResult(
+        "evidence_support",
+        "fail",
+        "no observed evidence classes (derived/compatibility-only insufficient)",
+    )
 
 
 def _dim_duplication(
@@ -202,39 +218,12 @@ def _dim_intent_consistency(q: CandidateQuery) -> DimensionResult:
 
 
 def _dim_industry_leak(q: CandidateQuery, u: SiteUnderstanding) -> DimensionResult:
-    text = q.text
-    genre = u.site_genre or ""
-    industry = u.industry_category_guess
-
-    if genre == "personal_tech_blog" and FORBIDDEN_BLOG_RE.search(text):
-        return DimensionResult(
-            "WEAK_INDUSTRY_LEAK",
-            "fail",
-            "forbidden commercial/alternatives template for personal_tech_blog",
-        )
-
-    if PM_LEAK_RE.search(text):
-        if industry != "project_management":
-            return DimensionResult(
-                "WEAK_INDUSTRY_LEAK",
-                "fail",
-                "project_management language without assertive industry evidence",
-            )
-        if genre == "personal_tech_blog":
-            return DimensionResult(
-                "WEAK_INDUSTRY_LEAK",
-                "fail",
-                "PM language incompatible with personal_tech_blog genre",
-            )
-    if industry is None and re.search(
-        r"\bother \w+ tools\b|\bbest \w+ tool\b", text, re.I
-    ):
-        return DimensionResult(
-            "WEAK_INDUSTRY_LEAK",
-            "fail",
-            "industry tool template while industry_category omitted",
-        )
-    return DimensionResult("WEAK_INDUSTRY_LEAK", "pass", "no industry leak")
+    leak = industry_leak_detail(q, u)
+    if leak is None:
+        return DimensionResult("WEAK_INDUSTRY_LEAK", "pass", "no industry leak")
+    status, detail = leak
+    dim_status: DimStatus = "fail" if status == "fail" else "warn"
+    return DimensionResult("WEAK_INDUSTRY_LEAK", dim_status, detail)
 
 
 def evaluate_query_v2(
