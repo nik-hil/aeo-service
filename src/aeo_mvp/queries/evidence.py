@@ -7,9 +7,11 @@ Provenance values:
 
 Only ``observed`` evidence classes count for the strongest QSQ-EVD gate (≥2 classes).
 
-Trust boundary (Phase 4.1.1): missing/unknown provenance → ``compatibility``.
-Never promote missing/unknown to ``observed``. Field/origin provenance on
-SiteProfile is not EvidenceRecord provenance.
+Trust boundary (Phase 4.1.1) — see ``docs/architecture/PHASE4_1_1_PROVENANCE_LOCK.md``:
+- missing/unknown → ``compatibility`` ONLY (never invent ``observed``)
+- SiteProfile ``heuristic`` / ``derived_metric`` / ``llm_assist`` → ``derived``
+- legacy shims / fillers → ``compatibility``
+- identity/origin/structured-profile presence alone never → ``observed``
 """
 
 from __future__ import annotations
@@ -23,16 +25,24 @@ VALID_PROVENANCE: frozenset[str] = frozenset(
     {"observed", "derived", "compatibility"}
 )
 
+# SiteProfile field / origin labels → EvidenceRecord.derived (not observed)
+_SITEPROFILE_TO_DERIVED: frozenset[str] = frozenset(
+    {"heuristic", "derived_metric", "llm_assist"}
+)
+
 
 def normalize_provenance(raw: Any) -> EvidenceProvenance:
-    """Canonical trust-boundary helper.
+    """Canonical trust-boundary helper (single entry for from_dict + generate_v2).
 
-    Explicit ``observed`` | ``derived`` | ``compatibility`` are preserved.
-    Missing, empty, and any other value map to ``compatibility``.
-    Never invents ``observed``.
+    - Explicit ``observed`` | ``derived`` | ``compatibility`` are preserved.
+    - SiteProfile ``heuristic`` | ``derived_metric`` | ``llm_assist`` → ``derived``.
+    - Missing, empty, shims, and any other unknown → ``compatibility``.
+    - Never invents ``observed`` from absence or structured-profile presence.
     """
     if raw in VALID_PROVENANCE:
         return raw  # type: ignore[return-value]
+    if isinstance(raw, str) and raw in _SITEPROFILE_TO_DERIVED:
+        return "derived"
     return "compatibility"
 
 
@@ -126,10 +136,22 @@ def normalize_evidence_list(
     return out
 
 
-def stamp_evidence_dict(raw: dict[str, Any]) -> dict[str, Any]:
-    """Copy an evidence dict and normalize provenance at the trust boundary."""
+def stamp_evidence_dict(
+    raw: dict[str, Any],
+    *,
+    field_provenance: Any = None,
+) -> dict[str, Any]:
+    """Copy an evidence dict and normalize provenance at the trust boundary.
+
+    If the evidence item lacks provenance, inherit ``field_provenance`` (SiteProfile
+    field/origin) and map via ``normalize_provenance`` (heuristic→derived).
+    Never invents ``observed`` from structured-profile presence alone.
+    """
     item = dict(raw)
-    item["provenance"] = normalize_provenance(item.get("provenance"))
+    raw_prov = item.get("provenance")
+    if raw_prov in (None, ""):
+        raw_prov = field_provenance
+    item["provenance"] = normalize_provenance(raw_prov)
     if "evidence_class" not in item and item.get("class"):
         item["evidence_class"] = item["class"]
     return item

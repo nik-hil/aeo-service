@@ -77,10 +77,10 @@ def _evidence_classes_from_understanding(
 ) -> dict[str, list[dict[str, Any]]]:
     """Map evidence classes; normalize provenance at the trust boundary.
 
-    Missing/unknown provenance → ``compatibility`` (never invent ``observed``).
-    Explicit observed|derived|compatibility are preserved.
-    Crawl EvidenceRef must already stamp ``observed`` at construction.
-    Legacy SiteUnderstanding synthetic fillers → ``compatibility``.
+    Uses the single ``normalize_provenance`` helper (via ``stamp_evidence_dict``):
+    missing/unknown → compatibility; SiteProfile heuristic/derived_metric/llm_assist
+    → derived; never invent observed from structured-profile presence.
+    Legacy SiteUnderstanding synthetic fillers → compatibility.
     """
     classes: dict[str, list[dict[str, Any]]] = {}
     structured = u.structured or {}
@@ -95,14 +95,15 @@ def _evidence_classes_from_understanding(
         "content_types",
     ):
         fld = structured.get(field_name) or {}
+        field_prov = fld.get("provenance") if isinstance(fld, dict) else None
         for ev in fld.get("evidence") or []:
             if not isinstance(ev, dict):
                 continue
             cls = ev.get("evidence_class") or "metadata"
-            item = stamp_evidence_dict(ev)
+            item = stamp_evidence_dict(ev, field_provenance=field_prov)
             item.setdefault("evidence_class", cls)
             classes.setdefault(cls, []).append(item)
-    # Compatibility fillers for bare SiteUnderstanding projections
+    # Compatibility fillers for bare SiteUnderstanding projections (shims)
     if u.topics:
         classes.setdefault("title_h1", []).append(
             {

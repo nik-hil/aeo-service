@@ -129,18 +129,30 @@ def test_a_missing_provenance_maps_to_compatibility():
     assert stamped["provenance"] == "compatibility"
 
 
-# --- B: unknown → compatibility ---
+# --- B: unknown → compatibility; SiteProfile labels → derived ---
 
 
 def test_b_unknown_provenance_maps_to_compatibility():
-    assert normalize_provenance("heuristic") == "compatibility"
     assert normalize_provenance("api_observation") == "compatibility"
     assert normalize_provenance("bogus") == "compatibility"
+    assert normalize_provenance("synthetic_demo") == "compatibility"
+
+
+def test_b2_siteprofile_labels_map_to_derived():
+    """Architect lock: heuristic/derived_metric/llm_assist → derived (not observed)."""
+    assert normalize_provenance("heuristic") == "derived"
+    assert normalize_provenance("derived_metric") == "derived"
+    assert normalize_provenance("llm_assist") == "derived"
     rec = EvidenceRecord.from_dict(
         {"evidence_class": "title_h1", "provenance": "llm_assist"}
     )
     assert rec is not None
-    assert rec.provenance == "compatibility"
+    assert rec.provenance == "derived"
+    stamped = stamp_evidence_dict(
+        {"evidence_class": "og_meta"}, field_provenance="heuristic"
+    )
+    assert stamped["provenance"] == "derived"
+    assert stamped["provenance"] != "observed"
 
 
 # --- C: obs + derived → QSQ-EVD FAIL ---
@@ -288,6 +300,48 @@ def test_h_generate_v2_missing_provenance_becomes_compatibility_not_observed():
     # QSQ-EVD rejects these (no ≥2 observed)
     if cands:
         assert _evd_status(cands[0], u) == "fail"
+
+
+def test_h2_field_heuristic_inherits_as_derived_not_observed():
+    """Missing evidence provenance + field heuristic → derived; never observed."""
+    u = SiteUnderstanding(
+        organization_brand="SignalWatch",
+        topics=["Distributed tracing overview", "Metrics cardinality"],
+        site_genre="saas_product",
+        structured={
+            "primary_topics": {
+                "provenance": "heuristic",
+                "evidence": [
+                    {"evidence_class": "title_h1", "snippet": "tracing"},
+                    {"evidence_class": "article_body", "snippet": "body"},
+                ],
+            },
+            "org_name": {
+                "provenance": "derived_metric",
+                "evidence": [{"evidence_class": "og_meta", "snippet": "SW"}],
+            },
+        },
+        evidence_hash="phase411-field-heuristic",
+    )
+    classes = _evidence_classes_from_understanding(u)
+    for cls_name in ("title_h1", "article_body"):
+        items = classes.get(cls_name) or []
+        assert any(
+            isinstance(i, dict) and i.get("provenance") == "derived" for i in items
+        )
+        assert not any(
+            isinstance(i, dict)
+            and i.get("snippet") in ("tracing", "body")
+            and i.get("provenance") == "observed"
+            for i in items
+        )
+    og = classes.get("og_meta") or []
+    assert any(isinstance(i, dict) and i.get("provenance") == "derived" for i in og)
+
+    cands, _ = generate_candidates_v2(u)
+    if cands:
+        assert _evd_status(cands[0], u) == "fail"
+        assert len(observed_evidence_classes(cands[0].source_evidence)) == 0
 
 
 # --- I: derived preserved ---

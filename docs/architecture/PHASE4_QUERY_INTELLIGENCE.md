@@ -58,3 +58,9 @@ ADR-027, ADR-028, ADR-029. Decisions D027–D029.
 - Evidence provenance for strongest QSQ-EVD (`observed` only).
 - `quality_policy.py` genre split. No Phase 5. Freezes unchanged.
 - No `query-set-v4` bump — additive `selection_seed_method` field only.
+
+## Phase 4.1.1 provenance lock (D031)
+
+Binding: `PHASE4_1_1_PROVENANCE_LOCK.md`. Single `normalize_provenance`;
+missing → compatibility; SiteProfile heuristic/derived_metric/llm_assist →
+derived; never invent observed from structured presence.

@@ -42,8 +42,10 @@ Genre policies (`personal_tech_blog`, `saas_product`, `ecommerce`,
 Examples: 2 distinct observed → pass; 1 observed + derived → fail strongest;
 derived-only → fail; two same-class observed → fail (need ≥2 **distinct** classes).
 
-`normalize_provenance` is the trust boundary: never invent `observed` from
-missing/unknown. Crawl EvidenceRef must stamp observed explicitly.
+`normalize_provenance` is the trust boundary (see
+`PHASE4_1_1_PROVENANCE_LOCK.md`): heuristic/derived_metric/llm_assist → derived;
+missing/unknown → compatibility; never invent `observed`. Crawl EvidenceRef
+must stamp observed explicitly.
 
 ## Forbidden
 

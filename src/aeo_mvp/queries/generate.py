@@ -68,7 +68,9 @@ def _stable_id(*parts: str) -> str:
 def _evidence_classes_from_understanding(u: SiteUnderstanding) -> dict[str, list[dict[str, Any]]]:
     """Map available evidence classes from structured profile / legacy fields.
 
-    Missing/unknown provenance → compatibility (never invent observed).
+    Same trust boundary as generate_v2: ``normalize_provenance`` via
+    ``stamp_evidence_dict``; missing → compatibility; heuristic → derived;
+    shims → compatibility; never invent observed from presence.
     """
     classes: dict[str, list[dict[str, Any]]] = {}
     structured = u.structured or {}
@@ -83,11 +85,12 @@ def _evidence_classes_from_understanding(u: SiteUnderstanding) -> dict[str, list
         "content_types",
     ):
         fld = structured.get(field_name) or {}
+        field_prov = fld.get("provenance") if isinstance(fld, dict) else None
         for ev in fld.get("evidence") or []:
             if not isinstance(ev, dict):
                 continue
             cls = ev.get("evidence_class") or "metadata"
-            item = stamp_evidence_dict(ev)
+            item = stamp_evidence_dict(ev, field_provenance=field_prov)
             item.setdefault("evidence_class", cls)
             classes.setdefault(cls, []).append(item)
     # Fallback synthetic classes from legacy projection → compatibility
