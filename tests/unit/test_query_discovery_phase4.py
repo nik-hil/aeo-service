@@ -30,16 +30,28 @@ HASHNODE_BASE = "https://nik-hil.hashnode.dev/"
 
 
 def _structured_min(*classes: str) -> dict:
-    ev = [{"evidence_class": c} for c in (classes or ("title_h1", "tags_series"))]
+    """Synthetic structured evidence with explicit observed provenance.
+
+    Phase 4.1.1: missing provenance must not be promoted to observed — fixtures
+    that intend crawl-like evidence stamp it explicitly.
+    """
+    ev = [
+        {"evidence_class": c, "provenance": "observed"}
+        for c in (classes or ("title_h1", "tags_series"))
+    ]
     if len(ev) < 2:
         ev = [
-            {"evidence_class": "title_h1"},
-            {"evidence_class": "tags_series"},
+            {"evidence_class": "title_h1", "provenance": "observed"},
+            {"evidence_class": "tags_series", "provenance": "observed"},
         ]
     return {
         "primary_topics": {"evidence": ev},
-        "org_name": {"evidence": [{"evidence_class": "og_meta"}]},
-        "site_genre": {"evidence": [{"evidence_class": "jsonld"}]},
+        "org_name": {
+            "evidence": [{"evidence_class": "og_meta", "provenance": "observed"}]
+        },
+        "site_genre": {
+            "evidence": [{"evidence_class": "jsonld", "provenance": "observed"}]
+        },
     }
 
 
@@ -85,13 +97,19 @@ def _saas_understanding() -> SiteUnderstanding:
         structured={
             "primary_topics": {
                 "evidence": [
-                    {"evidence_class": "title_h1"},
-                    {"evidence_class": "jsonld"},
+                    {"evidence_class": "title_h1", "provenance": "observed"},
+                    {"evidence_class": "jsonld", "provenance": "observed"},
                 ]
             },
-            "org_name": {"evidence": [{"evidence_class": "og_meta"}]},
-            "products": {"evidence": [{"evidence_class": "jsonld"}]},
-            "site_genre": {"evidence": [{"evidence_class": "jsonld"}]},
+            "org_name": {
+                "evidence": [{"evidence_class": "og_meta", "provenance": "observed"}]
+            },
+            "products": {
+                "evidence": [{"evidence_class": "jsonld", "provenance": "observed"}]
+            },
+            "site_genre": {
+                "evidence": [{"evidence_class": "jsonld", "provenance": "observed"}]
+            },
         },
         evidence_hash="phase4-saas",
         important_pages=[{"url": "https://acme.example/"}] * 8,

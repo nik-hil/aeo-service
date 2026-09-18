@@ -31,16 +31,19 @@ Genre policies (`personal_tech_blog`, `saas_product`, `ecommerce`,
 `documentation`, `default`) live in `quality_policy.py`; generic dims stay in
 `quality.py`. Personal tech blog commercial/PM leak protections remain.
 
-## Evidence provenance (Phase 4.1)
+## Evidence provenance (Phase 4.1 / 4.1.1)
 
 `EvidenceRecord.provenance`:
 
 - `observed` — counts for strongest QSQ-EVD  
 - `derived` — does not count  
-- `compatibility` — SiteUnderstanding legacy fillers; does not count  
+- `compatibility` — SiteUnderstanding legacy fillers / missing / unknown; does not count  
 
-Examples: 2 observed → pass; 1 observed + derived → not 2 (fail strongest);
-derived-only → fail.
+Examples: 2 distinct observed → pass; 1 observed + derived → fail strongest;
+derived-only → fail; two same-class observed → fail (need ≥2 **distinct** classes).
+
+`normalize_provenance` is the trust boundary: never invent `observed` from
+missing/unknown. Crawl EvidenceRef must stamp observed explicitly.
 
 ## Forbidden
 

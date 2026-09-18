@@ -11,6 +11,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from aeo_mvp.queries.evidence import stamp_evidence_dict
 from aeo_mvp.understanding.profile import QUERY_DISCOVERY_METHOD
 from aeo_mvp.understanding.site import SiteUnderstanding
 
@@ -65,7 +66,10 @@ def _stable_id(*parts: str) -> str:
 
 
 def _evidence_classes_from_understanding(u: SiteUnderstanding) -> dict[str, list[dict[str, Any]]]:
-    """Map available evidence classes from structured profile / legacy fields."""
+    """Map available evidence classes from structured profile / legacy fields.
+
+    Missing/unknown provenance → compatibility (never invent observed).
+    """
     classes: dict[str, list[dict[str, Any]]] = {}
     structured = u.structured or {}
     for field_name in (
@@ -80,12 +84,21 @@ def _evidence_classes_from_understanding(u: SiteUnderstanding) -> dict[str, list
     ):
         fld = structured.get(field_name) or {}
         for ev in fld.get("evidence") or []:
+            if not isinstance(ev, dict):
+                continue
             cls = ev.get("evidence_class") or "metadata"
-            classes.setdefault(cls, []).append(ev)
-    # Fallback synthetic classes from legacy projection
+            item = stamp_evidence_dict(ev)
+            item.setdefault("evidence_class", cls)
+            classes.setdefault(cls, []).append(item)
+    # Fallback synthetic classes from legacy projection → compatibility
     if u.topics:
         classes.setdefault("title_h1", []).append(
-            {"snippet": u.topics[0], "evidence_class": "title_h1", "locator": "legacy_topic"}
+            {
+                "snippet": u.topics[0],
+                "evidence_class": "title_h1",
+                "locator": "legacy_topic",
+                "provenance": "compatibility",
+            }
         )
     if u.organization_brand:
         classes.setdefault("og_meta", []).append(
@@ -93,11 +106,17 @@ def _evidence_classes_from_understanding(u: SiteUnderstanding) -> dict[str, list
                 "snippet": u.organization_brand,
                 "evidence_class": "og_meta",
                 "locator": "legacy_brand",
+                "provenance": "compatibility",
             }
         )
     if u.site_genre:
         classes.setdefault("jsonld", []).append(
-            {"snippet": u.site_genre, "evidence_class": "jsonld", "locator": "legacy_genre"}
+            {
+                "snippet": u.site_genre,
+                "evidence_class": "jsonld",
+                "locator": "legacy_genre",
+                "provenance": "compatibility",
+            }
         )
     return classes
 
@@ -185,7 +204,11 @@ def generate_candidates(
             return
         ev = []
         for k in used[:3]:
-            ev.extend(classes[k][:1])
+            for item in classes[k][:1]:
+                if isinstance(item, dict):
+                    ev.append(stamp_evidence_dict(item))
+                else:
+                    ev.append(item)
         qid = _stable_id(intent, text, QUERY_VERSION)
         out.append(
             CandidateQuery(

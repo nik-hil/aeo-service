@@ -63,7 +63,15 @@ and `selection_seed_method=sha256_seeded_tiebreak_v1`.
 | --- | --- | --- |
 | `observed` | Crawl/page signal | **Yes** (≥2 distinct classes) |
 | `derived` | Inferred / projected | No |
-| `compatibility` | Legacy SiteUnderstanding fillers | No |
+| `compatibility` | Legacy SiteUnderstanding fillers / missing / unknown | No |
+
+**Trust boundary (Phase 4.1.1):** `normalize_provenance(raw)` preserves explicit
+`observed|derived|compatibility`; everything else (missing/unknown) →
+`compatibility`. Candidate generation must **never** manufacture `observed`
+from absence. Crawl `EvidenceRef` stamps `observed` explicitly at construction
+(hard contract). SiteProfileField origin/field provenance ≠ EvidenceRecord
+provenance. Generation may use class presence for viability; QSQ-EVD /
+`gate_candidates_v2` remains authoritative.
 
 ## Dedup
 

@@ -226,7 +226,13 @@ def _ref(
     page_id: str | None,
     evidence_class: str,
     weight: float | None = None,
+    provenance: str = "observed",
 ) -> EvidenceRef:
+    """Build EvidenceRef from crawl signals.
+
+    Hard contract: crawl-extracted page signals stamp ``provenance=observed``
+    explicitly. Field/origin provenance on SiteProfileField remains separate.
+    """
     w = weight if weight is not None else CLASS_WEIGHT.get(evidence_class, 0.5)
     return EvidenceRef(
         evidence_id=_eid(),
@@ -236,6 +242,7 @@ def _ref(
         page_id=page_id,
         evidence_class=evidence_class,  # type: ignore[arg-type]
         weight=w,
+        provenance=provenance,
     )
 
 

@@ -1,4 +1,4 @@
-"""Evidence provenance for query-quality / QSQ-EVD (Phase 4.1).
+"""Evidence provenance for query-quality / QSQ-EVD (Phase 4.1 / 4.1.1).
 
 Provenance values:
 - ``observed`` — extracted from crawled page signals (counts for strongest QSQ-EVD)
@@ -6,6 +6,10 @@ Provenance values:
 - ``compatibility`` — legacy SiteUnderstanding synthetic fillers (does **not** count)
 
 Only ``observed`` evidence classes count for the strongest QSQ-EVD gate (≥2 classes).
+
+Trust boundary (Phase 4.1.1): missing/unknown provenance → ``compatibility``.
+Never promote missing/unknown to ``observed``. Field/origin provenance on
+SiteProfile is not EvidenceRecord provenance.
 """
 
 from __future__ import annotations
@@ -18,6 +22,18 @@ EvidenceProvenance = Literal["observed", "derived", "compatibility"]
 VALID_PROVENANCE: frozenset[str] = frozenset(
     {"observed", "derived", "compatibility"}
 )
+
+
+def normalize_provenance(raw: Any) -> EvidenceProvenance:
+    """Canonical trust-boundary helper.
+
+    Explicit ``observed`` | ``derived`` | ``compatibility`` are preserved.
+    Missing, empty, and any other value map to ``compatibility``.
+    Never invents ``observed``.
+    """
+    if raw in VALID_PROVENANCE:
+        return raw  # type: ignore[return-value]
+    return "compatibility"
 
 
 @dataclass
@@ -60,12 +76,8 @@ class EvidenceRecord:
         if not raw or not isinstance(raw, dict):
             return None
         cls_name = raw.get("evidence_class") or raw.get("class") or "metadata"
-        prov_raw = raw.get("provenance")
-        if prov_raw in VALID_PROVENANCE:
-            provenance: EvidenceProvenance = prov_raw  # type: ignore[assignment]
-        else:
-            # Missing/unknown → compatibility (SiteUnderstanding legacy path)
-            provenance = "compatibility"
+        # Missing/unknown → compatibility (never promote to observed)
+        provenance = normalize_provenance(raw.get("provenance"))
         known = {
             "evidence_class",
             "class",
@@ -99,6 +111,8 @@ def normalize_evidence_list(
     out: list[EvidenceRecord] = []
     for item in items or []:
         if isinstance(item, EvidenceRecord):
+            # Re-normalize in case a caller constructed an invalid value
+            item.provenance = normalize_provenance(item.provenance)
             out.append(item)
             continue
         if not isinstance(item, dict):
@@ -107,9 +121,18 @@ def normalize_evidence_list(
         if rec is None:
             continue
         if "provenance" not in item:
-            rec.provenance = default_provenance
+            rec.provenance = normalize_provenance(default_provenance)
         out.append(rec)
     return out
+
+
+def stamp_evidence_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """Copy an evidence dict and normalize provenance at the trust boundary."""
+    item = dict(raw)
+    item["provenance"] = normalize_provenance(item.get("provenance"))
+    if "evidence_class" not in item and item.get("class"):
+        item["evidence_class"] = item["class"]
+    return item
 
 
 def observed_evidence_classes(
