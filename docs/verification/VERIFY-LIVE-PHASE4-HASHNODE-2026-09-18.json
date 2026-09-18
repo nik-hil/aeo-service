@@ -1,0 +1,123 @@
+{
+  "artifact_paths": {
+    "live_json": "docs/verification/LIVE_PHASE4_HASHNODE_2026-09-18.json",
+    "live_md": "docs/verification/LIVE_PHASE4_HASHNODE_2026-09-18.md",
+    "report": "/tmp/aeo_phase4_live_report.json",
+    "summary": "/tmp/aeo_phase4_live_summary.json",
+    "verify_json": "docs/verification/VERIFY-LIVE-PHASE4-HASHNODE-2026-09-18.json",
+    "verify_md": "docs/verification/VERIFY-LIVE-PHASE4-HASHNODE-2026-09-18.md"
+  },
+  "checks": {
+    "ai_search_honesty": "PASS",
+    "discovery_counts": "PASS",
+    "health_v1_recompute": "PASS",
+    "hostname_visibility": "PASS",
+    "no_apex_sibling_credits": "PASS",
+    "phase3_noncomparability_caveat": "PASS",
+    "seed_alias_42": "PASS"
+  },
+  "commit": "faa06bb",
+  "comparison_caveat": {
+    "phase3_reference_job": "970aefc3-7d5a-4465-b0a8-79cb3e885458",
+    "present_in_summary": true,
+    "required": true,
+    "text": "Phase 4 query-set-v3 \u2260 Phase 3 query-set-v2; do not treat rate deltas vs job 970aefc3 15/20 as site-quality improvement."
+  },
+  "date": "2026-09-18",
+  "discovery": {
+    "accepted_count": 33,
+    "alias_used": "selection_seed",
+    "candidates_count": 39,
+    "discovery_only": false,
+    "effective_seed": 42,
+    "fingerprint": "8547b8bb784300fc6cfeff4b0830de86f8838c6b51d4f126716ccc22d6555432",
+    "intent_breakdown": {
+      "comparison": 3,
+      "informational": 7,
+      "navigational": 1,
+      "problem_solving": 6,
+      "recommendation": 3
+    },
+    "intent_budget_id": "intent-budget-v1",
+    "max_per_topic": 4,
+    "max_topic_count": 3,
+    "method": "query-discovery-v2",
+    "paid_retrieval_opt_in": true,
+    "paid_retrieval_ready": true,
+    "quality_version": "query-quality-v1",
+    "query_set_version": "query-set-v3",
+    "rejected_count": 6,
+    "root_seed": 42,
+    "selected_count": 20,
+    "selection_method": "coverage_mmr_intent_budget_v1"
+  },
+  "engineering_claims_trusted_a_priori": false,
+  "experiment": {
+    "ai_search_citation_rate": {
+      "denominator": 20,
+      "numerator": 17,
+      "value": 0.85
+    },
+    "ai_search_mention_rate": {
+      "denominator": 20,
+      "numerator": 14,
+      "value": 0.7
+    },
+    "experiment_kind": "ai_search_visibility",
+    "measures_consumer_ui": false,
+    "protocol_version": "ai-search-vis-v1",
+    "provider_name": "digitalocean_web_search",
+    "retrieval_enabled": true,
+    "target_domain_appearance_rate": {
+      "denominator": 20,
+      "numerator": 17,
+      "value": 0.85
+    }
+  },
+  "gate_g": "PASS",
+  "gate_h_spotcheck": "PASS",
+  "health": {
+    "aeo_health": 76.4,
+    "components": {
+      "answerability": 75.0,
+      "content": 69.6,
+      "entity": 52.5,
+      "structured_data": 90.0,
+      "technical": 95.0
+    },
+    "diagnostics_in_health": false,
+    "formula_version": "health-v1",
+    "weighted_recompute": 76.4
+  },
+  "job_id": "a24c1a42-faac-48da-80ae-c0b608650cbc",
+  "method": "independent_recompute_from_live_json_artifacts",
+  "observations_non_blocking": [
+    "Naive sha256({id,text}) fingerprint replay did not match stored fingerprint; seed/selection/counts verified separately."
+  ],
+  "overall": "PASS",
+  "paid_do_run_by_verifier": false,
+  "report": "VERIFY-LIVE-PHASE4-HASHNODE-2026-09-18",
+  "target_site": {
+    "hostname": "nik-hil.hashnode.dev",
+    "identity_kind": "supplemental_multi_tenant",
+    "match_rule_version": "domain-match-v1",
+    "match_scope": "hostname",
+    "multi_tenant_host": true,
+    "registrable_domain": "hashnode.dev"
+  },
+  "top_fail_issues": [],
+  "url": "https://nik-hil.hashnode.dev/",
+  "visibility": {
+    "all_audits_hostname_scope": true,
+    "appeared": 17,
+    "bad_platform_or_sibling_credits": 0,
+    "cited": 17,
+    "matched_appeared_hosts": {
+      "nik-hil.hashnode.dev": 51
+    },
+    "matched_cited_hosts": {
+      "nik-hil.hashnode.dev": 51
+    },
+    "observations": 20
+  }
+}
