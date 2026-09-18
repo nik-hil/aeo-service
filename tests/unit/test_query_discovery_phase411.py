@@ -771,10 +771,13 @@ def test_p7_freezes_held_no_query_set_v4():
         _REPO / "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.md"
     )
     assert verify_corrective.is_file()
-    # Engineering must not invent the Verifier's Phase 4.1.1 VERIFY artifact
-    assert not (
+    # Verifier-owned Phase 4.1.1 artifact must be present (not engineering claim)
+    assert (
         _REPO / "docs/verification/VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18.md"
-    ).exists()
+    ).is_file()
+    assert (
+        _REPO / "docs/verification/VERIFY-PHASE4.1.1-PROVENANCE-2026-09-18.json"
+    ).is_file()
     # Must not overwrite Phase 4.1 corrective VERIFY in this branch
     vdiff = subprocess.run(
         [
