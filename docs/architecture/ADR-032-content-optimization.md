@@ -1,8 +1,9 @@
 # ADR-032 — Phase 5 content optimization package & contracts
 
-**Status:** Accepted  
+**Status:** Accepted (D034 — Content Optimizer D1–D7 into Architect memo §8; package/protocol locks unchanged)  
 **Date:** 2026-09-18  
-**Decisions:** D032–D034
+**Decisions:** D032–D034  
+**Package lock:** `aeo_mvp.content` · `page-intel-v1` · `content-gap-v1` · `opt-brief-v1` · `opt-draft-v1`
 
 ## Context
 

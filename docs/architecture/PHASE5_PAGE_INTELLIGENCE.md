@@ -83,6 +83,9 @@ Options: `generate_draft=false`, `draft_paid=false`. Forbids `{topic}` generate.
 
 ## 8. Alignment deltas D1–D7 (accepted)
 
+**Architect acceptance (D034):** Content Optimizer deltas accepted into this memo.  
+**Package/protocol locks unchanged:** `aeo_mvp.content` · `page-intel-v1` · `content-gap-v1` · `opt-brief-v1` · `opt-draft-v1`.
+
 Checklist + pytest map: [`PHASE5_ALIGNMENT_DELTAS.md`](./PHASE5_ALIGNMENT_DELTAS.md)
 
 1. `coverage_by_query` with `page_coverage`; coverage ≠ visibility ≠ health; no cite_miss without observations  
