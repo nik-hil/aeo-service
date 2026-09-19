@@ -227,6 +227,7 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
     Accepts SSRF-safe ``source_url``, or existing ``job_id``/``page_id`` (+ queryset),
     or offline ``html``. Rejects free-form topic generation payloads (extra fields forbidden).
     Paid LLM default OFF; never auto-runs DigitalOcean web_search.
+    Empty/missing HTML → 400/409 unless ``allow_empty_html`` (P1-8).
     """
     factory = get_session_factory()
     session = factory()
@@ -239,9 +240,17 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
                 source_url=body.source_url,
                 html=body.html,
                 url_hint=body.url,
+                allow_empty_html=bool(body.allow_empty_html),
             )
         except OptimizationRequestError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            detail = str(exc)
+            # Job page present but empty/missing HTML → conflict, not generic bad request.
+            status = (
+                409
+                if body.job_id and "empty or missing HTML" in detail
+                else 400
+            )
+            raise HTTPException(status_code=status, detail=detail) from exc
         except SSRFError as exc:
             raise HTTPException(
                 status_code=400,
@@ -276,16 +285,20 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
         cfg["content_draft_provider"] = body.content_draft_provider
         cfg["draft_paid"] = draft_paid
 
-        return run_from_resolved(
-            html=html,
-            url=url,
-            title_hint=title_hint,
-            queryset=queryset,
-            site_profile=site_profile,
-            config=cfg,
-            generate_draft=generate_draft,
-            draft_paid=draft_paid,
-            llm_api_key=api_key,
-        )
+        try:
+            return run_from_resolved(
+                html=html,
+                url=url,
+                title_hint=title_hint,
+                queryset=queryset,
+                site_profile=site_profile,
+                config=cfg,
+                generate_draft=generate_draft,
+                draft_paid=draft_paid,
+                llm_api_key=api_key,
+                allow_empty_html=bool(body.allow_empty_html),
+            )
+        except OptimizationRequestError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         session.close()

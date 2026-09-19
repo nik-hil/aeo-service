@@ -136,6 +136,8 @@ class ContentOptimizationRequest(BaseModel):
     generate_draft: bool = False  # alias → content_draft
     draft_paid: bool = False
     paid_llm_opt_in: bool = False  # alias → draft_paid
+    # P1-8: refuse empty/missing HTML unless explicitly opted in
+    allow_empty_html: bool = False
 
     @field_validator("source_url", "url")
     @classmethod

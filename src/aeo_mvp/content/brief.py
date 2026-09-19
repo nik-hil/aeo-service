@@ -382,16 +382,17 @@ def build_optimization_brief(
 
     gap_catalog = dict(gap_report.gap_catalog_by_taxonomy or {})
 
-    # Map primary BriefAction from dominant gaps (deterministic; no thin farms)
+    # Map primary BriefAction from dominant gaps (deterministic; no thin farms).
+    # P1-2: add_faq from canonical kind=missing_faq and/or gap_type=no_answer_block.
+    has_missing_faq = any((g.kind or "") == "missing_faq" for g in gap_report.gaps)
+    has_no_answer_block = any(g.gap_type == "no_answer_block" for g in gap_report.gaps)
     brief_action: BriefAction = "expand_section"
-    if any(g.gap_type == "schema_gap" for g in gap_report.gaps):
+    if has_missing_faq:
+        brief_action = "add_faq"
+    elif any(g.gap_type == "schema_gap" for g in gap_report.gaps):
         brief_action = "add_schema"
-    elif any(g.gap_type == "no_answer_block" for g in gap_report.gaps):
-        brief_action = (
-            "add_faq"
-            if any((g.kind or "") == "missing_faq" for g in gap_report.gaps)
-            else "add_howto"
-        )
+    elif has_no_answer_block:
+        brief_action = "add_howto"
     elif any(g.gap_type == "entity_mismatch" for g in gap_report.gaps):
         brief_action = "clarify_entity"
     elif page.word_count < 40 and n_uncovered > 2:
