@@ -1,0 +1,537 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" as="image" href="https://cdn.hashnode.com/uploads/covers/6583d3c88b38505f92092e4e/a217f89a-7a08-43fd-85ec-8e80531c1e02.jpg"/><link rel="stylesheet" href="/_next/static/css/bc5c0eaecd39bc7d.css" data-precedence="next"/><link rel="stylesheet" href="/_next/static/css/7ffcc02a3c67389b.css" data-precedence="next"/><link rel="stylesheet" href="/_next/static/css/c20e76e7d11dec32.css" data-precedence="next"/><link rel="stylesheet" href="/_next/static/css/a6eb8c1f37be68d5.css" data-precedence="next"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/webpack-d716a75e4017380e.js"/><meta name="next-size-adjust" content=""/><title>Build an AI Agent From Scratch in Python: Step-by-Step Guide</title><meta name="description" content="Stop relying on complex frameworks! Learn how to build an AI agent from first principles using plain Python, LLM tool calling, and an agent loop."/><link rel="canonical" href="https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling"/><meta property="og:title" content="Build an AI Agent From Scratch in Python: Step-by-Step Guide"/><meta property="og:description" content="Stop relying on complex frameworks! Learn how to build an AI agent from first principles using plain Python, LLM tool calling, and an agent loop."/><meta property="og:url" content="https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling"/><meta property="og:site_name" content="Nikhil Ikhar&#x27;s blog"/><meta property="og:image" content="https://cdn.hashnode.com/uploads/og-images/6583d3c88b38505f92092e4e/50adce08-b98b-4325-a746-7c143425610c.jpg"/><meta property="og:image:width" content="1200"/><meta property="og:image:height" content="630"/><meta property="og:type" content="article"/><meta property="article:published_time" content="2026-09-10T16:11:07.549Z"/><meta property="article:modified_time" content="2026-09-10T16:23:51.288Z"/><meta property="article:author" content="https://nik-hil.hashnode.dev/@TechNikhil"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="Build an AI Agent From Scratch in Python: Step-by-Step Guide"/><meta name="twitter:description" content="Stop relying on complex frameworks! Learn how to build an AI agent from first principles using plain Python, LLM tool calling, and an agent loop."/><meta name="twitter:image" content="https://cdn.hashnode.com/uploads/og-images/6583d3c88b38505f92092e4e/50adce08-b98b-4325-a746-7c143425610c.jpg"/><link rel="icon" href="https://cdn.hashnode.com/res/hashnode/image/upload/v1718798265293/98i86xTk8.png"/><script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+ {"@type":"Question","name":"What is an agent loop in AI agents?","acceptedAnswer":{"@type":"Answer","text":"The agent loop repeatedly asks the model for the next action, runs tools, and feeds results back until finish."}},
+ {"@type":"Question","name":"How do you build an AI agent with tool calling?","acceptedAnswer":{"@type":"Answer","text":"Define tool schemas, implement executors, wire a provider, and run the loop until the finish tool returns."}}
+]}
+</script>
+
+</head><body class="__variable_ede2c9 __variable_558dcf bg-background dark:bg-background"><a href="https://nik-hil.hashnode.dev/cdn-cgi/content?id=RrQJYE1vfro2Mbrl1Jta3EKcXkxua6vIggUzD4_64Gg-1789816637.975864-1.2.1.1-sN3zsVCP5gJbEZD2s_q._oT4clmjNZok6WVzRB.GynP2_zeHcV6MF3K7pcOSFgvF" aria-hidden="true" rel="nofollow noopener" style="display: none !important; visibility: hidden !important"></a><div hidden=""><!--$--><!--/$--></div><main id="main-content" class="min-h-screen bg-transparent">
+<section id="answer-first">
+  <h2>Direct answer</h2>
+  <p>An AI agent with tool calling is a loop that lets a language model choose and execute tools (functions) until a finish tool ends the turn. This article shows how to build that agent loop in Python with tool schemas and an execute path.</p>
+</section>
+<section id="faq">
+  <h2>Frequently asked questions</h2>
+  <h3>What is an agent loop in AI agents?</h3>
+  <p>The agent loop repeatedly asks the model for the next action, runs any requested tools, and feeds results back until the finish tool ends the turn.</p>
+  <h3>How do you build an AI agent with tool calling?</h3>
+  <p>Define tool schemas, implement executors such as execute_code, wire a provider, and run the loop until the finish tool returns.</p>
+  <h3>What are good resources for learning AI agent tool calling?</h3>
+  <p>Start with this Agents Zero to Hero series on nik-hil.hashnode.dev, which covers tool calling, filesystem tools, secure shells, and permissions.</p>
+</section>
+<header class="sticky top-0 z-50 w-full py-4 bg-background backdrop-blur-sm transition-transform duration-300 translate-y-0"><a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:shadow">Skip to main content</a><div class="relative w-full mx-auto xl:max-w-[80rem] 2xl:max-w-[90rem] px-4 sm:px-12 md:px-18 lg:px-16 xl:px-10"><div class="flex items-center justify-between gap-3 xl:hidden"><div class="flex items-center gap-3 min-w-0 flex-1"><a href="https://hashnode.com/?utm_source=https%3A%2F%2Fnik-hil.hashnode.dev&amp;utm_medium=referral&amp;utm_campaign=blog_header_logo&amp;utm_content=logo" class="inline-flex items-center justify-center text-lg text-muted-foreground hover:text-foreground transition border rounded-md h-9 w-9 shrink-0 border-border hover:bg-muted"><i class="text-xl fa-brands fa-hashnode" aria-hidden="true"></i><span class="sr-only">Hashnode</span></a><a title="Nikhil Ikhar&#x27;s blog" class="text-lg font-semibold text-foreground truncate min-w-0" href="/">Nikhil Ikhar&#x27;s blog</a></div><div class="flex items-center gap-2 shrink-0"><button class="gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 hover:bg-accent py-2 h-9 w-9 px-0 flex items-center justify-center text-muted-foreground hover:text-foreground bg-transparent border-border shadow-none" aria-label="Open search (press Control or Command and K)"><i class="fa-jelly fa-search text-sm" aria-hidden="true"></i><span class="sr-only">Open search (press Control or Command and K)</span></button><button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 hover:bg-accent w-9 px-3 h-9 text-muted-foreground hover:text-foreground shadow-none" type="button" id="radix-_R_2j4anpfalb_" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger"><i class="fa-jelly fa-sun text-sm scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true"></i><i class="fa-jelly fa-moon absolute text-sm scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true"></i><span class="sr-only">Toggle theme</span></button><button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 border border-input bg-background hover:bg-accent hover:text-accent-foreground py-2 h-9 w-10 px-0 shadow-none" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="radix-_R_3j4anpfalb_" data-state="closed" data-slot="sheet-trigger"><i class="fa-jelly fa-bars" aria-hidden="true"></i><span class="sr-only">Open menu</span></button></div></div><div class="hidden xl:grid gap-4 items-center xl:grid-cols-[1fr_auto_1fr] xl:gap-6 max-w-full xl:mx-auto xl:max-w-[80rem] 2xl:max-w-[90rem]"><div class="flex items-center w-full gap-3 min-w-0"><a href="https://hashnode.com/?utm_source=https%3A%2F%2Fnik-hil.hashnode.dev&amp;utm_medium=referral&amp;utm_campaign=blog_header_logo&amp;utm_content=logo" class="inline-flex items-center justify-center text-lg text-muted-foreground hover:text-foreground transition border rounded-md h-9 w-9 border-border hover:bg-muted"><i class="text-xl fa-brands fa-hashnode" aria-hidden="true"></i><span class="sr-only">Hashnode</span></a><span class="h-6 border-l border-border"></span><p class="font-semibold text-foreground min-w-0 truncate text-lg sm:text-xl"><a title="Nikhil Ikhar&#x27;s blog" href="/">Nikhil Ikhar&#x27;s blog</a></p></div><div></div><div class="flex items-center justify-end gap-3 text-muted-foreground"><button class="gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 hover:bg-accent py-2 h-9 w-9 px-0 flex items-center justify-center text-muted-foreground hover:text-foreground bg-transparent border-border shadow-none" aria-label="Open search (press Control or Command and K)"><i class="fa-jelly fa-search text-sm" aria-hidden="true"></i><span class="sr-only">Open search (press Control or Command and K)</span></button><div class="flex items-center gap-3"><button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 hover:bg-accent w-9 px-3 h-9 text-muted-foreground hover:text-foreground shadow-none" type="button" id="radix-_R_6t4anpfalb_" aria-haspopup="menu" aria-expanded="false" data-state="closed" data-slot="dropdown-menu-trigger"><i class="fa-jelly fa-sun text-sm scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" aria-hidden="true"></i><i class="fa-jelly fa-moon absolute text-sm scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" aria-hidden="true"></i><span class="sr-only">Toggle theme</span></button><a target="_blank" rel="noopener" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 border border-input bg-background hover:bg-accent hover:text-accent-foreground py-2 gap-2 px-3 h-9 shadow-none" href="https://hashnode.com"><i class="text-sm fa-jelly fa-pencil" aria-hidden="true"></i>Write</a></div></div></div></div></header><div data-slot="dialog-header" class="flex flex-col gap-2 text-center sm:text-left sr-only"><h2 id="radix-_R_8anpfalbH1_" data-slot="dialog-title" class="text-lg leading-none font-semibold">Command Palette</h2><p id="radix-_R_8anpfalbH2_" data-slot="dialog-description" class="text-muted-foreground text-sm">Search for a command to run...</p></div><section class="py-8"><div class="px-4 sm:px-8"><div class="w-full max-w-full xl:mx-auto xl:max-w-[80rem] 2xl:max-w-[90rem]"><div class="grid gap-5 max-w-full"><article class="w-full max-w-full rounded-xl border bg-card text-card-foreground"><div class="px-5 pt-12 pb-8 sm:px-8"><header class="space-y-5"><div class="space-y-4 text-center max-w-4xl mx-auto"><h1 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold leading-tight tracking-tight text-balance text-foreground">Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling</h1><div class="flex flex-wrap items-center justify-center gap-3 text-sm text-muted-foreground"><div class="flex items-center gap-2"><span>Updated</span><time dateTime="2026-09-10T16:23:51.288Z">September 10, 2026</time></div><span class="text-muted-foreground">•</span><span>9<!-- --> min read</span><span class="text-muted-foreground">•</span><a href="/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"><i class="fa-brands fa-markdown" aria-hidden="true"></i>View as Markdown</a></div></div></header></div><div class="w-full"><img alt="Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling" width="1200" height="750" decoding="async" data-nimg="1" class="w-full h-auto" style="color:transparent" src="https://cdn.hashnode.com/uploads/covers/6583d3c88b38505f92092e4e/a217f89a-7a08-43fd-85ec-8e80531c1e02.jpg"/></div><div class="px-5 py-12 sm:px-8 space-y-8"><div class="max-w-2xl mx-auto"><div class="flex flex-wrap items-center gap-5"><div class="flex items-center gap-5"><div class="flex gap-3 items-center"><a target="_blank" rel="noopener" href="https://hashnode.com/@TechNikhil"><span class="relative flex shrink-0 overflow-hidden rounded-full h-10 w-10 border border-border transition-opacity hover:opacity-80"><span class="flex h-full w-full items-center justify-center rounded-full bg-muted text-muted-foreground font-semibold text-lg">N</span></span></a><div class="min-w-0"><div class="flex items-center gap-2"><a target="_blank" rel="noopener" class="font-medium text-foreground hover:text-primary transition-colors" href="https://hashnode.com/@TechNikhil">Nikhil Ikhar</a></div></div></div></div></div></div><div class="max-w-2xl mx-auto"><a class="group flex items-center gap-3 rounded-lg border border-border px-3 py-2 transition hover:border-primary hover:bg-accent" href="/series/agent-zero-2-hero"><i class="fa-jelly fa-layer-group h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true"></i><div class="flex flex-col"><span class="text-sm text-muted-foreground">Part of series</span><span class="text-sm font-medium text-foreground group-hover:text-primary transition-colors">Agents Zero to Hero</span></div></a></div><div class="relative"><aside class="hidden xl:block absolute top-0 left-0 h-full"><nav class="sticky top-22 w-44"><div class="hidden xl:block group/toc relative"><div class="grid"><div class="[grid-area:1/1] opacity-0 group-hover/toc:opacity-100 transition-opacity duration-200 max-h-[calc(100vh-3rem)] overflow-y-auto"><p class="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">On this page</p><nav aria-label="On this page"><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#what-exactly-are-we-building">What exactly are we building?</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#the-agent-loop">The agent loop</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#our-first-two-tools">Our first two tools</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#tool-schemas">Tool schemas</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#implementing-executecode">Implementing execute_code</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0.75rem" href="#the-model-does-not-execute-code-directly">The model does not execute code directly</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#the-finish-tool">The finish tool</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#running-the-agent">Running the agent</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#calling-the-model">Calling the model</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#handling-a-tool-call">Handling a tool call</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#feeding-the-result-back-to-the-model">Feeding the result back to the model</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#why-the-message-history-matters">Why the message history matters</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#the-complete-flow">The complete flow</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#there-is-already-a-security-problem">There is already a security problem</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#what-i-learned-from-v01">What I learned from v0.1</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#running-the-project">Running the project</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#what-comes-next">What comes next?</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#v02-giving-the-agent-a-filesystem">v0.2 — Giving the agent a filesystem</a><a class="block py-1 text-sm transition-colors hover:text-foreground text-muted-foreground" style="padding-left:0rem" href="#repository">Repository</a></nav></div><div class="[grid-area:1/1] relative flex flex-col gap-px transition-opacity duration-200 group-hover/toc:opacity-0 pointer-events-none self-start max-h-[calc(100vh-3rem)] overflow-hidden pl-3"><div class="absolute left-0 w-0.5 rounded-full bg-foreground transition-all duration-300 opacity-0" style="transform:translateY(0px);height:12px"></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:29px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:14px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:19px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:12px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:46px"></div></div><div class="flex items-center h-3" style="padding-left:10px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:40px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:15px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:17px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:17px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:20px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:36px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:31px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:17px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:35px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:24px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:19px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:42px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:36px"></div></div><div class="flex items-center h-3" style="padding-left:0px"><div class="h-0.5 rounded-full transition-all duration-300 bg-border" style="width:10px"></div></div></div></div></div></nav></aside><div class="max-w-2xl mx-auto min-w-0 contain-[inline-size]"><div class="prose dark:prose-invert prose-pre:bg-foreground prose-pre:text-background prose-pre:border prose-pre:border-border prose-pre:rounded prose-pre:px-5 prose-pre:py-4 dark:prose-pre:bg-muted dark:prose-pre:text-foreground dark:prose-pre:border-border prose-pre:overflow-x-auto max-w-none text-base sm:text-lg [&amp;&gt;div&gt;p:first-child]:mt-0 [&amp;&gt;div&gt;p:first-child]:pt-0 min-w-0 wrap-break-word [&amp;_a]:break-all **:max-w-full"><div><p>Building an AI agent sounds deceptively simple.</p>
+<p>Call an LLM. Give it a prompt. Get an answer.</p>
+<p>But that is not really an agent.</p>
+<p>An LLM becomes an agent when it can <strong>decide to take actions</strong>, invoke capabilities outside the model, observe the result, and continue working until the task is complete.</p>
+<p>That sounds complicated when described using terms like <em>agentic workflows</em>, <em>tool calling</em>, <em>harnesses</em>, and <em>autonomous coding agents</em>.</p>
+<p>So instead of starting with a framework, I decided to build one myself.</p>
+<p>This repository is my attempt to understand the mechanics of an AI agent harness <strong>from first principles</strong>, one Git tag at a time.</p>
+<p>Repository:</p>
+<p><a href="https://github.com/nik-hil/agents-zero-2-hero" target="_blank" rel="noopener noreferrer nofollow ugc">https://github.com/nik-hil/agents-zero-2-hero</a></p>
+<p>This series starts at the smallest useful building block.</p>
+<p>Our first milestone is:</p>
+<blockquote>
+<p><strong>An LLM that can call a Python tool and decide when it is finished.</strong></p>
+</blockquote>
+<hr />
+<h2 id="what-exactly-are-we-building">What exactly are we building?</h2>
+<p>The project is called <strong>Agents Zero 2 Hero</strong>.</p>
+<p>The idea is deliberately incremental:</p>
+<pre><code class="language-text">v0.1 → basic tool calling
+v0.2 → filesystem tools
+v0.3 → shell execution
+v0.4 → precise editing and code search
+v0.5 → provider abstraction
+...
+</code></pre>
+<p>Eventually, the harness is intended to grow toward capabilities such as permissions, hooks, memory, context compaction, skills, MCP, subagents, and verification loops.</p>
+<p>But all of that starts with one simple loop.</p>
+<p>The repository defines the idea roughly like this:</p>
+<pre><code class="language-text">harness = tools + knowledge + observation + action + permissions
+</code></pre>
+<p>The LLM supplies the intelligence.</p>
+<p>The harness provides the mechanism through which that intelligence can interact with the outside world.</p>
+<hr />
+<h1 id="the-agent-loop">The agent loop</h1>
+<p>The most important concept in the entire project is the agent loop.</p>
+<p>At a high level:</p>
+<pre><code class="language-python">while True:
+    response = client.chat.completions.create(
+        messages=messages,
+        tools=TOOL_SCHEMAS,
+    )
+
+    if not response.tool_calls:
+        break
+
+    for call in response.tool_calls:
+        result = TOOLS[call.name](**call.args)
+        messages.append(tool_result(call, result))
+</code></pre>
+<p>Conceptually:</p>
+<pre><code class="language-text">User
+  │
+  ▼
+┌───────────┐
+│    LLM    │
+└─────┬─────┘
+      │
+      │ decides what to do
+      ▼
+┌───────────┐
+│   Tool    │
+└─────┬─────┘
+      │
+      │ result
+      ▼
+┌───────────┐
+│    LLM    │
+└─────┬─────┘
+      │
+      ├──── another tool?
+      │
+      └──── finish?
+</code></pre>
+<p>The key distinction is:</p>
+<blockquote>
+<p><strong>The model decides what should happen. The harness controls how it happens.</strong></p>
+</blockquote>
+<p>That distinction becomes extremely important as an agent becomes more capable.</p>
+<hr />
+<h1 id="our-first-two-tools">Our first two tools</h1>
+<p>At <code>v0.1-basic-tool</code>, the harness exposes exactly two tools:</p>
+<pre><code class="language-text">execute_code
+finish
+</code></pre>
+<p>The first lets the model perform computation.</p>
+<p>The second lets the model explicitly terminate the task.</p>
+<p>The tool map is:</p>
+<pre><code class="language-python">TOOLS = {
+    "execute_code": execute_code,
+    "finish": finish,
+}
+</code></pre>
+<p>The interesting part is that the LLM does not magically know how these Python functions work.</p>
+<p>We explicitly describe them using tool schemas.</p>
+<hr />
+<h1 id="tool-schemas">Tool schemas</h1>
+<p>For example:</p>
+<pre><code class="language-python">{
+    "type": "function",
+    "function": {
+        "name": "execute_code",
+        "description": "Execute Python code and return stdout or error.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "The Python code to execute"
+                }
+            },
+            "required": ["code"],
+            "additionalProperties": False
+        }
+    }
+}
+</code></pre>
+<p>This schema is effectively the contract between the model and the harness.</p>
+<p>The model sees:</p>
+<pre><code class="language-text">Tool name: execute_code
+
+Input:
+{
+    "code": "..."
+}
+</code></pre>
+<p>and can decide:</p>
+<blockquote>
+<p>I need to execute some Python.</p>
+</blockquote>
+<p>The harness then translates that model decision into an actual function invocation.</p>
+<hr />
+<h1 id="implementing-executecode">Implementing execute_code</h1>
+<p>The implementation is intentionally small:</p>
+<pre><code class="language-python">def execute_code(code: str):
+    try:
+        with open("temp.py", "w") as f:
+            f.write(code)
+
+        result = subprocess.run(
+            ["python", "temp.py"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        os.remove("temp.py")
+
+        if result.returncode == 0:
+            return {
+                "output": result.stdout.strip(),
+                "error": None,
+            }
+
+        return {
+            "output": None,
+            "error": result.stderr.strip(),
+        }
+
+    except Exception as e:
+        return {
+            "output": None,
+            "error": str(e),
+        }
+</code></pre>
+<p>There are already several interesting harness concepts hiding inside this tiny function.</p>
+<h3 id="the-model-does-not-execute-code-directly">The model does not execute code directly</h3>
+<p>The LLM produces structured arguments.</p>
+<p>The harness executes the actual function.</p>
+<p>That separation creates a control point where we can later add:</p>
+<ul>
+<li><p>permissions</p>
+</li>
+<li><p>sandboxing</p>
+</li>
+<li><p>logging</p>
+</li>
+<li><p>timeouts</p>
+</li>
+<li><p>validation</p>
+</li>
+<li><p>metrics</p>
+</li>
+<li><p>policy checks</p>
+</li>
+</ul>
+<p>That is why the harness matters.</p>
+<hr />
+<h1 id="the-finish-tool">The finish tool</h1>
+<p>The second tool is even simpler:</p>
+<pre><code class="language-python">def finish(answer: str):
+    return {
+        "final_answer": answer
+    }
+</code></pre>
+<p>Why make finishing a tool instead of simply accepting a normal assistant response?</p>
+<p>Because it gives the harness an explicit completion signal.</p>
+<p>The model can say:</p>
+<pre><code class="language-text">I am done.
+</code></pre>
+<p>by calling:</p>
+<pre><code class="language-text">finish(...)
+</code></pre>
+<p>The harness then knows it can terminate the loop.</p>
+<p>This becomes very useful as the agent starts performing multi-step work.</p>
+<hr />
+<h1 id="running-the-agent">Running the agent</h1>
+<p>The main function looks like this:</p>
+<pre><code class="language-python">def run_agent(
+    task: str,
+    max_iterations: int = 8,
+    model="openai/gpt-oss-120b"
+):
+</code></pre>
+<p>It starts the conversation with a system message:</p>
+<pre><code class="language-text">You are a coding agent.
+
+Rules:
+- Use tools when needed.
+- When the task is fully complete, call the finish tool exactly once.
+- Do not continue reasoning after calling finish.
+</code></pre>
+<p>Then:</p>
+<pre><code class="language-python">messages = [
+    {
+        "role": "system",
+        "content": ...
+    },
+    {
+        "role": "user",
+        "content": task
+    },
+]
+</code></pre>
+<hr />
+<h1 id="calling-the-model">Calling the model</h1>
+<p>Every iteration sends the current conversation and tool definitions:</p>
+<pre><code class="language-python">response = client.chat.completions.create(
+    model=model,
+    messages=messages,
+    tools=TOOL_SCHEMAS,
+    tool_choice="auto",
+    temperature=0.3,
+    max_tokens=2048,
+)
+</code></pre>
+<p>The important part here is:</p>
+<pre><code class="language-python">tools=TOOL_SCHEMAS
+</code></pre>
+<p>We are telling the model:</p>
+<blockquote>
+<p>These are the actions available to you.</p>
+</blockquote>
+<p>And:</p>
+<pre><code class="language-python">tool_choice="auto"
+</code></pre>
+<p>lets the model decide whether it needs a tool.</p>
+<hr />
+<h1 id="handling-a-tool-call">Handling a tool call</h1>
+<p>Suppose the model decides to call:</p>
+<pre><code class="language-text">execute_code
+</code></pre>
+<p>The response contains a tool call with JSON arguments.</p>
+<p>The harness does:</p>
+<pre><code class="language-python">tool_name = tool_call.function.name
+args = json.loads(tool_call.function.arguments)
+
+result = TOOLS[tool_name](**args)
+</code></pre>
+<p>This is one of the most important lines in the whole project.</p>
+<p>The model gives us:</p>
+<pre><code class="language-text">tool name + arguments
+</code></pre>
+<p>The harness performs:</p>
+<pre><code class="language-text">tool name → Python function
+</code></pre>
+<p>through the <code>TOOLS</code> registry.</p>
+<hr />
+<h1 id="feeding-the-result-back-to-the-model">Feeding the result back to the model</h1>
+<p>After executing the tool, the harness sends its result back:</p>
+<pre><code class="language-python">messages.append(
+    {
+        "role": "tool",
+        "tool_call_id": tool_call.id,
+        "content": json.dumps(result),
+    }
+)
+</code></pre>
+<p>Now the model can observe what happened.</p>
+<p>For example:</p>
+<pre><code class="language-text">Model:
+execute_code(
+    code="print(sum(range(1, 16)))"
+)
+
+Tool:
+{
+    "output": "120",
+    "error": null
+}
+</code></pre>
+<p>The model can now reason:</p>
+<blockquote>
+<p>I have the result. I can provide the answer.</p>
+</blockquote>
+<p>Or perhaps:</p>
+<blockquote>
+<p>The code failed. I need to try again.</p>
+</blockquote>
+<p>That second possibility is where agent behavior really starts becoming interesting.</p>
+<hr />
+<h1 id="why-the-message-history-matters">Why the message history matters</h1>
+<p>The model does not remember tool executions automatically.</p>
+<p>The harness maintains the conversation state:</p>
+<pre><code class="language-text">system message
+      ↓
+user task
+      ↓
+assistant tool call
+      ↓
+tool result
+      ↓
+assistant decision
+      ↓
+tool call
+      ↓
+tool result
+      ↓
+...
+</code></pre>
+<p>The message history is therefore a critical part of the harness.</p>
+<p>Later, this will evolve into a much larger problem:</p>
+<ul>
+<li><p>context windows</p>
+</li>
+<li><p>memory</p>
+</li>
+<li><p>compaction</p>
+</li>
+<li><p>session persistence</p>
+</li>
+<li><p>project context</p>
+</li>
+</ul>
+<p>But the foundation is already present here.</p>
+<hr />
+<h1 id="the-complete-flow">The complete flow</h1>
+<p>Imagine the user asks:</p>
+<pre><code class="language-text">Write and execute a Python function for FizzBuzz up to 15.
+Return the output.
+</code></pre>
+<p>The agent might perform something like:</p>
+<pre><code class="language-text">USER
+  │
+  ▼
+LLM
+  │
+  │ execute_code(...)
+  ▼
+execute_code
+  │
+  │ stdout
+  ▼
+LLM
+  │
+  │ finish(...)
+  ▼
+finish
+  │
+  ▼
+FINAL ANSWER
+</code></pre>
+<p>The important observation is that the LLM is not itself the agent.</p>
+<p>The combination is:</p>
+<pre><code class="language-text">LLM + tool definitions + execution engine + state + control loop
+</code></pre>
+<p>That is the beginning of the harness.</p>
+<hr />
+<h1 id="there-is-already-a-security-problem">There is already a security problem</h1>
+<p>It is worth noticing something uncomfortable.</p>
+<p>Our tool can execute arbitrary Python code:</p>
+<pre><code class="language-python">subprocess.run(
+    ["python", "temp.py"],
+    ...
+)
+</code></pre>
+<p>At this stage there are essentially no meaningful security boundaries.</p>
+<p>That is intentional.</p>
+<p>This is a learning project.</p>
+<p>The goal of the first checkpoint is to make the mechanism visible before introducing additional layers of abstraction and safety.</p>
+<p>Later tags will address this.</p>
+<p>This is also one of the reasons I prefer building the first version from scratch instead of immediately reaching for a framework.</p>
+<p>When a framework gives us:</p>
+<pre><code class="language-python">agent.run(task)
+</code></pre>
+<p>we can easily miss what is actually happening underneath.</p>
+<hr />
+<h1 id="what-i-learned-from-v01">What I learned from v0.1</h1>
+<p>The first lesson is surprisingly simple:</p>
+<p>An agent is not just a prompt.</p>
+<p>The minimal architecture is:</p>
+<pre><code class="language-text">             ┌────────────┐
+             │     LLM    │
+             └─────┬──────┘
+                   │
+             tool decision
+                   │
+                   ▼
+             ┌────────────┐
+             │  Harness   │
+             └─────┬──────┘
+                   │
+                execute
+                   │
+                   ▼
+             ┌────────────┐
+             │    Tool    │
+             └─────┬──────┘
+                   │
+                result
+                   │
+                   └──────────► LLM
+</code></pre>
+<p>The harness is responsible for connecting <strong>model decisions</strong> to <strong>real-world actions</strong>.</p>
+<p>And that means the harness becomes the natural place for:</p>
+<pre><code class="language-text">security
+permissions
+observability
+state
+tool execution
+error handling
+policy
+</code></pre>
+<hr />
+<h1 id="running-the-project">Running the project</h1>
+<p>Clone the repository:</p>
+<pre><code class="language-bash">git clone https://github.com/nik-hil/agents-zero-2-hero.git
+cd agents-zero-2-hero
+</code></pre>
+<p>Checkout the first lesson:</p>
+<pre><code class="language-bash">git checkout v0.1-basic-tool
+</code></pre>
+<p>Install dependencies:</p>
+<pre><code class="language-bash">python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+</code></pre>
+<p>Configure your LLM provider according to the repository instructions.</p>
+<p>Then:</p>
+<pre><code class="language-bash">python client.py
+python coding_agent.py
+</code></pre>
+<hr />
+<h1 id="what-comes-next">What comes next?</h1>
+<p>We currently have an agent that can execute Python.</p>
+<p>But coding agents need more than computation.</p>
+<p>They need to:</p>
+<pre><code class="language-text">see files
+read files
+create files
+modify files
+inspect projects
+</code></pre>
+<p>That leads directly to the next checkpoint.</p>
+<h2 id="v02-giving-the-agent-a-filesystem">v0.2 — Giving the agent a filesystem</h2>
+<p>In the next article we'll add three tools:</p>
+<pre><code class="language-text">list_files
+read_file
+write_file
+</code></pre>
+<p>More importantly, we'll introduce a concept that every serious agent harness needs:</p>
+<blockquote>
+<p><strong>The agent should operate inside a controlled workspace rather than directly on the entire machine.</strong></p>
+</blockquote>
+<p>That is where the simple tool-calling loop starts becoming an actual coding-agent harness.</p>
+<hr />
+<h2 id="repository">Repository</h2>
+<p><a href="https://github.com/nik-hil/agents-zero-2-hero" target="_blank" rel="noopener noreferrer nofollow ugc">https://github.com/nik-hil/agents-zero-2-hero</a></p>
+<p>Tag:</p>
+<pre><code class="language-text">v0.1-basic-tool
+</code></pre>
+<p>The point of this series is not to build another agent framework.</p>
+<p>It is to understand what the frameworks are doing for us.</p>
+<p>One Git tag at a time.</p>
+</div></div></div></div><div class="max-w-2xl mx-auto border-t border-border pt-8 space-y-5"><div class="flex flex-wrap items-center gap-2"><a class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-primary hover:text-primary" href="/tag/python">#<!-- -->python</a><a class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-primary hover:text-primary" href="/tag/ai">#<!-- -->ai</a><a class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-primary hover:text-primary" href="/tag/artificial-intelligence">#<!-- -->artificial-intelligence</a><a class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-primary hover:text-primary" href="/tag/software-engineering">#<!-- -->software-engineering</a><a class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-primary hover:text-primary" href="/tag/llm">#<!-- -->llm</a><a class="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground transition hover:border-primary hover:text-primary" href="/tag/harness">#<!-- -->harness</a></div></div></div></article></div></div></div></section><section class="pb-8"><div class="px-4 sm:px-8"><div class="w-full max-w-full xl:mx-auto xl:max-w-[80rem] 2xl:max-w-[90rem]"><div class="max-w-4xl w-full mx-auto"><div class="rounded-xl border bg-card text-card-foreground p-5 sm:p-8"><section class="space-y-5"><div class="flex items-center justify-between"><h2 class="text-lg font-bold tracking-tight">Comments</h2><a target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:border-primary hover:text-primary" href="https://hashnode.com/posts/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling/6aa2d69b3c4cf674ea10440b"><i class="fa-regular fa-comment" aria-hidden="true"></i>Join the discussion</a></div><p class="text-sm text-muted-foreground py-5 text-center">No comments yet.<!-- --> <a target="_blank" rel="noopener" class="text-primary hover:underline" href="https://hashnode.com/posts/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling/6aa2d69b3c4cf674ea10440b">Be the first to comment.</a></p></section></div></div></div></div></section><section class="pb-8"><div class="px-4 sm:px-8"><div class="w-full max-w-full xl:mx-auto xl:max-w-[80rem] 2xl:max-w-[90rem]"><div class="max-w-4xl w-full mx-auto"><div class="rounded-xl border bg-card text-card-foreground overflow-hidden"><div class="p-5 sm:p-6 space-y-3"><a class="group flex items-center gap-2" href="/series/agent-zero-2-hero"><i class="fa-jelly fa-layer-group h-4 w-4 text-muted-foreground" aria-hidden="true"></i><h2 class="text-base font-semibold leading-snug tracking-tight text-foreground group-hover:text-primary transition-colors">Agents Zero to Hero</h2></a><div class="flex items-center gap-3 text-sm text-muted-foreground"><span>Part <!-- -->1<!-- --> of <!-- -->6</span><div class="flex-1 h-1 rounded-full bg-muted overflow-hidden"><div class="h-full rounded-full bg-primary transition-all" style="width:16.666666666666664%"></div></div></div><p class="text-sm leading-relaxed text-muted-foreground line-clamp-2">This blogs builds a ai agent harness by hand, in plain Python, so the mechanics are visible instead of hidden inside a framework. (For a full-featured production version of these ideas, see HKUDS/OpenHarness, which inspired this curriculum.) 
+See git https://github.com/nik-hil/agents-zero-2-hero</p></div><a class="block border-t border-border p-5 sm:p-6 hover:bg-muted transition-colors" href="/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"><span class="text-sm text-muted-foreground">Up next</span><h3 class="text-base sm:text-lg font-semibold leading-snug tracking-tight text-foreground mt-1">Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands — Filesystem Tools</h3><p class="text-sm leading-relaxed text-muted-foreground line-clamp-2 mt-1">Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands — Filesystem Tools
+In the previous article, we built the smallest useful AI coding agent.
+It could:
+
+receive a task
+
+ask an LLM what to do
+
+ca</p></a></div></div></div></div></section><section class="pb-8"><div class="px-4 sm:px-8"><div class="w-full max-w-full xl:mx-auto xl:max-w-[80rem] 2xl:max-w-[90rem]"><div class="max-w-4xl w-full mx-auto"><section class="space-y-6"><h2 class="text-2xl font-bold tracking-tight text-balance">More from this blog</h2><div class="flex flex-col gap-6"><article aria-labelledby="_R_panpfalb_" class="h-full"><a class="block h-full" href="/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act"><div class="rounded-xl border bg-card text-card-foreground transition hover:border-slate-400 dark:hover:border-slate-600 h-full"><div class="grid h-full gap-4 p-4 items-stretch md:gap-6 md:p-6 md:grid-cols-[1.2fr_1fr]"><div class="flex flex-col gap-4"><header class="flex flex-col gap-3"><h3 id="_R_panpfalb_" class="text-foreground text-lg sm:text-xl font-bold leading-snug tracking-tight transition-colors line-clamp-3">Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act</h3><p class="text-sm leading-relaxed text-muted-foreground line-clamp-3">Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act
+An AI coding agent becomes significantly more useful when it can read files, edit code, execute Python, run shell commands, and s</p></header><div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"><span class="whitespace-nowrap">Sep 16, 2026</span><span class="whitespace-nowrap"><span class="mr-3" aria-hidden="true">·</span>17 min read</span></div></div><div class="flex items-center md:justify-end order-first md:order-last"><div class="relative overflow-hidden rounded-lg bg-muted aspect-[800/420] w-full md:max-w-[320px]"><img alt="Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act" loading="lazy" decoding="async" data-nimg="fill" class="object-cover object-center" style="position:absolute;height:100%;width:100%;left:0;top:0;right:0;bottom:0;color:transparent" src="https://cdn.hashnode.com/uploads/covers/6583d3c88b38505f92092e4e/a42c0d83-643a-452f-adc9-b9afda7b828f.jpg"/></div></div></div></div></a></article><article aria-labelledby="_R_19anpfalb_" class="h-full"><a class="block h-full" href="/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic"><div class="rounded-xl border bg-card text-card-foreground transition hover:border-slate-400 dark:hover:border-slate-600 h-full"><div class="grid h-full gap-4 p-4 items-stretch md:gap-6 md:p-6 md:grid-cols-[1.2fr_1fr]"><div class="flex flex-col gap-4"><header class="flex flex-col gap-3"><h3 id="_R_19anpfalb_" class="text-foreground text-lg sm:text-xl font-bold leading-snug tracking-tight transition-colors line-clamp-3">Agents Zero to Hero #5: Making an AI Agent Provider-Agnostic</h3><p class="text-sm leading-relaxed text-muted-foreground line-clamp-3">Agents Zero to Hero #5: Making an AI Agent Provider-Agnostic
+We&#x27;ve spent the first four checkpoints building the actual mechanics of an AI coding agent.
+So far, the progression has been:
+v0.1 → tool c</p></header><div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"><span class="whitespace-nowrap">Sep 16, 2026</span><span class="whitespace-nowrap"><span class="mr-3" aria-hidden="true">·</span>10 min read</span></div></div><div class="flex items-center md:justify-end order-first md:order-last"><div class="relative overflow-hidden rounded-lg bg-muted aspect-[800/420] w-full md:max-w-[320px]"><img alt="Agents Zero to Hero #5: Making an AI Agent Provider-Agnostic" loading="lazy" decoding="async" data-nimg="fill" class="object-cover object-center" style="position:absolute;height:100%;width:100%;left:0;top:0;right:0;bottom:0;color:transparent" src="https://cdn.hashnode.com/uploads/covers/6583d3c88b38505f92092e4e/a61d5e09-e1c7-4bc6-8c8a-9466e40ed9cb.jpg"/></div></div></div></div></a></article><article aria-labelledby="_R_1panpfalb_" class="h-full"><a class="block h-full" href="/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent"><div class="rounded-xl border bg-card text-card-foreground transition hover:border-slate-400 dark:hover:border-slate-600 h-full"><div class="grid h-full gap-4 p-4 items-stretch md:gap-6 md:p-6 md:grid-cols-[1.2fr_1fr]"><div class="flex flex-col gap-4"><header class="flex flex-col gap-3"><h3 id="_R_1panpfalb_" class="text-foreground text-lg sm:text-xl font-bold leading-snug tracking-tight transition-colors line-clamp-3">Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent</h3><p class="text-sm leading-relaxed text-muted-foreground line-clamp-3">Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent
+Our agent can now do quite a lot.
+By the end of v0.3, it can:
+read files
+write files
+execute Python
+run selected shell co</p></header><div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"><span class="whitespace-nowrap">Sep 16, 2026</span><span class="whitespace-nowrap"><span class="mr-3" aria-hidden="true">·</span>10 min read</span></div></div><div class="flex items-center md:justify-end order-first md:order-last"><div class="relative overflow-hidden rounded-lg bg-muted aspect-[800/420] w-full md:max-w-[320px]"><img alt="Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent" loading="lazy" decoding="async" data-nimg="fill" class="object-cover object-center" style="position:absolute;height:100%;width:100%;left:0;top:0;right:0;bottom:0;color:transparent" src="https://cdn.hashnode.com/uploads/covers/6583d3c88b38505f92092e4e/8fd57f38-dab7-471f-a497-235e105e5e35.jpg"/></div></div></div></div></a></article><article aria-labelledby="_R_29anpfalb_" class="h-full"><a class="block h-full" href="/agents-zero-to-hero-3-giving-an-ai-agent-a-shell-without-giving-it-your-machine"><div class="rounded-xl border bg-card text-card-foreground transition hover:border-slate-400 dark:hover:border-slate-600 h-full"><div class="grid h-full gap-4 p-4 items-stretch md:gap-6 md:p-6 md:grid-cols-[1.2fr_1fr]"><div class="flex flex-col gap-4"><header class="flex flex-col gap-3"><h3 id="_R_29anpfalb_" class="text-foreground text-lg sm:text-xl font-bold leading-snug tracking-tight transition-colors line-clamp-3">Agents Zero to Hero #3: Giving an AI Agent a Shell Without Giving It Your Machine</h3><p class="text-sm leading-relaxed text-muted-foreground line-clamp-3">Agents Zero to Hero #3: Giving an AI Agent a Shell Without Giving It Your Machine
+Our AI agent can now inspect and modify files.
+That happened in v0.2-new-tools, where we introduced:
+list_files
+read_f</p></header><div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"><span class="whitespace-nowrap">Sep 16, 2026</span><span class="whitespace-nowrap"><span class="mr-3" aria-hidden="true">·</span>10 min read</span></div></div><div class="flex items-center md:justify-end order-first md:order-last"><div class="relative overflow-hidden rounded-lg bg-muted aspect-[800/420] w-full md:max-w-[320px]"><img alt="Agents Zero to Hero #3: Giving an AI Agent a Shell Without Giving It Your Machine" loading="lazy" decoding="async" data-nimg="fill" class="object-cover object-center" style="position:absolute;height:100%;width:100%;left:0;top:0;right:0;bottom:0;color:transparent" src="https://cdn.hashnode.com/uploads/covers/6583d3c88b38505f92092e4e/6759956e-c4a3-4feb-a3e0-8bc6c866956e.jpg"/></div></div></div></div></a></article><article aria-labelledby="_R_2panpfalb_" class="h-full"><a class="block h-full" href="/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"><div class="rounded-xl border bg-card text-card-foreground transition hover:border-slate-400 dark:hover:border-slate-600 h-full"><div class="grid h-full gap-4 p-4 items-stretch md:gap-6 md:p-6 md:grid-cols-[1.2fr_1fr]"><div class="flex flex-col gap-4"><header class="flex flex-col gap-3"><h3 id="_R_2panpfalb_" class="text-foreground text-lg sm:text-xl font-bold leading-snug tracking-tight transition-colors line-clamp-3">Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands — Filesystem Tools</h3><p class="text-sm leading-relaxed text-muted-foreground line-clamp-3">Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands — Filesystem Tools
+In the previous article, we built the smallest useful AI coding agent.
+It could:
+
+receive a task
+
+ask an LLM what to do
+
+ca</p></header><div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"><span class="whitespace-nowrap">Sep 16, 2026</span><span class="whitespace-nowrap"><span class="mr-3" aria-hidden="true">·</span>10 min read</span></div></div><div class="flex items-center md:justify-end order-first md:order-last"><div class="relative overflow-hidden rounded-lg bg-muted aspect-[800/420] w-full md:max-w-[320px]"><img alt="Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands — Filesystem Tools" loading="lazy" decoding="async" data-nimg="fill" class="object-cover object-center" style="position:absolute;height:100%;width:100%;left:0;top:0;right:0;bottom:0;color:transparent" src="https://cdn.hashnode.com/uploads/covers/6583d3c88b38505f92092e4e/5dba7ca1-4d87-4561-b245-c3994797e2d8.jpg"/></div></div></div></div></a></article><div class="rounded-xl border bg-card text-card-foreground transition hover:border-slate-400 dark:hover:border-slate-600 p-5 flex flex-col"><div class="flex flex-col items-center text-center gap-5"><div class="flex flex-col items-center gap-3"><span class="relative flex overflow-hidden rounded-full h-16 w-16 shrink-0"><span class="flex h-full w-full items-center justify-center rounded-full bg-muted text-muted-foreground font-medium text-lg">N</span></span><div class="space-y-1"><p class="text-base font-semibold text-foreground leading-tight">Nikhil Ikhar&#x27;s blog</p><p class="text-sm text-muted-foreground">29<!-- --> posts</p></div></div><div class="prose prose-sm dark:prose-invert max-w-xs mx-auto text-muted-foreground"><p>Learning AI, working on MLOps, RAG, Golang, Python, System Design</p>
+</div><div class="flex flex-wrap items-center justify-center gap-3"><a href="https://github.com/nik-hil" target="_blank" rel="noopener noreferrer nofollow ugc" class="text-muted-foreground transition-colors hover:text-foreground" aria-label="GitHub"><i class="fa-brands fa-github" aria-hidden="true"></i></a><a href="https://www.linkedin.com/in/nikhar" target="_blank" rel="noopener noreferrer nofollow ugc" class="text-muted-foreground transition-colors hover:text-foreground" aria-label="LinkedIn"><i class="fa-brands fa-linkedin" aria-hidden="true"></i></a><a href="https://hashnode.com/@TechNikhil" target="_blank" rel="noopener noreferrer nofollow ugc" class="text-muted-foreground transition-colors hover:text-foreground" aria-label="Hashnode"><i class="fa-brands fa-hashnode" aria-hidden="true"></i></a></div></div></div></div></section></div></div></div></section><footer class="px-4 pt-8 pb-20 sm:px-8 text-muted-foreground" aria-label="Footer"><div class="w-full max-w-4xl mx-auto"><div class="flex flex-col items-center gap-4 text-center text-sm"><p class="font-medium"><time dateTime="2026"><span class="font-sans">©</span> <!-- -->2026</time> <!-- -->Nikhil Ikhar&#x27;s blog</p><nav aria-label="Footer navigation"><ul class="flex flex-wrap justify-center gap-4 text-sm tracking-wide"><li><a class="transition hover:text-foreground" href="/members">Members</a></li><li><a class="transition hover:text-foreground" href="/archive">Archive</a></li><li><a class="transition hover:text-foreground" target="_blank" rel="noopener" href="https://hashnode.com/privacy-policy">Privacy</a></li><li><a class="transition hover:text-foreground" target="_blank" rel="noopener" href="https://hashnode.com/terms">Terms</a></li></ul></nav><div class="pt-8 flex justify-center gap-6"><a target="_blank" rel="noopener" class="flex items-center gap-2 text-sm transition hover:text-foreground" title="Sitemap" href="/sitemap.xml"><i class="fa-regular fa-sitemap"></i><span>Sitemap</span></a><a target="_blank" rel="noopener" class="flex items-center gap-2 text-sm transition hover:text-foreground" title="RSS Feed" href="/rss.xml"><i class="fa-regular fa-rss"></i><span>RSS</span></a></div><div class="pt-10 text-center"><a target="_blank" rel="noopener" aria-label="Visit Hashnode (opens in a new tab)" class="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 hover:bg-accent hover:text-accent-foreground h-10 rounded-md text-xl px-5 py-4" href="https://hashnode.com/?utm_source=https%3A%2F%2Fnik-hil.hashnode.dev&amp;utm_medium=referral&amp;utm_campaign=blog_footer_logo&amp;utm_content=logo"><svg fill="none" viewBox="0 0 282 39" aria-hidden="true" class="h-6 w-auto min-w-[9.5rem] text-muted-foreground transition hover:text-foreground"><path fill="currentColor" d="M2.68 13.032c-3.573 3.505-3.573 9.363 0 12.936L13.032 36.32c3.505 3.573 9.363 3.573 12.936 0L36.32 25.968c3.573-3.573 3.573-9.431 0-12.936L25.968 2.68c-3.573-3.573-9.431-3.573-12.936 0zm12.211 1.935c2.507-2.521 6.582-2.544 9.104-.038s2.544 6.582.038 9.104-6.582 2.544-9.104.038-2.544-6.582-.038-9.104"></path><path fill="currentColor" d="M268.379 39q-6.322 0-10.35-4.108-4.002-4.134-4.002-10.483 0-6.296 4.002-10.43 4-4.135 10.163-4.135 6.028 0 9.817 3.734 3.814 3.735 3.814 9.497v2.8h-24.248v-4.054h17.633q-.187-2.747-2.054-4.508-1.868-1.76-4.962-1.76-3.28-.001-5.388 2.374-2.108 2.373-2.108 6.375 0 4.188 2.348 6.695 2.347 2.481 5.895 2.481 1.68 0 2.934-.453a8.5 8.5 0 0 0 2.321-1.307q1.041-.854 2.268-2.614l4.694 2.96q-1.707 2.748-3.494 4.135a12.7 12.7 0 0 1-3.975 2.081q-2.187.72-5.308.72m-33.496 0q-5.575 0-9.283-4.028-3.681-4.029-3.681-10.484 0-6.43 3.761-10.51 3.76-4.108 9.47-4.108 2.8 0 5.175 1.2 2.4 1.174 3.628 3.148l.026-.08V0h7.016v38.2h-6.722v-4.722l.64.8-.694.133q-1.28 2.108-3.788 3.361Q237.924 39 234.883 39m1.627-6.002q3.308 0 5.495-2.428t2.188-6.135q0-3.762-2.214-6.109-2.214-2.374-5.469-2.374-3.28 0-5.522 2.347-2.214 2.348-2.214 6.163 0 3.76 2.214 6.162 2.214 2.374 5.522 2.374M205.811 39q-6.376 0-10.537-4.161-4.161-4.188-4.161-10.404 0-6.321 4.161-10.456 4.188-4.135 10.537-4.135 6.348 0 10.537 4.161 4.188 4.161 4.188 10.43 0 6.216-4.188 10.404Q212.186 39 205.811 39m0-6.162q3.307 0 5.575-2.374 2.267-2.374 2.267-6.055 0-3.707-2.294-6.056-2.267-2.347-5.548-2.347-3.308 0-5.575 2.374-2.268 2.348-2.268 6.029t2.241 6.055q2.268 2.374 5.602 2.374M162.586 38.2V10.644h6.802v5.015l-.8-.987h.906q1.308-2.187 3.762-3.494 2.48-1.335 5.228-1.334 4.615 0 7.256 2.8 2.667 2.776 2.667 7.603V38.2h-7.069V21.794q0-2.854-1.387-4.401t-4.134-1.547q-2.614 0-4.402 1.974-1.76 1.974-1.76 4.881V38.2zm-30.181 0V0h6.962v14.698h.134q1.2-2.187 3.574-3.521 2.375-1.335 5.229-1.334 4.615 0 7.255 2.828 2.668 2.801 2.668 7.522V38.2h-7.069V21.794q0-2.827-1.387-4.402-1.387-1.573-4.055-1.573-2.587 0-4.428 2.027-1.814 2.027-1.814 4.962v15.391zm-14.416.8q-2.882 0-5.015-.64-2.108-.614-3.761-1.84-1.654-1.228-2.668-2.695l-.987-1.467 4.695-3.174.773 1.067a9.1 9.1 0 0 0 1.788 1.814 8.2 8.2 0 0 0 2.32 1.2q1.308.4 3.068.4 2.161 0 3.441-.8 1.308-.8 1.307-2.294 0-1.36-1.147-2.108-1.12-.747-5.068-1.654-5.335-1.253-7.656-3.334-2.32-2.107-2.321-5.362 0-3.76 3.148-6.002 3.148-2.267 7.923-2.267 2.454 0 4.348.507t3.388 1.493q1.493.988 2.454 2.188l.987 1.2-4.482 3.255-.667-.774a7.4 7.4 0 0 0-1.627-1.387 6.4 6.4 0 0 0-2.054-.88 9.5 9.5 0 0 0-2.401-.294q-1.974 0-3.201.8-1.2.774-1.2 1.921 0 1.254 1.12 2.027 1.147.748 5.229 1.681 5.334 1.227 7.629 3.308 2.294 2.055 2.294 5.308 0 4.029-3.228 6.43Q123.217 39 117.989 39M87.61 39q-4.508 0-7.335-2.454-2.828-2.481-2.828-6.482 0-4.188 3.254-6.669t8.483-2.48q2.082 0 4.028.426 1.974.427 3.361 1.12v-1.6q0-2.588-1.813-4.082-1.788-1.493-4.615-1.493-1.628 0-2.801.373a8.7 8.7 0 0 0-2.188.987q-.987.614-1.84 1.414l-.854.8-4.081-3.788 1.307-1.173a18.7 18.7 0 0 1 2.934-2.108q1.601-.933 3.601-1.44t4.589-.507q5.868 0 9.229 2.88 3.361 2.882 3.361 8.084V38.2h-6.749v-5.922l1.654 2.187h-1.76q-1.308 2.055-3.655 3.308Q90.545 39 87.611 39m1.814-4.988q3.148 0 5.149-2.187 2-2.215 2-5.309v-.08q-1.12-.693-2.72-1.094a13 13 0 0 0-3.388-.426q-2.828 0-4.562 1.2-1.734 1.173-1.734 3.521 0 2.028 1.468 3.201t3.787 1.174M49 38.2V0h6.962v14.698h.134q1.2-2.187 3.574-3.521 2.375-1.335 5.229-1.334 4.615 0 7.255 2.828 2.668 2.801 2.668 7.522V38.2h-7.07V21.794q0-2.827-1.386-4.402-1.387-1.573-4.055-1.573-2.587 0-4.428 2.027-1.815 2.027-1.814 4.962v15.391z"></path></svg></a></div></div></div></footer></main><!--$--><!--/$--></body></html>

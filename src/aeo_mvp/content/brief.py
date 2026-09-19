@@ -105,6 +105,43 @@ def _brand(profile: dict[str, Any] | None, page: PageIntelligence) -> str | None
     return None
 
 
+def _gap_ids_for_types(
+    gap_by_type: dict[str, list[str]], *types: str, limit: int = 3
+) -> list[str]:
+    """Collect gap ids for sheet types (and legacy aliases) in priority order."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in types:
+        for gid in gap_by_type.get(t, []):
+            if gid and gid not in seen:
+                seen.add(gid)
+                out.append(gid)
+                if len(out) >= limit:
+                    return out
+    return out
+
+
+def _gap_ids_for_queries(
+    gap_report: ContentGapReport, query_ids: list[str], *, limit: int = 4
+) -> list[str]:
+    """Link work-queue items to gaps that cite the same query ids."""
+    wanted = {q for q in query_ids if q}
+    if not wanted:
+        return []
+    out: list[str] = []
+    for g in gap_report.gaps:
+        gids = set(g.query_ids or [])
+        if g.query_id:
+            gids.add(g.query_id)
+        if gids & wanted:
+            gid = g.id or g.gap_id
+            if gid and gid not in out:
+                out.append(gid)
+            if len(out) >= limit:
+                break
+    return out
+
+
 def _build_edit_ops(
     page: PageIntelligence,
     brief_outline: list[OutlineSection],
@@ -113,7 +150,16 @@ def _build_edit_ops(
     items: list[ContentChange] = []
     gap_by_type: dict[str, list[str]] = {}
     for g in gap_report.gaps:
-        gap_by_type.setdefault(g.gap_type, []).append(g.id)
+        gid = g.id or g.gap_id
+        if gid:
+            gap_by_type.setdefault(g.gap_type, []).append(gid)
+            # Retain legacy short-label buckets when kind was set (compat).
+            if g.kind:
+                gap_by_type.setdefault(g.kind, []).append(gid)
+
+    schema_gap_ids = _gap_ids_for_types(
+        gap_by_type, "schema_gap", "metadata", limit=2
+    )
 
     if page.h1:
         items.append(
@@ -129,7 +175,7 @@ def _build_edit_ops(
                 action="add",
                 target="h1",
                 reason="H1 missing",
-                related_gap_ids=gap_by_type.get("metadata", [])[:2],
+                related_gap_ids=schema_gap_ids,
             )
         )
 
@@ -139,7 +185,7 @@ def _build_edit_ops(
                 action="add",
                 target="meta_description",
                 reason="Meta description missing",
-                related_gap_ids=gap_by_type.get("metadata", [])[:2],
+                related_gap_ids=schema_gap_ids,
             )
         )
     else:
@@ -148,21 +194,32 @@ def _build_edit_ops(
                 action="expand",
                 target="meta_description",
                 reason="Improve toward answer-first summary",
+                related_gap_ids=_gap_ids_for_types(
+                    gap_by_type, "thin_coverage", "structure_gap", "structure", limit=2
+                ),
             )
         )
 
     if page.word_count < 200:
+        thin_qids = [
+            r.query_id
+            for r in gap_report.coverage_by_query
+            if r.page_coverage in ("absent", "thin", "mismatched")
+        ][:6]
         items.append(
             ContentChange(
                 action="expand",
                 target="body",
                 reason=f"Thin body (word_count={page.word_count})",
-                related_gap_ids=gap_by_type.get("structure", [])[:3],
-                related_query_ids=[
-                    r.query_id
-                    for r in gap_report.coverage_by_query
-                    if r.page_coverage in ("absent", "thin", "mismatched")
-                ][:6],
+                related_gap_ids=_gap_ids_for_types(
+                    gap_by_type,
+                    "structure_gap",
+                    "thin_coverage",
+                    "structure",
+                    limit=3,
+                )
+                or _gap_ids_for_queries(gap_report, thin_qids, limit=3),
+                related_query_ids=thin_qids,
             )
         )
     else:
@@ -175,14 +232,23 @@ def _build_edit_ops(
         )
 
     for section in brief_outline:
+        qids = list(section.related_query_ids)
+        linked = _gap_ids_for_queries(gap_report, qids) or _gap_ids_for_types(
+            gap_by_type,
+            "thin_coverage",
+            "missing_page",
+            "question_coverage_gap",
+            "query",
+            limit=3,
+        )
         if section.retain_improve_add == "add":
             items.append(
                 ContentChange(
                     action="add",
                     target=f"section:{section.heading}",
                     reason=section.notes or "Add outline section for uncovered demand",
-                    related_query_ids=list(section.related_query_ids),
-                    related_gap_ids=gap_by_type.get("query", [])[:3],
+                    related_query_ids=qids,
+                    related_gap_ids=linked,
                 )
             )
         elif section.retain_improve_add == "improve":
@@ -191,7 +257,8 @@ def _build_edit_ops(
                     action="rewrite",
                     target=f"section:{section.heading}",
                     reason=section.notes or "Improve answer density",
-                    related_query_ids=list(section.related_query_ids),
+                    related_query_ids=qids,
+                    related_gap_ids=linked,
                 )
             )
 

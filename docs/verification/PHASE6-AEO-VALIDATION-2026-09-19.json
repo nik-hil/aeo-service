@@ -1,0 +1,103 @@
+{
+  "title": "Phase 6 AEO validation",
+  "date": "2026-09-19",
+  "verdict": "partially_validated",
+  "base_main_sha": "e39855f",
+  "methodology": {
+    "content_optimization": "content-optimization-v1",
+    "before_after": "aeo-before-after-v1"
+  },
+  "paid_retrieval": {
+    "opt_in": false,
+    "do_key_present": false,
+    "adr026_gate": "closed",
+    "live_do_remeasure": false
+  },
+  "live_cms_publish": false,
+  "test_setup": {
+    "site": "https://nik-hil.hashnode.dev/",
+    "job_id": "39b9ddcd-0700-4784-b03e-4b8f77d4559c",
+    "pages_crawled": 12,
+    "pages_optimized": 3,
+    "query_count": 20,
+    "discovery_method": "query-discovery-v2",
+    "query_set_version": "query-set-v3",
+    "fingerprint": "506a8f8347c17d950af4cbf09b4e2dcea102ba431853ddda05b6c7c120959df1",
+    "selection_seed": 42,
+    "provider": "demo",
+    "experiment_kind": "llm_mention",
+    "retrieval_enabled": false
+  },
+  "baselines": {
+    "phase4_ai_search": {
+      "job_id": "a24c1a42-faac-48da-80ae-c0b608650cbc",
+      "provider": "digitalocean_web_search",
+      "appeared": 17,
+      "cited": 17,
+      "n": 20,
+      "appearance_rate": 0.85,
+      "citation_rate": 0.85,
+      "mention_rate": 0.7,
+      "query_set_version": "query-set-v3",
+      "fingerprint": "8547b8bb784300fc6cfeff4b0830de86f8838c6b51d4f126716ccc22d6555432",
+      "selection_seed": 42,
+      "note": "Historical recorded baseline only; not re-run in Phase 6"
+    },
+    "phase6_live_visibility": {
+      "mode": "demo_synthetic",
+      "ai_search_measured": false
+    }
+  },
+  "recommendation_examples": [
+    {
+      "id": "R1_homepage_h1",
+      "page": "https://nik-hil.hashnode.dev/",
+      "problem": "Missing H1",
+      "recommendation": "add h1",
+      "provenance": "derived from gap+page-intel; not a ranking promise"
+    },
+    {
+      "id": "R2_agent1_answer_first",
+      "page": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+      "problem": "Thin/partial coverage; weak answer-first density",
+      "recommendation": "expand meta_description; rewrite lead section answer-first",
+      "provenance": "opt-brief-v1 derived"
+    },
+    {
+      "id": "R3_agent1_faq_schema_fixture",
+      "page": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+      "problem": "Weak FAQ/FAQPage signals",
+      "recommendation": "add visible FAQ + FAQPage JSON-LD mirroring visible content",
+      "change_source": "fixture_simulated"
+    }
+  ],
+  "post_optimization": {
+    "change_source": "fixture_simulated",
+    "evidence_class": "hypothesis",
+    "homepage_gap_count": {
+      "baseline": 2,
+      "post": 1
+    },
+    "article_agent1_gap_count": {
+      "baseline": 3,
+      "post": 2
+    },
+    "article_agent1_full_coverage": {
+      "baseline": 2,
+      "post": 3
+    }
+  },
+  "artifacts": [
+    "docs/verification/artifacts/phase6/PHASE6_HASHNODE_JOB_SUMMARY.json",
+    "docs/verification/artifacts/phase6/PHASE6_HASHNODE_JOB_REPORT_EXCERPT.json",
+    "docs/verification/artifacts/phase6/PHASE6_FIXTURE_BEFORE_AFTER.json",
+    "docs/verification/artifacts/phase6/PHASE6_RECOMMENDATION_EXAMPLES.json",
+    "docs/verification/artifacts/phase6/PHASE6_PHASE4_AISEARCH_BASELINE.json"
+  ],
+  "conclusion": "partially_validated",
+  "tests": {
+    "focused_phase5_phase6": "85 passed",
+    "full_suite": "417 passed, 1 skipped",
+    "skipped": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
+  }
+}
