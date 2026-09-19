@@ -1,10 +1,16 @@
-"""Optional OpenAI-compatible chat completions provider (non-retrieval LLM mention)."""
+"""Optional OpenAI-compatible chat completions provider (non-retrieval LLM mention).
+
+Fail-closed (P0-4): HTTP/timeout/malformed/config failures raise OpenAICompatibleError
+instead of returning a zero-mention VisibilityObservation that looks like SUCCESS.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
+from typing import Any, Literal
 
 import httpx
 
@@ -22,6 +28,14 @@ from aeo_mvp.visibility.metrics import (
 )
 
 logger = logging.getLogger(__name__)
+
+ProviderFailureCategory = Literal[
+    "missing_credentials",
+    "timeout",
+    "upstream_http",
+    "malformed_response",
+    "internal_error",
+]
 
 # Must not imply browsing / AI search retrieval.
 SYSTEM_PROMPT = (
@@ -47,6 +61,109 @@ _CAPABILITIES = ProviderCapabilities(
     ),
 )
 
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_SECRET_RE = re.compile(
+    r"(?i)(authorization\s*[:=]\s*['\"]?Bearer\s+)\S+"
+    r"|(Bearer\s+)[A-Za-z0-9._\-+=/]{8,}"
+    r"|(api[_-]?key\s*[:=]\s*['\"]?)[^\s'\"]+"
+    r"|(sk-[A-Za-z0-9]{10,})"
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Strip Authorization / API key material from strings destined for API/logs."""
+    if not text:
+        return text
+    out = _SECRET_RE.sub(
+        lambda m: (m.group(1) or m.group(2) or m.group(3) or "") + "[redacted]",
+        text,
+    )
+    return out
+
+
+class OpenAICompatibleError(RuntimeError):
+    """Raised when OpenAI-compatible LLM mention retrieval cannot complete honestly."""
+
+    def __init__(
+        self,
+        summary: str,
+        *,
+        category: ProviderFailureCategory,
+        status_code: int | None = None,
+    ) -> None:
+        self.category: ProviderFailureCategory = category
+        self.status_code = status_code
+        self.provider = "openai_compatible"
+        self.operation = "chat.completions"
+        safe = redact_secrets(summary)
+        self.safe_summary = safe
+        super().__init__(self.public_message())
+
+    def public_message(self) -> str:
+        """Stable, secret-free message for job.error_message / API responses."""
+        base = f"provider-error: openai_compatible/{self.category}: {self.safe_summary}"
+        if self.status_code is not None and "HTTP" not in self.safe_summary:
+            return f"{base} (HTTP {self.status_code})"
+        return base
+
+
+def _log_provider_failure(
+    *,
+    category: ProviderFailureCategory,
+    summary: str,
+    job_id: str | None = None,
+    status_code: int | None = None,
+) -> None:
+    logger.warning(
+        "provider_failure provider=%s operation=%s category=%s job_id=%s "
+        "status_code=%s summary=%s",
+        "openai_compatible",
+        "chat.completions",
+        category,
+        job_id or "-",
+        status_code if status_code is not None else "-",
+        redact_secrets(summary),
+    )
+
+
+def _extract_message_content(data: Any) -> str:
+    """Parse chat.completions JSON; raise malformed_response on invalid shape."""
+    if not isinstance(data, dict):
+        raise OpenAICompatibleError(
+            "response JSON root is not an object",
+            category="malformed_response",
+        )
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise OpenAICompatibleError(
+            "response missing non-empty choices[]",
+            category="malformed_response",
+        )
+    first = choices[0]
+    if not isinstance(first, dict):
+        raise OpenAICompatibleError(
+            "choices[0] is not an object",
+            category="malformed_response",
+        )
+    message = first.get("message")
+    if not isinstance(message, dict):
+        raise OpenAICompatibleError(
+            "choices[0].message missing or invalid",
+            category="malformed_response",
+        )
+    content = message.get("content")
+    if content is None:
+        raise OpenAICompatibleError(
+            "choices[0].message.content is null",
+            category="malformed_response",
+        )
+    if not isinstance(content, str):
+        raise OpenAICompatibleError(
+            "choices[0].message.content is not a string",
+            category="malformed_response",
+        )
+    return content
+
 
 class OpenAICompatibleProvider:
     name = "openai_compatible"
@@ -63,7 +180,10 @@ class OpenAICompatibleProvider:
         self.base_url = (base_url or settings.openai_base_url).rstrip("/")
         self.model = model or settings.openai_model
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY is required for OpenAICompatibleProvider")
+            raise OpenAICompatibleError(
+                "OPENAI_API_KEY is required for OpenAICompatibleProvider",
+                category="missing_credentials",
+            )
 
     async def run_query(self, query: str, *, context: VisibilityContext) -> VisibilityObservation:
         site_line = f"Site under evaluation: {context.base_url}"
@@ -81,8 +201,6 @@ class OpenAICompatibleProvider:
             ],
             "temperature": 0,
         }
-        raw = None
-        error = False
         meta: dict = {
             "model": self.model,
             "retrieval_enabled": False,
@@ -92,38 +210,91 @@ class OpenAICompatibleProvider:
                 "NOT AI search visibility / retrieval."
             ),
         }
+        job_id = getattr(context, "job_id", None)
+
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code >= 400 and resp.status_code in _RETRYABLE_STATUS:
+                    # One retry after 1s for 429/5xx only (preserve existing policy).
+                    await asyncio.sleep(1)
+                    resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code >= 400:
-                    # one retry after 1s for 429/5xx
-                    if resp.status_code in (429, 500, 502, 503, 504):
-                        await asyncio.sleep(1)
-                        resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code >= 400:
-                    error = True
-                    raw = f"HTTP {resp.status_code}: {resp.text[:2000]}"
-                else:
-                    data = resp.json()
-                    raw = (
-                        data.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content")
+                    summary = f"upstream HTTP {resp.status_code}"
+                    _log_provider_failure(
+                        category="upstream_http",
+                        summary=summary,
+                        job_id=job_id,
+                        status_code=resp.status_code,
                     )
-                    meta["usage"] = data.get("usage")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("openai_compatible error: %s", exc)
-            error = True
-            raw = str(exc)
+                    raise OpenAICompatibleError(
+                        summary,
+                        category="upstream_http",
+                        status_code=resp.status_code,
+                    )
+                try:
+                    data = resp.json()
+                except ValueError as exc:
+                    _log_provider_failure(
+                        category="malformed_response",
+                        summary="response body is not valid JSON",
+                        job_id=job_id,
+                        status_code=resp.status_code,
+                    )
+                    raise OpenAICompatibleError(
+                        "response body is not valid JSON",
+                        category="malformed_response",
+                        status_code=resp.status_code,
+                    ) from exc
+                try:
+                    raw = _extract_message_content(data)
+                except OpenAICompatibleError as exc:
+                    _log_provider_failure(
+                        category=exc.category,
+                        summary=exc.safe_summary,
+                        job_id=job_id,
+                        status_code=resp.status_code,
+                    )
+                    raise
+                meta["usage"] = data.get("usage") if isinstance(data, dict) else None
+        except OpenAICompatibleError:
+            raise
+        except httpx.TimeoutException as exc:
+            _log_provider_failure(
+                category="timeout",
+                summary="request timed out",
+                job_id=job_id,
+            )
+            raise OpenAICompatibleError(
+                "request timed out",
+                category="timeout",
+            ) from exc
+        except httpx.HTTPError as exc:
+            summary = f"transport error: {type(exc).__name__}"
+            _log_provider_failure(
+                category="upstream_http",
+                summary=summary,
+                job_id=job_id,
+            )
+            raise OpenAICompatibleError(
+                summary,
+                category="upstream_http",
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 — map then re-raise typed error
+            summary = f"internal provider exception: {type(exc).__name__}"
+            _log_provider_failure(
+                category="internal_error",
+                summary=summary,
+                job_id=job_id,
+            )
+            raise OpenAICompatibleError(
+                summary,
+                category="internal_error",
+            ) from exc
 
         tokens = filter_brand_tokens(context.brand_tokens)
-        mention = False
-        citation = False
-        cited: list[str] = []
-        if raw and not error:
-            mention = detect_mention(raw, tokens, exclude_suffix=site_line)
-            citation, cited = detect_citation(raw, context.site_registrable_domain)
-        meta["error"] = error
+        mention = detect_mention(raw, tokens, exclude_suffix=site_line)
+        citation, cited = detect_citation(raw, context.site_registrable_domain)
 
         return VisibilityObservation(
             provider_name=self.name,

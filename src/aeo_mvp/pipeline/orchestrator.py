@@ -59,9 +59,20 @@ from aeo_mvp.visibility.metrics import (
     aggregate_llm_metrics,
     filter_brand_tokens,
 )
-from aeo_mvp.visibility.openai_compatible import OpenAICompatibleProvider
+from aeo_mvp.visibility.openai_compatible import (
+    OpenAICompatibleError,
+    OpenAICompatibleProvider,
+    redact_secrets,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_job_error_message(exc: BaseException) -> str:
+    """Map exceptions to secret-free job.error_message strings (existing failed status)."""
+    if isinstance(exc, OpenAICompatibleError):
+        return exc.public_message()
+    return redact_secrets(f"{type(exc).__name__}: {exc}")
 
 
 class JobOrchestrator:
@@ -73,7 +84,7 @@ class JobOrchestrator:
         job.status = status
         job.updated_at = utc_now_iso()
         if error is not None:
-            job.error_message = error
+            job.error_message = redact_secrets(error) if error else error
         if status == "completed":
             job.completed_at = utc_now_iso()
         self.session.flush()
@@ -131,8 +142,9 @@ class JobOrchestrator:
 
         if provider_opt == "openai_compatible":
             if not settings.openai_api_key:
-                raise RuntimeError(
-                    "provider=openai_compatible requires OPENAI_API_KEY"
+                raise OpenAICompatibleError(
+                    "provider=openai_compatible requires OPENAI_API_KEY",
+                    category="missing_credentials",
                 )
             p = OpenAICompatibleProvider()
             return p, p.model, False
@@ -664,8 +676,18 @@ class JobOrchestrator:
             )
             return job
         except Exception as exc:  # noqa: BLE001
-            logger.exception("job %s failed", job_id)
-            self._set_status(job, "failed", error=str(exc))
+            err_msg = _safe_job_error_message(exc)
+            if isinstance(exc, OpenAICompatibleError):
+                logger.error(
+                    "job %s failed provider=%s category=%s summary=%s",
+                    job_id,
+                    exc.provider,
+                    exc.category,
+                    exc.safe_summary,
+                )
+            else:
+                logger.exception("job %s failed", job_id)
+            self._set_status(job, "failed", error=err_msg)
             self.session.commit()
             raise
 
