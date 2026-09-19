@@ -3,7 +3,7 @@
 **Date:** 2026-09-19  
 **Audited PR tip:** `443e38fe26b1f12fca2d8a8633264de2a53c8fb9` (PR #33 tip reviewed by Architect; E + final audit content)  
 **Filename audited-tree marker:** `2e18e843ae6b401fc73dbef06c2ca0c71eeff88c` (E-complete ancestor on this branch; matches this file’s name)  
-**FINAL MAIN SHA:** *to be stamped after squash-merge onto `main`* — do not invent a hash here  
+**FINAL MAIN SHA:** `f3e651e9b9d3450420bcfd93f473991434c194ff` (PR #33 squash-merge onto `main`)  
 **Base main before E:** `762db4e0b4d83e615e643a000baa928d50adcafb` (includes Workstream D PR #32)  
 **Prior re-audit:** `docs/verification/PROD-READINESS-REAUDIT-MAIN-e9bbad7-2026-09-19.md` (`e9bbad7`)  
 **Prior audit:** `docs/verification/PROD-READINESS-AUDIT-MAIN-21ab341-2026-09-19.md` (`21ab341`)  
@@ -34,7 +34,7 @@ All original P0s remain fixed. All product-correctness P1s from the re-audit are
 | #30 | fix(prod-B): crawl/job honesty + observation idempotency | MERGED | `4f56260` |
 | #31 | fix(prod-C): LLM citation uses TargetSiteIdentity | MERGED | `70b9e5b` |
 | #32 | fix(prod-D): OpenAPI contract + prompt_set_id honesty | MERGED | `762db4e` |
-| **#33** | **fix(prod-E) + final prod-readiness audit** | **OPEN (this PR)** | branch tip (see GitHub) |
+| **#33** | **fix(prod-E) + final prod-readiness audit** | **MERGED** | `f3e651e` |
 
 ---
 
@@ -149,5 +149,5 @@ No other skips. Gate G live DO proof remains cited unpaid-suite evidence from
 
 ## Recommendation
 
-Ship as **READY WITH DOCUMENTED RESIDUAL RISKS** after CoS merges PR #33.
+Shipped as **READY WITH DOCUMENTED RESIDUAL RISKS** after CoS merged PR #33 (`f3e651e`).
 Do **not** block on CI/lease/observability/trusted-base-URL work unless ops requirements change.
