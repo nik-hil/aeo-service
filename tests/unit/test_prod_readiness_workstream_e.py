@@ -9,6 +9,8 @@ No live DO / Hashnode. No CI / lease / trusted-base-URL systems.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import aeo_mvp.visibility.digitalocean_web_search as do_mod
 from aeo_mvp.db.models import Page, new_id
 from aeo_mvp.db.session import get_session_factory
@@ -55,8 +57,17 @@ def test_e_jobs_unknown_still_404(client):
     assert r.status_code == 404
 
 
-def test_e_maybe_digitalocean_provider_removed():
-    assert not hasattr(do_mod, "maybe_digitalocean_provider")
+def test_e_maybe_digitalocean_provider_unused_residual():
+    """Dead helper retained for Phase 4.1.1 freeze; must not be called from app."""
+    assert hasattr(do_mod, "maybe_digitalocean_provider")
+    # Orchestrator / routes / content must not import or call it.
+    import aeo_mvp.pipeline.orchestrator as orch
+    import aeo_mvp.api.routes as routes
+    import aeo_mvp.content.service as content_svc
+
+    for mod in (orch, routes, content_svc):
+        src = Path(mod.__file__).read_text(encoding="utf-8")
+        assert "maybe_digitalocean_provider" not in src
 
 
 def test_e_empty_html_still_409_not_404(client):

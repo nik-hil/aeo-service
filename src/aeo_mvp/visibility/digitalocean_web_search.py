@@ -428,3 +428,9 @@ class DigitalOceanWebSearchProvider:
             target_domain_cited=target_domain_cited,
         )
 
+
+def maybe_digitalocean_provider() -> DigitalOceanWebSearchProvider | None:
+    """Return configured provider if a DO key is present, else None."""
+    if not _resolve_api_key():
+        return None
+    return DigitalOceanWebSearchProvider()
