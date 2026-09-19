@@ -204,7 +204,12 @@ Every run → one `visibility_observations` row:
 
 1. Extract URLs via regex on `raw_response` plus any provider-structured citation list in `meta`.
 2. Normalize to absolute https URLs where possible.
-3. `detected_citation = true` iff any extracted URL’s registrable domain equals `site_registrable_domain` (ignore `www.`).
+3. `detected_citation = true` iff any extracted URL matches the frozen
+   `TargetSiteIdentity` via `target_match` (`domain-match-v1`) — same rules as
+   AI-search DO appearance/citation. Resolve identity from the job seed
+   (`base_url` / hostname scope for Hashnode-class tenants; registrable for
+   ordinary domains). Do **not** match on bare `site_registrable_domain` PSL
+   equality (that credits sibling tenants / platform apex).
 4. `cited_urls` = list of those matching URLs (unique, order preserved).
 
 **Mention ≠ citation:** a run may mention without citing, cite without a textual brand token (rare), both, or neither. Never collapse into one boolean in the API.

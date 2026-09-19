@@ -15,6 +15,7 @@ from typing import Any, Literal
 import httpx
 
 from aeo_mvp.config import get_settings
+from aeo_mvp.target_site import resolve_target_site_identity
 from aeo_mvp.visibility.base import (
     ProviderCapabilities,
     VisibilityContext,
@@ -294,7 +295,18 @@ class OpenAICompatibleProvider:
 
         tokens = filter_brand_tokens(context.brand_tokens)
         mention = detect_mention(raw, tokens, exclude_suffix=site_line)
-        citation, cited = detect_citation(raw, context.site_registrable_domain)
+        # Same TargetSiteIdentity / target_match as AI-search DO path (P1-12).
+        # Never match LLM URL mentions via bare site_registrable_domain PSL alone.
+        identity = resolve_target_site_identity(
+            context.base_url,
+            scope=(
+                context.target_domain_scope  # type: ignore[arg-type]
+                if context.target_domain_scope
+                in {"registrable_domain", "hostname", "origin"}
+                else None
+            ),
+        )
+        citation, cited = detect_citation(raw, identity)
 
         return VisibilityObservation(
             provider_name=self.name,
