@@ -26,6 +26,11 @@ class Settings(BaseSettings):
 
     demo_mode: bool = Field(default=False, alias="AEO_DEMO_MODE")
     database_url: str = Field(default="sqlite:///./aeo_mvp.db", alias="AEO_DATABASE_URL")
+    # Shared secret for HTTP API auth (Authorization: Bearer <key>). Fail-closed when unset.
+    api_key: str | None = Field(default=None, alias="AEO_API_KEY")
+    # Explicit local bypass only — ignored unless AEO_ENVIRONMENT is development/dev/test/local.
+    allow_unauthenticated: bool = Field(default=False, alias="AEO_ALLOW_UNAUTHENTICATED")
+    environment: str = Field(default="production", alias="AEO_ENVIRONMENT")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")

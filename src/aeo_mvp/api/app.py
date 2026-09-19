@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from aeo_mvp.api.routes import api_router, router
 from aeo_mvp.db.session import init_db
 from aeo_mvp.logging_config import setup_logging
+from aeo_mvp.security.api_auth import ApiAuthMiddleware
 
 
 @asynccontextmanager
@@ -24,10 +25,13 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description=(
             "Backend-only Answer Engine Optimization service. "
-            "Visibility experiments are controlled samples (vis-exp-v1), not engine rankings."
+            "Visibility experiments are controlled samples (vis-exp-v1), not engine rankings. "
+            "Application routes require Authorization: Bearer <AEO_API_KEY>."
         ),
         lifespan=lifespan,
     )
+    # Auth runs for every request (including trailing-slash / docs aliases) before routing.
+    app.add_middleware(ApiAuthMiddleware)
     app.include_router(router)
     app.include_router(api_router)
     return app
