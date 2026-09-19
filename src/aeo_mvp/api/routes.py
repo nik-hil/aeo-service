@@ -32,6 +32,7 @@ from aeo_mvp.content.service import (
     resolve_page_html,
     run_from_resolved,
 )
+from aeo_mvp.pipeline.job_claim import JobClaimConflict
 from aeo_mvp.pipeline.orchestrator import JobOrchestrator, create_job_record
 from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url
 
@@ -48,6 +49,16 @@ def _run_pipeline(job_id: str) -> None:
     try:
         asyncio.run(JobOrchestrator(session).run(job_id))
         session.commit()
+    except JobClaimConflict as exc:
+        # Claim conflict ≠ provider failure; do not flip job to failed.
+        session.rollback()
+        logger.info(
+            "background pipeline claim conflict job_id=%s reason=%s "
+            "current_status=%s",
+            job_id,
+            exc.reason,
+            exc.current_status,
+        )
     except Exception:  # noqa: BLE001
         session.rollback()
         logger.exception("background pipeline failed for %s", job_id)
