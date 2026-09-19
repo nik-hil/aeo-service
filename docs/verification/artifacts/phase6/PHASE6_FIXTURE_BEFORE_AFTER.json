@@ -1,0 +1,647 @@
+{
+  "methodology": "aeo-before-after-v1",
+  "change_source": "fixture_simulated",
+  "paid_retrieval": false,
+  "live_cms_publish": false,
+  "queryset": {
+    "query_set_id": "qs_phase6_fixture",
+    "query_set_version": "query-set-v3",
+    "fingerprint": "phase6-fixture-fp-v1",
+    "selection_seed": 42,
+    "n_queries": 4
+  },
+  "pages": [
+    {
+      "label": "homepage",
+      "url": "https://nik-hil.hashnode.dev/",
+      "baseline_page_intelligence": {
+        "url": "https://nik-hil.hashnode.dev/",
+        "title": "Nikhil Ikhar's blog",
+        "content_type": "other",
+        "word_count": 582,
+        "schema_types": [],
+        "h1": null
+      },
+      "post_page_intelligence": {
+        "url": "https://nik-hil.hashnode.dev/",
+        "title": "Nikhil Ikhar",
+        "content_type": "other",
+        "word_count": 621,
+        "schema_types": [
+          "Organization"
+        ],
+        "h1": "Nikhil Ikhar"
+      },
+      "baseline_coverage": {
+        "queries": 4,
+        "covered": 4,
+        "gapped": 0,
+        "full": 1,
+        "partial": 3,
+        "thin": 0,
+        "absent": 0,
+        "mismatched": 0,
+        "unknown": 0
+      },
+      "post_coverage": {
+        "queries": 4,
+        "covered": 4,
+        "gapped": 0,
+        "full": 1,
+        "partial": 3,
+        "thin": 0,
+        "absent": 0,
+        "mismatched": 0,
+        "unknown": 0
+      },
+      "baseline_gap_count": 2,
+      "post_gap_count": 0,
+      "baseline_gaps_sample": [
+        {
+          "gap_id": "gap_metadata_a5f143680a",
+          "query_id": "",
+          "intent": "informational",
+          "topic": null,
+          "gap_type": "schema_gap",
+          "severity": "high",
+          "best_page_url": null,
+          "evidence": [
+            {
+              "evidence_class": "title_h1",
+              "provenance": "compatibility",
+              "snippet": "h1_missing"
+            }
+          ],
+          "rationale": "Missing H1",
+          "page_id": null,
+          "page_coverage": null,
+          "impact_class": "readiness",
+          "related_locators": []
+        },
+        {
+          "gap_id": "gap_format_999bcb1983",
+          "query_id": "",
+          "intent": "informational",
+          "topic": null,
+          "gap_type": "format_gap",
+          "severity": "medium",
+          "best_page_url": null,
+          "evidence": [
+            {
+              "evidence_class": "jsonld",
+              "provenance": "compatibility",
+              "snippet": "jsonld_absent"
+            }
+          ],
+          "rationale": "No JSON-LD types observed",
+          "page_id": null,
+          "page_coverage": null,
+          "impact_class": "readiness",
+          "related_locators": []
+        }
+      ],
+      "post_gaps_sample": [],
+      "post_brief_action": "expand_section",
+      "post_work_queue_sample": [],
+      "draft_provenance": "generated",
+      "draft_status": "generated",
+      "comparison": {
+        "methodology": "aeo-before-after-v1",
+        "evidence_class": "hypothesis",
+        "evidence_rationale": "Post-change path used offline HTML fixtures (CMS publish not performed). Coverage deltas support a hypothesis only.",
+        "baseline": {
+          "methodology": "aeo-before-after-v1",
+          "target_domain": "https://nik-hil.hashnode.dev/",
+          "timestamp": null,
+          "job_id": null,
+          "query_set_version": "query-set-v3",
+          "query_set_fingerprint": "phase6-fixture-fp-v1",
+          "selection_seed": 42,
+          "provider": null,
+          "experiment_kind": null,
+          "retrieval_enabled": null,
+          "paid_retrieval": null,
+          "visibility_mode": "none",
+          "n_queries": 4,
+          "appeared_count": null,
+          "cited_count": null,
+          "appearance_rate": null,
+          "citation_rate": null,
+          "mention_rate": null,
+          "mention_rate_provenance": null,
+          "per_query": [],
+          "coverage_summary": {
+            "queries": 4,
+            "covered": 4,
+            "gapped": 0,
+            "full": 1,
+            "partial": 3,
+            "thin": 0,
+            "absent": 0,
+            "mismatched": 0,
+            "unknown": 0,
+            "gap_count": 2
+          },
+          "page_urls": [
+            "https://nik-hil.hashnode.dev/"
+          ],
+          "source": "homepage_baseline",
+          "warnings": [
+            "Coverage snapshot only \u2014 page_coverage \u2260 AI visibility \u2260 health-v1."
+          ]
+        },
+        "post": {
+          "methodology": "aeo-before-after-v1",
+          "target_domain": "https://nik-hil.hashnode.dev/",
+          "timestamp": null,
+          "job_id": null,
+          "query_set_version": "query-set-v3",
+          "query_set_fingerprint": "phase6-fixture-fp-v1",
+          "selection_seed": 42,
+          "provider": null,
+          "experiment_kind": null,
+          "retrieval_enabled": null,
+          "paid_retrieval": null,
+          "visibility_mode": "none",
+          "n_queries": 4,
+          "appeared_count": null,
+          "cited_count": null,
+          "appearance_rate": null,
+          "citation_rate": null,
+          "mention_rate": null,
+          "mention_rate_provenance": null,
+          "per_query": [],
+          "coverage_summary": {
+            "queries": 4,
+            "covered": 4,
+            "gapped": 0,
+            "full": 1,
+            "partial": 3,
+            "thin": 0,
+            "absent": 0,
+            "mismatched": 0,
+            "unknown": 0,
+            "gap_count": 0
+          },
+          "page_urls": [
+            "https://nik-hil.hashnode.dev/"
+          ],
+          "source": "homepage_post",
+          "warnings": [
+            "Coverage snapshot only \u2014 page_coverage \u2260 AI visibility \u2260 health-v1."
+          ],
+          "change_source": "fixture_simulated",
+          "applied_recommendation_ids": [
+            "home_add_h1"
+          ]
+        },
+        "deltas": {
+          "coverage": {
+            "covered": {
+              "baseline": 4,
+              "post": 4,
+              "delta": 0
+            },
+            "gapped": {
+              "baseline": 0,
+              "post": 0,
+              "delta": 0
+            },
+            "thin": {
+              "baseline": 0,
+              "post": 0,
+              "delta": 0
+            },
+            "full": {
+              "baseline": 1,
+              "post": 1,
+              "delta": 0
+            },
+            "partial": {
+              "baseline": 3,
+              "post": 3,
+              "delta": 0
+            },
+            "gap_count": {
+              "baseline": 2,
+              "post": 0,
+              "delta": -2
+            },
+            "queries": {
+              "baseline": 4,
+              "post": 4,
+              "delta": 0
+            }
+          }
+        },
+        "page_level": [
+          {
+            "page_url": "https://nik-hil.hashnode.dev/",
+            "recommendation_id": "home_add_h1",
+            "queries_affected": [
+              "q_nikhil"
+            ],
+            "expected_effect": "Clearer brand/topic extractability on homepage",
+            "expected_aeo_relevance": "Improved extractable answer units / page_coverage for linked probes; not a ranking or citation guarantee."
+          }
+        ],
+        "query_level": [],
+        "methodology_parity": {
+          "query_set_version_match": true,
+          "fingerprint_match": true,
+          "seed_match": true,
+          "provider_match": true,
+          "experiment_kind_match": true,
+          "visibility_mode_baseline": "none",
+          "visibility_mode_post": "none"
+        },
+        "caveats": [
+          "Coverage snapshot only \u2014 page_coverage \u2260 AI visibility \u2260 health-v1.",
+          "Coverage snapshot only \u2014 page_coverage \u2260 AI visibility \u2260 health-v1.",
+          "Live CMS publish was not performed.",
+          "Comparison is coverage-only (no AI-search appearance/citation metrics)."
+        ]
+      },
+      "mappings": [
+        {
+          "recommendation_id": "home_add_h1",
+          "page_url": "https://nik-hil.hashnode.dev/",
+          "problem": "Missing H1 on homepage (schema_gap / extractability)",
+          "recommended_change": "add h1",
+          "website_change": "Inserted H1 + short answer-first intro (fixture)",
+          "queries_affected": [
+            "q_nikhil"
+          ],
+          "expected_effect": "Clearer brand/topic extractability on homepage",
+          "expected_aeo_relevance": "Improved extractable answer units / page_coverage for linked probes; not a ranking or citation guarantee.",
+          "provenance": "derived",
+          "evidence_refs": [
+            "gap_metadata"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "article_agent1",
+      "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+      "baseline_page_intelligence": {
+        "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+        "title": "Build an AI Agent From Scratch in Python: Step-by-Step Guide",
+        "content_type": "faq",
+        "word_count": 2096,
+        "schema_types": [],
+        "h1": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling"
+      },
+      "post_page_intelligence": {
+        "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+        "title": "Build an AI Agent From Scratch in Python: Step-by-Step Guide",
+        "content_type": "faq",
+        "word_count": 2239,
+        "schema_types": [
+          "FAQPage"
+        ],
+        "h1": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling"
+      },
+      "baseline_coverage": {
+        "queries": 4,
+        "covered": 3,
+        "gapped": 1,
+        "full": 2,
+        "partial": 1,
+        "thin": 0,
+        "absent": 1,
+        "mismatched": 0,
+        "unknown": 0
+      },
+      "post_coverage": {
+        "queries": 4,
+        "covered": 3,
+        "gapped": 1,
+        "full": 3,
+        "partial": 0,
+        "thin": 0,
+        "absent": 1,
+        "mismatched": 0,
+        "unknown": 0
+      },
+      "baseline_gap_count": 3,
+      "post_gap_count": 2,
+      "baseline_gaps_sample": [
+        {
+          "gap_id": "gap_absent_6143fd0331",
+          "query_id": "q_nikhil",
+          "intent": "informational",
+          "topic": null,
+          "gap_type": "missing_page",
+          "severity": "high",
+          "best_page_url": null,
+          "evidence": [
+            {
+              "evidence_class": "article_body",
+              "provenance": "derived",
+              "snippet": "No detectable page coverage",
+              "matched_signals": []
+            }
+          ],
+          "rationale": "Query 'Where can I find content from Nikhil Ikhar?' has page_coverage=absent",
+          "page_id": null,
+          "page_coverage": "absent",
+          "impact_class": "readiness",
+          "related_locators": []
+        },
+        {
+          "gap_id": "gap_format_999bcb1983",
+          "query_id": "",
+          "intent": "informational",
+          "topic": null,
+          "gap_type": "format_gap",
+          "severity": "medium",
+          "best_page_url": null,
+          "evidence": [
+            {
+              "evidence_class": "jsonld",
+              "provenance": "compatibility",
+              "snippet": "jsonld_absent"
+            }
+          ],
+          "rationale": "No JSON-LD types observed",
+          "page_id": null,
+          "page_coverage": null,
+          "impact_class": "readiness",
+          "related_locators": []
+        },
+        {
+          "gap_id": "gap_entity_1052269cb3",
+          "query_id": "",
+          "intent": "informational",
+          "topic": null,
+          "gap_type": "entity_mismatch",
+          "severity": "low",
+          "best_page_url": null,
+          "evidence": [
+            {
+              "evidence_class": "metadata",
+              "provenance": "derived",
+              "snippet": "Nikhil Ikhar"
+            }
+          ],
+          "rationale": "Entity 'Nikhil Ikhar' from site profile missing on page",
+          "page_id": null,
+          "page_coverage": null,
+          "impact_class": "readiness",
+          "related_locators": []
+        }
+      ],
+      "post_gaps_sample": [
+        {
+          "gap_id": "gap_absent_6143fd0331",
+          "query_id": "q_nikhil",
+          "intent": "informational",
+          "topic": null,
+          "gap_type": "missing_page",
+          "severity": "high",
+          "best_page_url": null,
+          "evidence": [
+            {
+              "evidence_class": "article_body",
+              "provenance": "derived",
+              "snippet": "No detectable page coverage",
+              "matched_signals": []
+            }
+          ],
+          "rationale": "Query 'Where can I find content from Nikhil Ikhar?' has page_coverage=absent",
+          "page_id": null,
+          "page_coverage": "absent",
+          "impact_class": "readiness",
+          "related_locators": []
+        },
+        {
+          "gap_id": "gap_entity_1052269cb3",
+          "query_id": "",
+          "intent": "informational",
+          "topic": null,
+          "gap_type": "entity_mismatch",
+          "severity": "low",
+          "best_page_url": null,
+          "evidence": [
+            {
+              "evidence_class": "metadata",
+              "provenance": "derived",
+              "snippet": "Nikhil Ikhar"
+            }
+          ],
+          "rationale": "Entity 'Nikhil Ikhar' from site profile missing on page",
+          "page_id": null,
+          "page_coverage": null,
+          "impact_class": "readiness",
+          "related_locators": []
+        }
+      ],
+      "post_brief_action": "clarify_entity",
+      "post_work_queue_sample": [
+        {
+          "action": "expand",
+          "target": "meta_description",
+          "reason": "Tighten meta description to answer-first summary with preferred brand cues (current='Stop relying on complex frameworks! Learn how to build an AI agent from first pr'); evidence=\"Nikhil Ikhar\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_entity_1052269cb3"
+          ]
+        },
+        {
+          "action": "rewrite",
+          "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+          "reason": "Answer-first introduction grounded in page topic; query=\"Where can I find content from Nikhil Ikhar?\"; evidence=\"No detectable page coverage\"",
+          "related_query_ids": [
+            "q_nikhil"
+          ],
+          "related_gap_ids": [
+            "gap_absent_6143fd0331"
+          ]
+        }
+      ],
+      "draft_provenance": "generated",
+      "draft_status": "generated",
+      "comparison": {
+        "methodology": "aeo-before-after-v1",
+        "evidence_class": "hypothesis",
+        "evidence_rationale": "Post-change path used offline HTML fixtures (CMS publish not performed). Coverage deltas support a hypothesis only.",
+        "baseline": {
+          "methodology": "aeo-before-after-v1",
+          "target_domain": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "timestamp": null,
+          "job_id": null,
+          "query_set_version": "query-set-v3",
+          "query_set_fingerprint": "phase6-fixture-fp-v1",
+          "selection_seed": 42,
+          "provider": null,
+          "experiment_kind": null,
+          "retrieval_enabled": null,
+          "paid_retrieval": null,
+          "visibility_mode": "none",
+          "n_queries": 4,
+          "appeared_count": null,
+          "cited_count": null,
+          "appearance_rate": null,
+          "citation_rate": null,
+          "mention_rate": null,
+          "mention_rate_provenance": null,
+          "per_query": [],
+          "coverage_summary": {
+            "queries": 4,
+            "covered": 3,
+            "gapped": 1,
+            "full": 2,
+            "partial": 1,
+            "thin": 0,
+            "absent": 1,
+            "mismatched": 0,
+            "unknown": 0,
+            "gap_count": 3
+          },
+          "page_urls": [
+            "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling"
+          ],
+          "source": "article_agent1_baseline",
+          "warnings": [
+            "Coverage snapshot only \u2014 page_coverage \u2260 AI visibility \u2260 health-v1."
+          ]
+        },
+        "post": {
+          "methodology": "aeo-before-after-v1",
+          "target_domain": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "timestamp": null,
+          "job_id": null,
+          "query_set_version": "query-set-v3",
+          "query_set_fingerprint": "phase6-fixture-fp-v1",
+          "selection_seed": 42,
+          "provider": null,
+          "experiment_kind": null,
+          "retrieval_enabled": null,
+          "paid_retrieval": null,
+          "visibility_mode": "none",
+          "n_queries": 4,
+          "appeared_count": null,
+          "cited_count": null,
+          "appearance_rate": null,
+          "citation_rate": null,
+          "mention_rate": null,
+          "mention_rate_provenance": null,
+          "per_query": [],
+          "coverage_summary": {
+            "queries": 4,
+            "covered": 3,
+            "gapped": 1,
+            "full": 3,
+            "partial": 0,
+            "thin": 0,
+            "absent": 1,
+            "mismatched": 0,
+            "unknown": 0,
+            "gap_count": 2
+          },
+          "page_urls": [
+            "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling"
+          ],
+          "source": "article_agent1_post",
+          "warnings": [
+            "Coverage snapshot only \u2014 page_coverage \u2260 AI visibility \u2260 health-v1."
+          ],
+          "change_source": "fixture_simulated",
+          "applied_recommendation_ids": [
+            "article_answer_first_faq"
+          ]
+        },
+        "deltas": {
+          "coverage": {
+            "covered": {
+              "baseline": 3,
+              "post": 3,
+              "delta": 0
+            },
+            "gapped": {
+              "baseline": 1,
+              "post": 1,
+              "delta": 0
+            },
+            "thin": {
+              "baseline": 0,
+              "post": 0,
+              "delta": 0
+            },
+            "full": {
+              "baseline": 2,
+              "post": 3,
+              "delta": 1
+            },
+            "partial": {
+              "baseline": 1,
+              "post": 0,
+              "delta": -1
+            },
+            "gap_count": {
+              "baseline": 3,
+              "post": 2,
+              "delta": -1
+            },
+            "queries": {
+              "baseline": 4,
+              "post": 4,
+              "delta": 0
+            }
+          }
+        },
+        "page_level": [
+          {
+            "page_url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "recommendation_id": "article_answer_first_faq",
+            "queries_affected": [
+              "q_agent_loop",
+              "q_tool_calling",
+              "q_resources"
+            ],
+            "expected_effect": "Raise page_coverage and FAQ/schema extractability for linked queries",
+            "expected_aeo_relevance": "Improved extractable answer units / page_coverage for linked probes; not a ranking or citation guarantee."
+          }
+        ],
+        "query_level": [],
+        "methodology_parity": {
+          "query_set_version_match": true,
+          "fingerprint_match": true,
+          "seed_match": true,
+          "provider_match": true,
+          "experiment_kind_match": true,
+          "visibility_mode_baseline": "none",
+          "visibility_mode_post": "none"
+        },
+        "caveats": [
+          "Coverage snapshot only \u2014 page_coverage \u2260 AI visibility \u2260 health-v1.",
+          "Coverage snapshot only \u2014 page_coverage \u2260 AI visibility \u2260 health-v1.",
+          "Live CMS publish was not performed.",
+          "Comparison is coverage-only (no AI-search appearance/citation metrics)."
+        ]
+      },
+      "mappings": [
+        {
+          "recommendation_id": "article_answer_first_faq",
+          "page_url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "problem": "Thin/partial coverage for agent-loop and tool-calling probes; weak FAQ/schema signals",
+          "recommended_change": "expand_section + add_faq + FAQPage schema",
+          "website_change": "Added answer-first section, FAQ block, FAQPage JSON-LD (fixture)",
+          "queries_affected": [
+            "q_agent_loop",
+            "q_tool_calling",
+            "q_resources"
+          ],
+          "expected_effect": "Raise page_coverage and FAQ/schema extractability for linked queries",
+          "expected_aeo_relevance": "Improved extractable answer units / page_coverage for linked probes; not a ranking or citation guarantee.",
+          "provenance": "derived",
+          "evidence_refs": [
+            "thin_coverage",
+            "no_answer_block"
+          ]
+        }
+      ]
+    }
+  ]
+}
