@@ -591,3 +591,151 @@ def test_report_builder_disabled_section_additive(db_session):
     report = build_report(db_session, job)
     assert report["content_optimization"]["status"] == "disabled"
     assert "page_intelligence" not in report
+
+
+def test_report_json_path_top_level_phase5_keys(db_session):
+    """Invariant 3: build_report / Report.report_json serialize Phase 5 at top-level.
+
+    Same JSON path as GET /api/v1/jobs/{id}/report (loads Report.report_json).
+    """
+    job = _run_demo(db_session, content_optimization=True)
+    built = build_report(db_session, job)
+    for key in (
+        "page_intelligence",
+        "content_gaps",
+        "optimization_briefs",
+        "content_drafts",
+    ):
+        assert key in built, f"build_report missing {key}"
+    persisted = _report(db_session, job)
+    for key in (
+        "page_intelligence",
+        "content_gaps",
+        "optimization_briefs",
+        "content_drafts",
+    ):
+        assert key in persisted
+    assert "page_intel_version" in persisted["page_intelligence"]
+    assert persisted["page_intelligence"] is not None
+
+
+def test_retry_reclaim_clears_stale_phase5_when_disabled(db_session):
+    """Invariant 8/9: failed→claimable retry with content_optimization=false
+    must not leave stale Phase 5 success keys in the final report.
+    """
+    from aeo_mvp.db.models import (
+        AnalysisEvidence,
+        ExperimentConfig,
+        ExperimentMetric,
+        Finding,
+        Recommendation,
+        ScoreComponent,
+        VisibilityObservation,
+    )
+
+    job = _run_demo(db_session, content_optimization=True)
+    first = _report(db_session, job)
+    assert first["content_optimization"]["status"] == "completed"
+    assert "page_intelligence" in first
+    assert first["content_gaps"]
+    assert first["optimization_briefs"]
+    assert first["content_drafts"]
+
+    # Simulate P0-5 reclaim: mark failed, flip option to false, keep stale stash
+    opts = json.loads(job.options_json or "{}")
+    assert (
+        opts.get("_p1_sections", {})
+        .get("content_optimization", {})
+        .get("status")
+        == "completed"
+    )
+    opts["content_optimization"] = False
+    job.status = "failed"
+    job.error_message = "simulated failure for reclaim retry"
+    job.completed_at = None
+    job.options_json = json.dumps(opts, sort_keys=True)
+
+    # Clear regenerable pipeline rows that unique-constrain a same-job re-crawl
+    # (pre-existing reclaim limitation outside Phase 5). Keep Report so overwrite
+    # of success-shaped Phase 5 fields is proven.
+    jid = job.id
+    for model in (
+        AnalysisEvidence,
+        ExperimentMetric,
+        VisibilityObservation,
+        Finding,
+        Recommendation,
+        ExperimentConfig,
+        ScoreComponent,
+        Page,
+    ):
+        db_session.query(model).filter_by(job_id=jid).delete()
+    db_session.commit()
+
+    phase5_calls: list = []
+
+    def spy(**kwargs):
+        phase5_calls.append(1)
+        raise AssertionError("Phase 5 must not run on retry with optimization=false")
+
+    with patch(
+        "aeo_mvp.content.service.run_content_optimization",
+        side_effect=spy,
+    ):
+        asyncio.run(JobOrchestrator(db_session).run(job.id, worker_id="retry-p13"))
+    db_session.commit()
+    db_session.refresh(job)
+
+    assert job.status == "completed"
+    assert phase5_calls == []
+
+    final = _report(db_session, job)
+    assert "page_intelligence" not in final
+    assert "content_gaps" not in final
+    assert "optimization_briefs" not in final
+    assert "content_drafts" not in final
+    assert "gap_report" not in final
+    assert "brief" not in final
+    assert "draft" not in final
+    assert final["content_optimization"]["enabled"] is False
+    assert final["content_optimization"]["status"] == "disabled"
+    assert final["content_optimization"]["pages_optimized"] == 0
+
+    stash = json.loads(job.options_json or "{}").get("_p1_sections", {})
+    co = stash.get("content_optimization") or {}
+    assert co.get("status") == "disabled"
+    assert co.get("page_intelligence") is None
+    assert co.get("content_gaps") == []
+
+
+def test_orchestrator_clears_stale_p1_sections_at_claim(db_session):
+    """On reclaim, stale _p1_sections are dropped before pipeline work."""
+    job = _run_demo(db_session, content_optimization=True)
+    opts = json.loads(job.options_json or "{}")
+    assert opts["_p1_sections"]["content_optimization"]["status"] == "completed"
+
+    opts["content_optimization"] = False
+    job.status = "failed"
+    job.error_message = "sim"
+    job.completed_at = None
+    job.options_json = json.dumps(opts, sort_keys=True)
+    db_session.commit()
+
+    cleared: list[bool] = []
+
+    async def stop_after_clear(*a, **k):
+        db_session.refresh(job)
+        mid = json.loads(job.options_json or "{}")
+        cleared.append("_p1_sections" not in mid)
+        raise RuntimeError("stop-after-stale-clear")
+
+    with patch(
+        "aeo_mvp.pipeline.orchestrator.crawl_site",
+        side_effect=stop_after_clear,
+    ):
+        with pytest.raises(RuntimeError, match="stop-after-stale-clear"):
+            asyncio.run(JobOrchestrator(db_session).run(job.id, worker_id="clear-p13"))
+
+    assert cleared == [True]
+    db_session.refresh(job)
+    assert "_p1_sections" not in json.loads(job.options_json or "{}")

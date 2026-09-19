@@ -230,6 +230,13 @@ class JobOrchestrator:
         # Durable ownership first — do not hold this claim txn across crawl/LLM.
         job = claim_job(self.session, job_id, worker_id=wid, commit=True)
         options = json.loads(job.options_json or "{}")
+        # Drop stale Phase 5 / P1 stash from prior claimable attempts so a retry
+        # with content_optimization=false (or different results) cannot leave
+        # success-shaped artifacts in options_json mid-run or after failure.
+        if "_p1_sections" in options:
+            options.pop("_p1_sections", None)
+            job.options_json = json.dumps(options, sort_keys=True)
+            self.session.flush()
         provenance = "synthetic_demo" if job.demo_mode else "derived_metric"
         p1_sections: dict[str, Any] = {}
 
