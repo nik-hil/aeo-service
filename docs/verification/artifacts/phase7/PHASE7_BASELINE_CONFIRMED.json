@@ -1,0 +1,61 @@
+{
+  "phase": 7,
+  "confirmed_at": "2026-09-19T16:40:00+00:00",
+  "source_main_sha": "043b21e",
+  "source_phase6_doc": "docs/verification/PHASE6-AEO-VALIDATION-2026-09-19.md",
+  "authoritative_baseline": {
+    "site": "https://nik-hil.hashnode.dev/",
+    "job_id": "e26c5919-0ac5-4aab-86f4-36def39ec882",
+    "query_set_version": "query-set-v3",
+    "query_set_id": "qs_fc087f4f5ebf",
+    "fingerprint": "2d79e25bd6f4513556c97f41b7d40851b74887573df594b206b1b221952175ec",
+    "selection_seed": 3236362228,
+    "provider": "openai_compatible",
+    "model_id": "openai-gpt-4o-mini",
+    "experiment_kind": "llm_mention",
+    "protocol_version": "llm-mention-v1",
+    "retrieval_enabled": false,
+    "paid_retrieval_opt_in": false,
+    "paid_do_calls": 0,
+    "adr026_gate": "closed",
+    "pages_crawled": 20,
+    "pages_optimized": 3,
+    "demo_mode": false
+  },
+  "scores": {
+    "aeo_health": 76.4,
+    "technical": 95.0,
+    "structured_data": 90.0,
+    "answerability": 75.0,
+    "content": 69.6,
+    "entity": 52.5
+  },
+  "visibility": {
+    "llm_mention_rate": 0.13333333333333333,
+    "llm_mention_numerator": 8,
+    "llm_mention_denominator": 60,
+    "mention_rate_provenance": "estimate",
+    "ai_search_measured": false
+  },
+  "homepage_page_intelligence": {
+    "title": "Nikhil Ikhar's blog",
+    "h1": null,
+    "schema_types": ["Blog"],
+    "entities": ["Nikhil Ikhar's blog"],
+    "content_gaps": 33
+  },
+  "selected_recommendations": [
+    "REC_CONSOLIDATE_BRAND_NAME",
+    "REC_CLARIFY_BRAND_IN_COPY",
+    "REC_FIX_HEADING_HIERARCHY"
+  ],
+  "preferred_brand": "Nikhil Ikhar",
+  "verification_method": "Copied Phase 6 CoS artifacts into phase7/ and asserted numeric fields match PHASE6-AEO-VALIDATION-2026-09-19.{md,json} + PHASE6_COS_BASELINE_*.json",
+  "copied_artifacts": [
+    "PHASE6_COS_BASELINE_EVIDENCE.json",
+    "PHASE6_COS_BASELINE_SNAPSHOT.json",
+    "PHASE6_RECOMMENDATION_EXAMPLES.json",
+    "PHASE6_BRIEFS_POST_ACTIONABILITY_FIX.json",
+    "PHASE6_COS_BASELINE_REPORT_EXCERPT.POINTER.json"
+  ]
+}

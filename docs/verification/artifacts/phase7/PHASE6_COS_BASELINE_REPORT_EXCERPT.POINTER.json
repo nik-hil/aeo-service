@@ -1,0 +1,11 @@
+{
+  "artifact": "PHASE6_COS_BASELINE_REPORT_EXCERPT.json",
+  "source_path": "docs/verification/artifacts/phase6/PHASE6_COS_BASELINE_REPORT_EXCERPT.json",
+  "sha256": "667ae76af38e661389132d30eb71700068eeb55d2e480311e2b8a2e32e2e5432",
+  "bytes": 611014,
+  "job_id": "e26c5919-0ac5-4aab-86f4-36def39ec882",
+  "base_url": "https://nik-hil.hashnode.dev/",
+  "pages_crawled": 20,
+  "emitted_at": "2026-09-19T11:14:37+00:00",
+  "note": "Full excerpt retained in phase6/; phase7 stores checksum + key fields to avoid duplicating ~16k-line artifact."
+}
