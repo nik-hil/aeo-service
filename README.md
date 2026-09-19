@@ -68,8 +68,11 @@ pytest -q
 Responses API + `web_search`. **Does not** measure consumer ChatGPT/Gemini/Perplexity UI
 (`measures_consumer_ui=false`). See `docs/methodology/AI_SEARCH_VISIBILITY_DO.md`.
 
-Under `provider=auto` / `AEO_VISIBILITY_PROVIDER=auto`: DO key → DigitalOcean web_search;
-else OpenAI key → LLM mention; else DemoProvider. Demo mode always stays deterministic.
+Under `provider=auto` / `AEO_VISIBILITY_PROVIDER=auto`: DigitalOcean web_search only when
+a DO key is present **and** ADR-026 allows paid retrieval (`paid_retrieval_opt_in` /
+`AEO_PAID_RETRIEVAL_OPT_IN` **and** a ready QuerySet). A DO key alone never spends.
+Otherwise OpenAI key → LLM mention; else DemoProvider. Demo mode always stays
+deterministic. See `docs/architecture/ADR-026-paid-retrieval-opt-in.md`.
 
 ## Docs
 

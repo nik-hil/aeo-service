@@ -278,14 +278,18 @@ def test_n_personal_blog_fixture_pipeline():
 
 
 def test_o_empty_page_fixture_pipeline():
+    """Empty fixture has structure gaps; do not accept obsolete thin_coverage OR
+    missing_page fallbacks that previously masked P1-1 taxonomy drift."""
     result = run_content_optimization(
         html=_html("empty_page.html"),
         url="https://empty.example/",
     )
-    assert any(
-        g.gap_type in ("structure_gap", "structure", "thin_coverage", "missing_page")
-        for g in result.gap_report.gaps
-    )
+    types = {g.gap_type for g in result.gap_report.gaps}
+    assert "structure_gap" in types
+    # No queryset → absent coverage cannot emit missing_page; empty body is not
+    # thin_coverage either (Workstream A sheet-native emit).
+    assert "thin_coverage" not in types
+    assert "missing_page" not in types
 
 
 def test_p_deterministic_same_inputs():

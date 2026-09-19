@@ -139,7 +139,7 @@ def test_p1_7_openapi_auth_and_error_shape():
     jobs_post = spec["paths"]["/api/v1/jobs"]["post"]["responses"]
     assert "401" in jobs_post
     opt = spec["paths"]["/api/v1/content-optimization"]["post"]["responses"]
-    for code in ("400", "401", "409", "422"):
+    for code in ("400", "401", "404", "409", "422"):
         assert code in opt
 
     err = spec["components"]["schemas"]["ErrorResponse"]

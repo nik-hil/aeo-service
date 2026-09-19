@@ -78,8 +78,11 @@ Competitor domains from sources are **descriptive co-appearance counts only** â€
 
 **Selection:** demo mode always uses `DemoProvider`. Otherwise
 `provider=digitalocean_web_search` / `AEO_VISIBILITY_PROVIDER=digitalocean_web_search`
-requires a DO key. Under `auto`, a present DO key selects this provider before
-OpenAI-compatible LLM mention.
+requires a DO key **and** ADR-026 paid retrieval gate
+(`paid_retrieval_opt_in` âˆ§ ready QuerySet); without opt-in the explicit DO
+provider fails closed. Under `auto`, DO is selected only when a DO key is
+present **and** that same gate is open; otherwise OpenAI-compatible LLM mention
+(if keyed) or Demo. A DO key alone never authorizes paid `web_search`.
 
 Primary prompt set for live non-demo runs: **discovered queries** (top N from
 `AEO_QUERY_TOP_N`), not only the fixed `prompt-set-v1` templates.
