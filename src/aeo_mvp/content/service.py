@@ -12,7 +12,7 @@ from aeo_mvp.config import USER_AGENT, get_settings
 from aeo_mvp.content.pipeline import run_content_optimization
 from aeo_mvp.crawler.fetch import fetch_url
 from aeo_mvp.db.models import ExperimentConfig, Job, Page, SiteProfile
-from aeo_mvp.security.ssrf import SSRFError, assert_safe_public_url, is_obviously_unsafe_url
+from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url
 
 
 class OptimizationRequestError(ValueError):
@@ -101,7 +101,7 @@ def resolve_page_html(
 
 async def fetch_html_ssrf_safe(url: str) -> tuple[str | None, str, str | None]:
     settings = get_settings()
-    assert_safe_public_url(url)
+    # SSRF resolve+validate+IP-pin happens once inside fetch_url (no prior resolve).
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}) as client:
         result = await fetch_url(client, url, timeout_s=settings.crawl_timeout_s)
     if result.error or not result.text:

@@ -441,8 +441,8 @@ def test_no_unsafe_observed_promotion_in_generate_v2():
 
 _REPO = Path(__file__).resolve().parents[2]
 _QUERIES = _REPO / "src/aeo_mvp/queries"
+# P0-2 intentionally changes security/ssrf.py (IP pinning). Remaining freezes stay.
 _FREEZE_PATHS = (
-    "src/aeo_mvp/security/ssrf.py",
     "src/aeo_mvp/target_site.py",
     "src/aeo_mvp/domains.py",
     "src/aeo_mvp/scoring/health.py",
@@ -755,6 +755,12 @@ def test_p7_freezes_held_no_query_set_v4():
     assert DISCOVERY_METHOD_V2 == "query-discovery-v2"
     assert INTENT_BUDGET_ID == "intent-budget-v1"
     assert HEALTH_FORMULA_VERSION == "health-v1"
+    # P0-2: SSRF module still present with IP-pinning API (file itself unfrozen).
+    from aeo_mvp.security import ssrf as ssrf_mod
+
+    assert hasattr(ssrf_mod, "assert_safe_public_url")
+    assert hasattr(ssrf_mod, "validate_url_for_fetch")
+    assert hasattr(ssrf_mod, "pinned_connect_url")
     for rel in _FREEZE_PATHS:
         assert (_REPO / rel).is_file(), rel
     # Freeze paths must be byte-identical to main tip
@@ -767,6 +773,18 @@ def test_p7_freezes_held_no_query_set_v4():
     )
     assert diff.returncode == 0
     assert diff.stdout == "", f"freeze diff non-empty:\n{diff.stdout[:500]}"
+    # SSRF may differ from main after P0-2 IP pinning — must not be empty of policy.
+    ssrf_diff = subprocess.run(
+        ["git", "diff", "main", "--", "src/aeo_mvp/security/ssrf.py"],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ssrf_diff.returncode == 0
+    assert "validate_url_for_fetch" in (_REPO / "src/aeo_mvp/security/ssrf.py").read_text(
+        encoding="utf-8"
+    )
     verify_corrective = (
         _REPO / "docs/verification/VERIFY-PHASE4.1-CORRECTIVE-2026-09-18.md"
     )
