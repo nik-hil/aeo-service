@@ -25,7 +25,8 @@ the AI-search target match key. Use `target_match()` / `TargetSiteIdentity`.
 | SSRF / lookalike | PSL eTLD+1 | `domains.registrable_domain`, `security/ssrf` |
 | AI-search appeared/cited | Scope-aware `TargetSiteIdentity` | `target_site.target_match` |
 | Competitors | Same `site_key()`; omit via `target_match` | `visibility/competitors.py` |
-| LLM mention | Unchanged (`llm-mention-v1`) | `detect_mention` / `detect_citation` |
+| LLM URL citation | Same `TargetSiteIdentity` / `target_match` | `detect_citation` (`llm-mention-v1`+`domain-match-v1`) |
+| LLM brand mention | Brand tokens (`mention-rule-v1`) | `detect_mention` |
 | Health | Untouched (`health-v1`) | `scoring/health.py` |
 
 Identity is **classify-only**. It must never widen crawl to PSL scope.
@@ -144,8 +145,10 @@ Exact normalized origin equality (scheme + host + non-default port).
 - `aggregate_ai_search_metrics` must **not** fall back to `detected_mention` /
   `detected_citation` when `target_domain_*` is null.
 
-LLM-mention path (`llm_*`, `detected_mention`, `detected_citation`,
-`llm-mention-v1`) is untouched; keep `target_domain_*` null/unused there.
+LLM brand mention (`detected_mention`) stays `mention-rule-v1`. LLM URL
+citation (`detected_citation` / `llm_url_mention_rate`) uses the **same**
+`target_match` / `TargetSiteIdentity` rules as AI-search (P1-12). Keep
+`target_domain_*` null/unused on the LLM-mention path.
 
 ---
 

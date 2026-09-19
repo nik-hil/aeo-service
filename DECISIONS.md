@@ -119,7 +119,9 @@ PRIVATE (`hashnode.dev`, `wordpress.com`, `medium.com`, `substack.com`,
 `ghost.io`, `tumblr.com`). Ordinary sites default to `registrable_domain`
 scope. www: strip one leading `www.` for compare only. Ban naive endswith.
 Competitors use the same `site_key()`; omit target via `target_match`; do not
-aggregate hosted tenants to platform apex. LLM-mention and health-v1 unchanged.
+aggregate hosted tenants to platform apex. LLM URL citation
+(`detect_citation`) reuses the same `target_match` / `TargetSiteIdentity`
+(P1-12); brand mention and health-v1 unchanged.
 **Rationale:** Phase 2 Hashnode run incorrectly credited `hashnode.dev` /
 sibling pubs when matching on PSL alone. True PSL of `nik-hil.hashnode.dev`
 **is** `hashnode.dev` (not a bug to “fix”); product isolation is hostname

@@ -6,10 +6,13 @@ import re
 from dataclasses import dataclass
 
 from aeo_mvp.domains import registrable_domain
+from aeo_mvp.target_site import TargetSiteIdentity, resolve_target_site_identity, target_match
 from aeo_mvp.visibility.base import VisibilityObservation
 
 URL_RE = re.compile(r"https?://[^\s\)\]\"'<>]+", re.I)
-EXTRACTION_METHODOLOGY = "llm-mention-v1:mention-rule-v1+url-mention-rule-v1"
+EXTRACTION_METHODOLOGY = (
+    "llm-mention-v1:mention-rule-v1+url-mention-rule-v1+domain-match-v1"
+)
 AI_SEARCH_EXTRACTION_METHODOLOGY = (
     "ai-search-vis-v1:do-web-search+url-citation-v1+mention-rule-v1+domain-match-v1"
 )
@@ -43,17 +46,37 @@ def detect_mention(text: str, brand_tokens: list[str], *, exclude_suffix: str | 
     return False
 
 
-def detect_citation(text: str, site_domain: str, extra_urls: list[str] | None = None) -> tuple[bool, list[str]]:
-    """URL-mention heuristic: target domain appears as URL in text (not retrieval citation)."""
+def detect_citation(
+    text: str,
+    site_domain: str | TargetSiteIdentity,
+    extra_urls: list[str] | None = None,
+    *,
+    identity: TargetSiteIdentity | None = None,
+) -> tuple[bool, list[str]]:
+    """URL-mention heuristic: target site URL appears in text (not retrieval citation).
+
+    Matching uses ``target_match`` / ``TargetSiteIdentity`` (``domain-match-v1``) —
+    the same rules as AI-search DO appearance/citation. Bare PSL equality alone
+    must not credit sibling tenants on multi-tenant platforms (e.g.
+    ``other.hashnode.dev`` for a ``nik-hil.hashnode.dev`` job).
+
+    Prefer passing a frozen ``TargetSiteIdentity`` (or ``identity=``). A bare
+    domain/URL string is resolved via ``resolve_target_site_identity``; for
+    Hashnode-class leaves pass the seed hostname/URL, not the platform apex.
+    """
     urls = extract_urls(text)
     if extra_urls:
         for u in extra_urls:
             if u not in urls:
                 urls.append(u)
-    site = registrable_domain(site_domain)
+    if identity is None:
+        if isinstance(site_domain, TargetSiteIdentity):
+            identity = site_domain
+        else:
+            identity = resolve_target_site_identity(site_domain)
     cited: list[str] = []
     for u in urls:
-        if registrable_domain(u) == site:
+        if target_match(u, identity):
             cited.append(u)
     return (len(cited) > 0, cited)
 
