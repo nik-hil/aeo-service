@@ -1,7 +1,7 @@
 # Production-readiness FINAL audit — aeo-service
 
 **Date:** 2026-09-19  
-**FINAL MAIN SHA:** `e686a746b7222ea29f2652396398691ef3f9436d`  
+**FINAL MAIN SHA:** `69969150c03209e3391af8d22bae00e9f5a5487b`  
 **E-complete audited tree:** `2e18e843ae6b401fc73dbef06c2ca0c71eeff88c`  
 **Base main before E:** `762db4e0b4d83e615e643a000baa928d50adcafb` (includes Workstream D PR #32)  
 **Prior re-audit:** `docs/verification/PROD-READINESS-REAUDIT-MAIN-e9bbad7-2026-09-19.md` (`e9bbad7`)  
@@ -34,7 +34,7 @@ All original P0s remain fixed. All product-correctness P1s from the re-audit are
 | #30 | fix(prod-B): crawl/job honesty + observation idempotency | MERGED | `4f56260` |
 | #31 | fix(prod-C): LLM citation uses TargetSiteIdentity | MERGED | `70b9e5b` |
 | #32 | fix(prod-D): OpenAPI contract + prompt_set_id honesty | MERGED | `762db4e` |
-| **#33** | **fix(prod-E) + final prod-readiness audit** | **OPEN (this PR)** | tip `e686a746b7222ea29f2652396398691ef3f9436d` |
+| **#33** | **fix(prod-E) + final prod-readiness audit** | **OPEN (this PR)** | tip `69969150c03209e3391af8d22bae00e9f5a5487b` |
 
 ---
 
