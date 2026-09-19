@@ -62,6 +62,50 @@ def _normalize_url(url: str) -> str:
     return urlunparse((scheme, netloc, path, "", parsed.query, ""))
 
 
+def normalize_public_url(url: str) -> str:
+    """Normalize a URL for persistence: strip userinfo, lowercase host, keep path/query.
+
+    Cheap parse-only helper (no DNS). Use for ``jobs.base_url`` so credentials never
+    land in the DB. Authoritative SSRF remains at fetch via ``validate_url_for_fetch``.
+    """
+    return _normalize_url(url)
+
+
+def _parse_special_ip_host(
+    hostname: str,
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """Decode dotted/literal IPs plus decimal/hex integer IPv4 forms.
+
+    Returns None when ``hostname`` is not an IP-shaped literal (DNS names stay None).
+    Used by the create-time gate; fetch-time SSRF still resolves and validates.
+    """
+    host = (hostname or "").strip().lower().rstrip(".")
+    if not host:
+        return None
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    # Decimal IPv4: http://2130706433/ → 127.0.0.1
+    if host.isdigit():
+        try:
+            value = int(host)
+            if 0 <= value <= 0xFFFFFFFF:
+                return ipaddress.IPv4Address(value)
+        except (ValueError, ipaddress.AddressValueError):
+            return None
+        return None
+    # Hex IPv4: http://0x7f000001/ → 127.0.0.1
+    if host.startswith("0x"):
+        try:
+            value = int(host, 16)
+            if 0 <= value <= 0xFFFFFFFF:
+                return ipaddress.IPv4Address(value)
+        except (ValueError, ipaddress.AddressValueError):
+            return None
+    return None
+
+
 def _hostname_from_netloc(netloc: str) -> str:
     # IPv6 in brackets: [::1]:8080
     if netloc.startswith("["):
@@ -135,15 +179,12 @@ def _ip_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 def _resolve_public_ips(hostname: str) -> list[str]:
     """Resolve hostname; every A/AAAA must be public. Returns string forms."""
-    # Literal IP?
-    try:
-        ip = ipaddress.ip_address(hostname)
-    except ValueError:
-        pass
-    else:
-        if not _ip_is_public(ip):
+    # Literal IP (dotted / bracketed) or decimal/hex integer forms?
+    special = _parse_special_ip_host(hostname)
+    if special is not None:
+        if not _ip_is_public(special):
             raise SSRFError(f"Blocked non-public IP literal: {hostname}")
-        return [str(ip)]
+        return [str(special)]
 
     if _is_blocked_hostname(hostname):
         raise SSRFError(f"Blocked hostname: {hostname}")
@@ -181,7 +222,11 @@ def _resolve_public_ips(hostname: str) -> list[str]:
 
 
 def is_obviously_unsafe_url(url: str) -> bool:
-    """Cheap pre-check (no DNS) for job-create: scheme, localhost, private literals."""
+    """Cheap pre-check (no DNS) for job-create: scheme, localhost, private literals.
+
+    Also rejects decimal/hex integer IPv4 hosts (e.g. ``2130706433``, ``0x7f000001``).
+    Does not replace fetch-time SSRF (DNS + IP pin); this is a create-time gate only.
+    """
     try:
         normalized = _normalize_url(url)
     except SSRFError:
@@ -192,11 +237,10 @@ def is_obviously_unsafe_url(url: str) -> bool:
     host = _hostname_from_netloc(parsed.netloc)
     if _is_blocked_hostname(host):
         return True
-    try:
-        ip = ipaddress.ip_address(host)
-        return not _ip_is_public(ip)
-    except ValueError:
-        return False
+    special = _parse_special_ip_host(host)
+    if special is not None:
+        return not _ip_is_public(special)
+    return False
 
 
 def validate_url_for_fetch(url: str) -> ValidatedFetchTarget:
@@ -261,6 +305,7 @@ __all__ = [
     "ValidatedFetchTarget",
     "assert_safe_public_url",
     "is_obviously_unsafe_url",
+    "normalize_public_url",
     "pinned_connect_url",
     "request_extensions_for_pin",
     "validate_url_for_fetch",

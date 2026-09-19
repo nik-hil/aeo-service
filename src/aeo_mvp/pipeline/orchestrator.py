@@ -30,7 +30,12 @@ from aeo_mvp.db.models import (
     AnalysisEvidence,
     ExperimentConfig,
     ExperimentMetric,
+    Finding,
     Job,
+    Page,
+    Recommendation,
+    ScoreComponent,
+    SiteProfile,
     VisibilityObservation as VisObsRow,
     new_id,
     utc_now_iso,
@@ -45,7 +50,7 @@ from aeo_mvp.recommendations.engine import (
 )
 from aeo_mvp.report.builder import build_report
 from aeo_mvp.scoring.health import compute_health
-from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url
+from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url, normalize_public_url
 from aeo_mvp.target_site import MATCH_RULE_VERSION, resolve_target_site_identity
 from aeo_mvp.understanding.site import infer_site_understanding
 from aeo_mvp.visibility.base import VisibilityContext
@@ -68,6 +73,28 @@ from aeo_mvp.visibility.openai_compatible import (
 from aeo_mvp.pipeline.job_claim import claim_job, new_worker_id
 
 logger = logging.getLogger(__name__)
+
+
+def clear_job_pipeline_artifacts(session: Session, job_id: str) -> None:
+    """Delete regenerable per-job rows before a reclaim/retry (P1-11).
+
+    Keeps ``Report`` so a later successful run can overwrite honesty fields.
+    Order respects FKs (observations before experiment_configs, evidence before pages).
+    Does not change job claim/status — call only after a successful P0-5 claim.
+    """
+    for model in (
+        AnalysisEvidence,
+        ExperimentMetric,
+        VisObsRow,
+        Finding,
+        Recommendation,
+        ExperimentConfig,
+        ScoreComponent,
+        Page,
+        SiteProfile,
+    ):
+        session.query(model).filter_by(job_id=job_id).delete(synchronize_session=False)
+    session.flush()
 
 
 def _safe_job_error_message(exc: BaseException) -> str:
@@ -229,6 +256,9 @@ class JobOrchestrator:
         wid = worker_id or new_worker_id()
         # Durable ownership first — do not hold this claim txn across crawl/LLM.
         job = claim_job(self.session, job_id, worker_id=wid, commit=True)
+        # Deterministic reclaim: wipe regenerable children so retries cannot duplicate
+        # observations / unique-constrained pages (P1-11). P0-5 claim stays intact.
+        clear_job_pipeline_artifacts(self.session, job.id)
         options = json.loads(job.options_json or "{}")
         # Drop stale Phase 5 / P1 stash from prior claimable attempts so a retry
         # with content_optimization=false (or different results) cannot leave
@@ -236,7 +266,11 @@ class JobOrchestrator:
         if "_p1_sections" in options:
             options.pop("_p1_sections", None)
             job.options_json = json.dumps(options, sort_keys=True)
-            self.session.flush()
+        # Commit wipe + stash clear before crawl so a later failure rollback cannot
+        # resurrect prior-run observations.
+        self.session.commit()
+        self.session.refresh(job)
+        options = json.loads(job.options_json or "{}")
         provenance = "synthetic_demo" if job.demo_mode else "derived_metric"
         p1_sections: dict[str, Any] = {}
 
@@ -253,6 +287,29 @@ class JobOrchestrator:
                 timeout_s=float(options.get("timeout_s", self.settings.crawl_timeout_s)),
             )
             pages = crawl.pages
+            crawl_summary = {
+                "status": crawl.crawl_status,
+                "discovered": crawl.discovered,
+                "attempted": crawl.attempted,
+                "fetched": crawl.fetched,
+                "errors": crawl.errors,
+            }
+            p1_sections["crawl"] = crawl_summary
+
+            # P1-14: zero eligible pages is a crawl outage, not “bad SEO”.
+            if crawl.crawl_status == "failed":
+                options["_p1_sections"] = p1_sections
+                job.options_json = json.dumps(options, sort_keys=True)
+                err = (
+                    "crawl_failed: zero eligible pages "
+                    f"(discovered={crawl.discovered}, attempted={crawl.attempted}, "
+                    f"fetched={crawl.fetched}, errors={crawl.errors})"
+                )
+                self._set_status(job, "failed", error=err)
+                build_report(self.session, job)
+                self.session.commit()
+                logger.error("job %s failed crawl_status=failed %s", job.id, err)
+                return job
 
             # 2–5. Analyzers (+ P1-A AI crawlers)
             self._set_status(job, "analyzing")
@@ -750,8 +807,14 @@ class JobOrchestrator:
                 )
             else:
                 logger.exception("job %s failed", job_id)
-            self._set_status(job, "failed", error=err_msg)
-            self.session.commit()
+            # Roll back uncommitted pipeline rows so a failed job does not retain
+            # partial visibility observations that look like a complete experiment
+            # (P1-11). Claim commit is already durable; reclaim wipes children too.
+            self.session.rollback()
+            job = self.session.get(Job, job_id)
+            if job is not None:
+                self._set_status(job, "failed", error=err_msg)
+                self.session.commit()
             raise
 
 
@@ -769,13 +832,16 @@ def create_job_record(
     settings = get_settings()
     options = dict(options or {})
     force_demo = demo_mode or settings.demo_mode or options.get("provider") == "demo"
-    base = DEMO_BASE_URL if force_demo else url
     if force_demo:
         base = DEMO_BASE_URL
     elif is_obviously_unsafe_url(url):
         raise SSRFError(
             f"Refusing to create job for unsafe URL (SSRF policy): {url!r}"
         )
+    else:
+        # Persist credential-free normalized URL (P1-10). Fetch-time SSRF remains
+        # authoritative via assert_safe_public_url / IP pinning.
+        base = normalize_public_url(url)
     job = Job(
         id=new_id(),
         base_url=base,

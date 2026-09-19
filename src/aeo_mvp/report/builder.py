@@ -164,6 +164,8 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
         .first()
     )
     options = json.loads(job.options_json or "{}")
+    pipeline_extras = options.get("_p1_sections") or {}
+    crawl_section = pipeline_extras.get("crawl")
     evidence = (
         session.query(AnalysisEvidence).filter(AnalysisEvidence.job_id == job.id).all()
     )
@@ -188,6 +190,19 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
     if job.demo_mode:
         caveats.append(
             "This job used synthetic demo fixtures; visibility data is not from a live model."
+        )
+    crawl_status = (crawl_section or {}).get("status") if crawl_section else None
+    if crawl_status == "failed":
+        caveats.insert(
+            0,
+            "Crawl failed: zero eligible pages were fetched. Scores (if any) are not "
+            "a site-quality judgment — treat this as a crawl outage, not bad SEO.",
+        )
+    elif crawl_status == "degraded":
+        caveats.insert(
+            0,
+            "Crawl degraded: some page fetches failed. Interpret health alongside "
+            "crawl.fetched / crawl.errors counters.",
         )
 
     def metric_obj(name: str) -> dict[str, Any]:
@@ -218,7 +233,6 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
             # Prefer SITE-level aggregate stored during orchestrator in options/report stash
             break
     # Prefer structured blob from job options pipeline stash if present
-    pipeline_extras = options.get("_p1_sections") or {}
     ai_crawler_access = pipeline_extras.get("ai_crawler_access")
     site_understanding = pipeline_extras.get("site_understanding")
     discovered_queries = pipeline_extras.get("discovered_queries")
@@ -352,6 +366,11 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
             "max_pages": options.get("max_pages", 25),
             "max_depth": options.get("max_depth", 2),
             "user_agent": USER_AGENT,
+            "status": (crawl_section or {}).get("status", "unknown"),
+            "discovered": (crawl_section or {}).get("discovered"),
+            "attempted": (crawl_section or {}).get("attempted"),
+            "fetched": (crawl_section or {}).get("fetched"),
+            "errors": (crawl_section or {}).get("errors"),
         },
     }
     if content_optimization and content_optimization.get("methodology"):
@@ -401,6 +420,13 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
         ],
         "recommendations": rec_payloads,
         "pages_crawled": pages_count,
+        "crawl": {
+            "status": (crawl_section or {}).get("status", "unknown"),
+            "discovered": (crawl_section or {}).get("discovered", 0),
+            "attempted": (crawl_section or {}).get("attempted", 0),
+            "fetched": (crawl_section or {}).get("fetched", 0),
+            "errors": (crawl_section or {}).get("errors", 0),
+        },
         "emitted_at": utc_now_iso(),
     }
 

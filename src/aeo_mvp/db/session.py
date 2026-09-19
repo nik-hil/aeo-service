@@ -74,6 +74,22 @@ def migrate_schema(database_url: str | None = None) -> None:
         except Exception:  # noqa: BLE001
             # Table may not exist yet; create_all handles that.
             pass
+    _sqlite_ensure_vis_obs_unique_index(engine)
+
+
+def _sqlite_ensure_vis_obs_unique_index(engine: Engine) -> None:
+    """Idempotent unique index for observation reclaim safety (P1-11)."""
+    if not str(engine.url).startswith("sqlite"):
+        return
+    try:
+        with engine.connect() as conn:
+            conn.exec_driver_sql(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_vis_obs_cfg_prompt_run "
+                "ON visibility_observations (experiment_config_id, prompt_id, run_index)"
+            )
+            conn.commit()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def init_db(database_url: str | None = None) -> None:

@@ -27,6 +27,51 @@ class CrawlOutcome:
     pages: list[Page]
     robots_raw: str | None
     robots_allowed_root: float  # T2 pass value
+    crawl_status: str = "ok"  # ok | degraded | failed
+    discovered: int = 0
+    attempted: int = 0
+    fetched: int = 0
+    errors: int = 0
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "status": self.crawl_status,
+            "discovered": self.discovered,
+            "attempted": self.attempted,
+            "fetched": self.fetched,
+            "errors": self.errors,
+        }
+
+
+def _summarize_crawl_pages(pages: list[Page], *, discovered: int | None = None) -> dict[str, int | str]:
+    """Derive crawl honesty counters from persisted Page rows."""
+    from aeo_mvp.analyzers.base import eligible_pages
+
+    attempted = len(pages)
+    fetched = len(eligible_pages(pages))
+    errors = sum(
+        1
+        for p in pages
+        if p.fetch_error
+        or not p.html
+        or p.status_code is None
+        or not (200 <= (p.status_code or 0) < 300)
+    )
+    # robots-blocked / fetch_error pages count as errors; avoid double-counting
+    # eligible pages that somehow also have error flags (eligible_pages excludes them).
+    if fetched == 0:
+        status = "failed"
+    elif errors > 0:
+        status = "degraded"
+    else:
+        status = "ok"
+    return {
+        "status": status,
+        "discovered": discovered if discovered is not None else attempted,
+        "attempted": attempted,
+        "fetched": fetched,
+        "errors": errors,
+    }
 
 
 def normalize_url(url: str) -> str:
@@ -104,7 +149,17 @@ def crawl_demo(session: Session, job_id: str) -> CrawlOutcome:
         pages.append(page)
     session.flush()
     logger.info("demo crawl loaded %s pages for job %s", len(pages), job_id)
-    return CrawlOutcome(pages=pages, robots_raw=robots_text, robots_allowed_root=allowed)
+    summary = _summarize_crawl_pages(pages, discovered=len(pages))
+    return CrawlOutcome(
+        pages=pages,
+        robots_raw=robots_text,
+        robots_allowed_root=allowed,
+        crawl_status=str(summary["status"]),
+        discovered=int(summary["discovered"]),
+        attempted=int(summary["attempted"]),
+        fetched=int(summary["fetched"]),
+        errors=int(summary["errors"]),
+    )
 
 
 async def crawl_live(
@@ -214,7 +269,17 @@ async def crawl_live(
 
         session.flush()
         logger.info("live crawl fetched %s pages for job %s", len(pages), job_id)
-        return CrawlOutcome(pages=pages, robots_raw=robots_raw, robots_allowed_root=robots_allowed)
+        summary = _summarize_crawl_pages(pages, discovered=len(seen))
+        return CrawlOutcome(
+            pages=pages,
+            robots_raw=robots_raw,
+            robots_allowed_root=robots_allowed,
+            crawl_status=str(summary["status"]),
+            discovered=int(summary["discovered"]),
+            attempted=int(summary["attempted"]),
+            fetched=int(summary["fetched"]),
+            errors=int(summary["errors"]),
+        )
 
 
 async def crawl_site(
