@@ -427,11 +427,12 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
             "skipped_page_ids": list(
                 content_optimization.get("skipped_page_ids") or []
             ),
+            "page_selection": content_optimization.get("page_selection"),
             "paid_retrieval": bool(content_optimization.get("paid_retrieval", False)),
             "paid_llm": bool(content_optimization.get("paid_llm", False)),
             "warnings": list(content_optimization.get("warnings") or []),
         }
-        # Authoritative standalone-shaped keys only when Phase 5 completed with results.
+        # Authoritative ContentOptimizationResult.to_dict keys when Phase 5 completed.
         if content_optimization.get("status") == "completed":
             if content_optimization.get("page_intelligence") is not None:
                 report["page_intelligence"] = content_optimization["page_intelligence"]

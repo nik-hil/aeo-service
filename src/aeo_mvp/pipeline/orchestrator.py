@@ -24,7 +24,7 @@ from aeo_mvp.config import (
     PROMPT_SET_ID,
     get_settings,
 )
-from aeo_mvp.content.service import optimize_job_pages
+from aeo_mvp.content.service import load_site_profile, optimize_job_pages, queryset_from_discovery
 from aeo_mvp.crawler.discover import crawl_site
 from aeo_mvp.db.models import (
     AnalysisEvidence,
@@ -613,8 +613,9 @@ class JobOrchestrator:
             if retrieval_enabled:
                 p1_sections["target_site"] = target_identity.to_audit_dict()
 
-            # Phase 5 content optimization — after crawl pages + queryset exist.
-            # Default True matches JobOptions; false skips without fabricating results.
+            # Phase 5 content optimization — single call site after crawl + queryset.
+            # Gated by options.content_optimization. No re-crawl / re-discover.
+            # Inputs: Page HTML, discovery QuerySet/fingerprint, SiteProfile, optional obs.
             content_opt_enabled = bool(options.get("content_optimization", True))
             if content_opt_enabled:
                 vis_obs_payload: list[dict[str, Any]] = [
@@ -633,10 +634,11 @@ class JobOrchestrator:
                 draft_paid = bool(
                     options.get("draft_paid") or options.get("paid_llm_opt_in")
                 )
+                site_profile = load_site_profile(self.session, job) or understanding.to_dict()
                 p1_sections["content_optimization"] = optimize_job_pages(
                     pages,
-                    queryset=discovery.to_dict(),
-                    site_profile=understanding.to_dict(),
+                    queryset=queryset_from_discovery(discovery),
+                    site_profile=site_profile,
                     options=options,
                     visibility_observations=vis_obs_payload or None,
                     llm_api_key=(

@@ -434,6 +434,102 @@ def test_k3_no_pages_honest_skip():
     assert section["page_intelligence"] is None
 
 
+def test_k4_homepage_preferred_and_capped():
+    """Selection: homepage first; page count capped (not full crawl)."""
+    from aeo_mvp.content.service import (
+        CONTENT_OPT_PAGE_CAP,
+        select_pages_for_content_optimization,
+    )
+
+    job_id = new_id()
+    pages = [
+        Page(
+            id=new_id(),
+            job_id=job_id,
+            url="https://acme.example/blog/post",
+            depth=2,
+            html="<html><body><h1>Post</h1><p>Body text here.</p></body></html>",
+            title="Post",
+            status_code=200,
+            fetched_at=utc_now_iso(),
+        ),
+        Page(
+            id=new_id(),
+            job_id=job_id,
+            url="https://acme.example/",
+            depth=0,
+            html="<html><body><h1>Home</h1><p>Welcome to Acme home.</p></body></html>",
+            title="Home",
+            status_code=200,
+            fetched_at=utc_now_iso(),
+        ),
+        Page(
+            id=new_id(),
+            job_id=job_id,
+            url="https://acme.example/about",
+            depth=1,
+            html="<html><body><h1>About</h1><p>About Acme company.</p></body></html>",
+            title="About",
+            status_code=200,
+            fetched_at=utc_now_iso(),
+        ),
+    ]
+    # Pad with extra pages beyond the cap
+    for i in range(CONTENT_OPT_PAGE_CAP + 2):
+        pages.append(
+            Page(
+                id=new_id(),
+                job_id=job_id,
+                url=f"https://acme.example/p/{i}",
+                depth=1,
+                html=f"<html><body><h1>P{i}</h1><p>Page {i} content.</p></body></html>",
+                title=f"P{i}",
+                status_code=200,
+                fetched_at=utc_now_iso(),
+            )
+        )
+
+    selected, meta = select_pages_for_content_optimization(pages, max_pages=CONTENT_OPT_PAGE_CAP)
+    assert selected[0].url == "https://acme.example/"
+    assert len(selected) <= CONTENT_OPT_PAGE_CAP
+    assert meta["rule"] == "homepage_then_important_then_depth"
+    assert meta["reason"] == "homepage"
+
+    calls: list[str] = []
+    real = run_content_optimization
+
+    def spy(**kwargs):
+        calls.append(kwargs.get("url") or "")
+        return real(**kwargs)
+
+    with patch(
+        "aeo_mvp.content.service.run_content_optimization",
+        side_effect=spy,
+    ):
+        section = optimize_job_pages(
+            pages,
+            queryset={
+                "query_set_version": "query-set-v3",
+                "fingerprint": "discovery-fp-abc",
+                "members": [
+                    {
+                        "query_id": "q1",
+                        "query": "What is Acme?",
+                        "intent": "informational",
+                    }
+                ],
+            },
+            site_profile={"organization_brand": "Acme"},
+            options={"content_draft": False},
+        )
+    assert section["status"] == "completed"
+    assert section["pages_optimized"] <= CONTENT_OPT_PAGE_CAP
+    assert calls[0] == "https://acme.example/"
+    assert len(calls) <= CONTENT_OPT_PAGE_CAP
+    # Discovery fingerprint preferred over synthetic sha1
+    assert section["content_gaps"][0]["queryset_fingerprint"] == "discovery-fp-abc"
+
+
 # --- L: helper shares pipeline; report disabled shape ---
 
 
