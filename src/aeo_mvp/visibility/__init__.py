@@ -21,7 +21,10 @@ from aeo_mvp.visibility.metrics import (
     domain_matches_target,
     extract_urls,
 )
-from aeo_mvp.visibility.openai_compatible import OpenAICompatibleProvider
+from aeo_mvp.visibility.openai_compatible import (
+    OpenAICompatibleError,
+    OpenAICompatibleProvider,
+)
 from aeo_mvp.visibility.perplexity_sonar import PerplexitySonarProvider
 from aeo_mvp.visibility.retrieval_base import (
     RETRIEVAL_REQUIRED_FIELDS,
@@ -44,6 +47,7 @@ __all__ = [
     "DemoProvider",
     "DigitalOceanWebSearchError",
     "DigitalOceanWebSearchProvider",
+    "OpenAICompatibleError",
     "OpenAICompatibleProvider",
     "PerplexitySonarProvider",
     "RetrievalEnabledVisibilityProvider",

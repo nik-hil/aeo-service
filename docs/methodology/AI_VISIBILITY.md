@@ -137,7 +137,7 @@ Do not claim to browse unless URLs are provided in the user message.
 
 **User message:** the prompt query only (optionally append `Context site: {base_url}` — MVP **does** append one line `Site under evaluation: {base_url}` so the model has a referent; this is disclosed in methodology).
 
-If the HTTP call fails: store observation with `raw_response` = error string, `detected_mention=false`, `detected_citation=false`, `meta.error=true`; still counts in denominator.
+If the HTTP call fails (timeout, upstream HTTP/API error, malformed response, missing credentials, or internal provider exception): raise `OpenAICompatibleError` with a stable failure category. The job status becomes `failed` with a secret-free `provider-error: openai_compatible/<category>: …` message. Provider failures must never serialize as `completed` with zero mentions. A genuine empty/non-mention model answer remains a valid `completed` observation.
 
 ---
 
@@ -266,7 +266,7 @@ Demo adds: `"This job used synthetic demo fixtures; visibility data is not from 
 | Failure | Behavior |
 | --- | --- |
 | Single run HTTP 429/5xx | Retry once after 1s; then store error observation |
-| All runs fail | Job continues; rates may be 0; finding `VIS_ALL_RUNS_FAILED` |
+| All runs fail | Job `failed` with `provider-error: openai_compatible/<category>`; never `completed` with silent zero rate |
 | Provider misconfigured | Fall back to demo only if `auto`; else fail job at experimenting with clear error |
 | Raw storage disabled | Persist null raw; still store booleans and cited_urls |
 

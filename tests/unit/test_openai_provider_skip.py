@@ -1,8 +1,11 @@
-"""Live provider skips cleanly without API key."""
+"""OpenAI provider construction without API key fails closed (P0-4)."""
 
 import pytest
 
-from aeo_mvp.visibility.openai_compatible import OpenAICompatibleProvider
+from aeo_mvp.visibility.openai_compatible import (
+    OpenAICompatibleError,
+    OpenAICompatibleProvider,
+)
 
 
 def test_openai_provider_requires_key(monkeypatch):
@@ -10,5 +13,6 @@ def test_openai_provider_requires_key(monkeypatch):
     from aeo_mvp.config import get_settings
 
     get_settings.cache_clear()
-    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+    with pytest.raises(OpenAICompatibleError) as ei:
         OpenAICompatibleProvider(api_key=None)
+    assert ei.value.category == "missing_credentials"
