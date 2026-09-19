@@ -1,4 +1,4 @@
-"""HTTP fetch helpers with timeout, UA, and SSRF-safe redirects."""
+"""HTTP fetch helpers with timeout, UA, SSRF-safe redirects, and IP pinning."""
 
 from __future__ import annotations
 
@@ -9,7 +9,13 @@ from urllib.parse import urljoin
 import httpx
 
 from aeo_mvp.config import USER_AGENT
-from aeo_mvp.security.ssrf import SSRFError, assert_safe_public_url
+from aeo_mvp.security.ssrf import (
+    SSRFError,
+    ValidatedFetchTarget,
+    pinned_connect_url,
+    request_extensions_for_pin,
+    validate_url_for_fetch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +32,45 @@ class FetchResult:
     error: str | None = None
 
 
+async def _get_pinned(
+    client: httpx.AsyncClient,
+    target: ValidatedFetchTarget,
+    *,
+    timeout_s: float,
+) -> httpx.Response:
+    """
+    GET connecting only to a validated IP for this hop.
+
+    Logical hostname is preserved via Host header and TLS ``sni_hostname``
+    (certificate verification stays enabled). DNS is not re-resolved at connect.
+    """
+    headers = {"Host": target.host_header}
+    extensions = request_extensions_for_pin(target)
+    last_exc: Exception | None = None
+    for ip in target.validated_ips:
+        connect_url = pinned_connect_url(target, ip)
+        try:
+            return await client.get(
+                connect_url,
+                headers=headers,
+                timeout=timeout_s,
+                follow_redirects=False,
+                extensions=extensions,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            last_exc = exc
+            logger.debug(
+                "Pinned connect to %s (%s) failed: %s",
+                ip,
+                target.hostname,
+                exc,
+            )
+            continue
+    if last_exc is not None:
+        raise last_exc
+    raise SSRFError(f"No validated IPs to connect for {target.hostname}")
+
+
 async def fetch_url(
     client: httpx.AsyncClient,
     url: str,
@@ -34,16 +79,24 @@ async def fetch_url(
     max_redirects: int = MAX_REDIRECTS,
 ) -> FetchResult:
     """
-    Fetch a URL with SSRF validation on the initial URL and every redirect hop.
+    Fetch a URL with SSRF validation + IP pinning on the initial URL and every redirect hop.
 
     Does not auto-follow redirects; manually follows up to ``max_redirects``
-    after re-validating each Location (absolute or joined).
+    after re-validating each Location (absolute or joined). Each hop resolves
+    DNS once, validates every address, and connects only to those IPs.
     """
     current = url
+    # When set, the next hop must use this already-resolved target (no second DNS).
+    pending_target: ValidatedFetchTarget | None = None
     try:
         for hop in range(max_redirects + 1):
-            safe = assert_safe_public_url(current)
-            resp = await client.get(safe, timeout=timeout_s, follow_redirects=False)
+            if pending_target is not None:
+                target = pending_target
+                pending_target = None
+            else:
+                target = validate_url_for_fetch(current)
+            safe = target.url
+            resp = await _get_pinned(client, target, timeout_s=timeout_s)
 
             if resp.status_code in (301, 302, 303, 307, 308):
                 location = resp.headers.get("location")
@@ -58,7 +111,10 @@ async def fetch_url(
                     )
                 next_url = urljoin(safe, location)
                 try:
-                    assert_safe_public_url(next_url)
+                    # Fresh resolve+validate for the redirect hop only — the
+                    # same ValidatedFetchTarget is reused for the next connect
+                    # (never resolve again between validate and connect).
+                    pending_target = validate_url_for_fetch(next_url)
                 except SSRFError as exc:
                     logger.warning("SSRF blocked redirect %s → %s: %s", safe, next_url, exc)
                     return FetchResult(
@@ -89,9 +145,11 @@ async def fetch_url(
             )
             if text is None and resp.status_code < 400:
                 text = resp.text
+            # Prefer logical URL for final_url (not the IP-pinned connect URL)
+            final = safe
             return FetchResult(
                 url=url,
-                final_url=str(resp.url) if resp.url else safe,
+                final_url=final,
                 status_code=resp.status_code,
                 content_type=content_type,
                 text=text,
