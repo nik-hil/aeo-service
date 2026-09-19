@@ -35,5 +35,8 @@ Recommendation → Website change → Page → Queries affected → Expected eff
 
 - `page_coverage` ≠ AI visibility ≠ `health-v1`  
 - Demo provider metrics are `demo_synthetic`  
+- `llm_mention` / `openai_compatible` is **not** AI-search / DO `web_search`  
 - Fixture post-change without CMS publish → `hypothesis`  
 - Do not compare across different query-set versions as site-quality deltas  
+- Phase 6 authoritative Hashnode baseline: job `e26c5919-…` (llm-mention; `paid_do_calls=0`)  
+

@@ -3,72 +3,80 @@
   "date": "2026-09-19",
   "verdict": "partially_validated",
   "base_main_sha": "e39855f",
+  "authoritative_baseline_job_id": "e26c5919-0ac5-4aab-86f4-36def39ec882",
   "methodology": {
     "content_optimization": "content-optimization-v1",
-    "before_after": "aeo-before-after-v1"
+    "before_after": "aeo-before-after-v1",
+    "visibility_baseline": "llm-mention-v1"
   },
   "paid_retrieval": {
     "opt_in": false,
-    "do_key_present": false,
+    "paid_do_calls": 0,
     "adr026_gate": "closed",
-    "live_do_remeasure": false
+    "live_do_web_search": false
   },
   "live_cms_publish": false,
   "test_setup": {
     "site": "https://nik-hil.hashnode.dev/",
-    "job_id": "39b9ddcd-0700-4784-b03e-4b8f77d4559c",
-    "pages_crawled": 12,
+    "job_id": "e26c5919-0ac5-4aab-86f4-36def39ec882",
+    "demo_mode": false,
+    "pages_crawled": 20,
     "pages_optimized": 3,
     "query_count": 20,
     "discovery_method": "query-discovery-v2",
     "query_set_version": "query-set-v3",
-    "fingerprint": "506a8f8347c17d950af4cbf09b4e2dcea102ba431853ddda05b6c7c120959df1",
-    "selection_seed": 42,
-    "provider": "demo",
+    "query_set_id": "qs_fc087f4f5ebf",
+    "fingerprint": "2d79e25bd6f4513556c97f41b7d40851b74887573df594b206b1b221952175ec",
+    "selection_seed": 3236362228,
+    "provider": "openai_compatible",
+    "model_id": "openai-gpt-4o-mini",
     "experiment_kind": "llm_mention",
     "retrieval_enabled": false
   },
   "baselines": {
-    "phase4_ai_search": {
-      "job_id": "a24c1a42-faac-48da-80ae-c0b608650cbc",
-      "provider": "digitalocean_web_search",
-      "appeared": 17,
-      "cited": 17,
-      "n": 20,
-      "appearance_rate": 0.85,
-      "citation_rate": 0.85,
-      "mention_rate": 0.7,
-      "query_set_version": "query-set-v3",
-      "fingerprint": "8547b8bb784300fc6cfeff4b0830de86f8838c6b51d4f126716ccc22d6555432",
-      "selection_seed": 42,
-      "note": "Historical recorded baseline only; not re-run in Phase 6"
-    },
-    "phase6_live_visibility": {
-      "mode": "demo_synthetic",
+    "cos_live_llm_mention": {
+      "job_id": "e26c5919-0ac5-4aab-86f4-36def39ec882",
+      "authoritative": true,
+      "scores": {
+        "aeo_health": 76.4,
+        "technical": 95.0,
+        "structured_data": 90.0,
+        "answerability": 75.0,
+        "content": 69.6,
+        "entity": 52.5
+      },
+      "llm_mention_rate": 0.13333333333333333,
+      "llm_mention_numerator": 8,
+      "llm_mention_denominator": 60,
       "ai_search_measured": false
+    },
+    "phase4_ai_search_historical": {
+      "job_id": "a24c1a42-faac-48da-80ae-c0b608650cbc",
+      "authoritative_for_phase6": false,
+      "note": "Historical paid DO record only; not Phase 6 remeasure"
     }
   },
   "recommendation_examples": [
     {
-      "id": "R1_homepage_h1",
+      "id": "R1",
+      "code": "REC_CONSOLIDATE_BRAND_NAME",
       "page": "https://nik-hil.hashnode.dev/",
-      "problem": "Missing H1",
-      "recommendation": "add h1",
-      "provenance": "derived from gap+page-intel; not a ranking promise"
+      "problem": "Inconsistent brand strings across titles/pages",
+      "recommendation": "Pick one preferred brand spelling; use in titles and Organization schema"
     },
     {
-      "id": "R2_agent1_answer_first",
-      "page": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
-      "problem": "Thin/partial coverage; weak answer-first density",
-      "recommendation": "expand meta_description; rewrite lead section answer-first",
-      "provenance": "opt-brief-v1 derived"
+      "id": "R2",
+      "code": "REC_CLARIFY_BRAND_IN_COPY",
+      "page": "https://nik-hil.hashnode.dev/",
+      "problem": "Low llm_mention_rate / weak entity signals",
+      "recommendation": "Preferred brand in titles, lead, Organization JSON-LD name"
     },
     {
-      "id": "R3_agent1_faq_schema_fixture",
-      "page": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
-      "problem": "Weak FAQ/FAQPage signals",
-      "recommendation": "add visible FAQ + FAQPage JSON-LD mirroring visible content",
-      "change_source": "fixture_simulated"
+      "id": "R3",
+      "code": "REC_FIX_HEADING_HIERARCHY",
+      "page": "https://nik-hil.hashnode.dev/",
+      "problem": "Missing/duplicate h1 or heading level skips",
+      "recommendation": "One h1 per page; sequential h2\u2192h3"
     }
   ],
   "post_optimization": {
@@ -76,28 +84,19 @@
     "evidence_class": "hypothesis",
     "homepage_gap_count": {
       "baseline": 2,
-      "post": 1
-    },
-    "article_agent1_gap_count": {
-      "baseline": 3,
-      "post": 2
-    },
-    "article_agent1_full_coverage": {
-      "baseline": 2,
-      "post": 3
+      "post": 0
     }
   },
   "artifacts": [
-    "docs/verification/artifacts/phase6/PHASE6_HASHNODE_JOB_SUMMARY.json",
-    "docs/verification/artifacts/phase6/PHASE6_HASHNODE_JOB_REPORT_EXCERPT.json",
+    "docs/verification/artifacts/phase6/PHASE6_COS_BASELINE_EVIDENCE.json",
+    "docs/verification/artifacts/phase6/PHASE6_COS_BASELINE_REPORT_EXCERPT.json",
+    "docs/verification/artifacts/phase6/PHASE6_COS_BASELINE_SNAPSHOT.json",
     "docs/verification/artifacts/phase6/PHASE6_FIXTURE_BEFORE_AFTER.json",
-    "docs/verification/artifacts/phase6/PHASE6_RECOMMENDATION_EXAMPLES.json",
-    "docs/verification/artifacts/phase6/PHASE6_PHASE4_AISEARCH_BASELINE.json"
+    "docs/verification/artifacts/phase6/PHASE6_RECOMMENDATION_EXAMPLES.json"
   ],
   "conclusion": "partially_validated",
   "tests": {
-    "focused_phase5_phase6": "85 passed",
-    "full_suite": "417 passed, 1 skipped",
+    "full_suite": "419 passed, 1 skipped",
     "skipped": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
   }
 }

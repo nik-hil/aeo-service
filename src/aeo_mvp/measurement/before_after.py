@@ -227,6 +227,8 @@ def extract_baseline_from_report(
     cited = vis_block.get("cited")
     n = vis_block.get("n") or vis_block.get("observations")
     if n is None:
+        n = exp.get("observations_count")
+    if n is None:
         n = disc.get("selected_count") or len(disc.get("queries") or []) or 0
 
     metrics = report.get("metrics") or {}
@@ -243,12 +245,12 @@ def extract_baseline_from_report(
         "ai_search_appearance_rate",
         "appearance_rate",
     ):
-        block = metrics.get(key) or report.get(key)
+        block = metrics.get(key) or report.get(key) or exp.get(key)
         if isinstance(block, dict) and block.get("value") is not None:
             appearance_rate = float(block["value"])
             break
     for key in ("ai_search_citation_rate", "citation_rate"):
-        block = metrics.get(key) or report.get(key)
+        block = metrics.get(key) or report.get(key) or exp.get(key)
         if isinstance(block, dict) and block.get("value") is not None:
             citation_rate = float(block["value"])
             break
@@ -257,12 +259,23 @@ def extract_baseline_from_report(
         "llm_mention_rate",
         "mention_rate",
     ):
-        block = metrics.get(key) or report.get(key)
+        block = metrics.get(key) or report.get(key) or exp.get(key) or vis_block.get(
+            key
+        )
         if isinstance(block, dict) and block.get("value") is not None:
             mention_rate = float(block["value"])
             mention_prov = block.get("provenance")
             break
+        if isinstance(block, (int, float)):
+            mention_rate = float(block)
+            mention_prov = "estimate"
+            break
 
+    # Prefer selected query count for n_queries when observations are runs×queries
+    selected_n = disc.get("selected_count") or (
+        qs.get("selected_count") if isinstance(qs, dict) else None
+    )
+    n_queries = int(selected_n) if selected_n else int(n or 0)
     if appeared is not None and n:
         appearance_rate = appearance_rate if appearance_rate is not None else _rate(
             int(appeared), int(n)
@@ -282,6 +295,10 @@ def extract_baseline_from_report(
         if provider == "demo":
             warnings.append(
                 "Visibility provider=demo — metrics are synthetic, not AI-search proof."
+            )
+        elif experiment_kind == "llm_mention":
+            warnings.append(
+                "llm-mention-v1 baseline — not AI-search / DO web_search visibility."
             )
     elif appeared is None and cited is None:
         mode = "none"
@@ -353,7 +370,7 @@ def extract_baseline_from_report(
         else None,
         paid_retrieval=bool(paid) if paid is not None else None,
         visibility_mode=mode,
-        n_queries=int(n or 0),
+        n_queries=n_queries,
         appeared_count=int(appeared) if appeared is not None else None,
         cited_count=int(cited) if cited is not None else None,
         appearance_rate=appearance_rate,

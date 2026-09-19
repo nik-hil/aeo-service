@@ -225,8 +225,10 @@ def test_phase6_html_fixtures_exist_and_optimize():
     assert (PHASE6 / "article_agent1_optimized.html").is_file()
     base = (PHASE6 / "homepage_baseline.html").read_text(encoding="utf-8")
     opt = (PHASE6 / "homepage_optimized.html").read_text(encoding="utf-8")
-    assert "<h1" not in base.lower() or "Nikhil Ikhar's blog — AI agents" not in base
-    assert "Nikhil Ikhar's blog — AI agents" in opt
+    assert "<h1" not in base.lower()
+    assert "<h1" in opt.lower()
+    assert "Nikhil Ikhar" in opt
+    assert "Organization" in opt
     b = run_content_optimization(
         html=base,
         url="https://nik-hil.hashnode.dev/",
@@ -240,8 +242,8 @@ def test_phase6_html_fixtures_exist_and_optimize():
         generate_draft=True,
     )
     assert o.page_intelligence.h1
+    assert "Nikhil Ikhar" in (o.page_intelligence.h1 or "")
     assert b.to_dict()["content_drafts"][0]["content_provenance"] == "generated"
-    # Optimized should not increase gap_count
     assert (o.to_dict()["content_gaps"][0]["gap_count"] or 0) <= (
         b.to_dict()["content_gaps"][0]["gap_count"] or 0
     )
@@ -268,11 +270,46 @@ def test_mappings_from_brief_include_query_and_gap_refs():
     assert maps[0].queries_affected == ["q1"]
 
 
-def test_live_phase6_artifact_present_if_committed():
+def test_cos_authoritative_baseline_artifact():
+    evidence = ARTIFACTS / "PHASE6_COS_BASELINE_EVIDENCE.json"
+    assert evidence.is_file(), "CoS authoritative baseline evidence required"
+    data = json.loads(evidence.read_text(encoding="utf-8"))
+    assert data["job_id"] == "e26c5919-0ac5-4aab-86f4-36def39ec882"
+    assert data["demo_mode"] is False
+    assert data["pages_crawled"] == 20
+    assert data["paid_do_calls"] == 0
+    assert data["visibility_provider"] == "openai_compatible"
+    assert data["visibility"]["experiment_kind"] == "llm_mention"
+    assert data["visibility"]["retrieval_enabled"] is False
+    assert data["query_set"]["seed"] == 3236362228
+    assert abs(float(data["visibility"]["llm_mention_rate"]) - (8 / 60)) < 1e-9
+    codes = {r["code"] for r in data["example_actionable_recommendations"]}
+    assert codes >= {
+        "REC_CONSOLIDATE_BRAND_NAME",
+        "REC_CLARIFY_BRAND_IN_COPY",
+        "REC_FIX_HEADING_HIERARCHY",
+    }
+
+
+def test_extract_baseline_from_cos_report_excerpt():
+    path = ARTIFACTS / "PHASE6_COS_BASELINE_REPORT_EXCERPT.json"
+    assert path.is_file()
+    report = json.loads(path.read_text(encoding="utf-8"))
+    snap = extract_baseline_from_report(report, source="cos")
+    assert snap.job_id == "e26c5919-0ac5-4aab-86f4-36def39ec882"
+    assert snap.visibility_mode == "llm_mention"
+    assert snap.provider == "openai_compatible"
+    assert snap.paid_retrieval is False
+    assert snap.selection_seed == 3236362228
+    assert snap.mention_rate == pytest.approx(8 / 60)
+    assert snap.retrieval_enabled is False
+    assert any("llm-mention" in w.lower() for w in snap.warnings)
+
+
+def test_supporting_agent_smoke_artifact_still_adr026_closed():
     summary = ARTIFACTS / "PHASE6_HASHNODE_JOB_SUMMARY.json"
     if not summary.is_file():
-        pytest.skip("Phase 6 live artifact not present in tree")
+        pytest.skip("supporting smoke artifact absent")
     data = json.loads(summary.read_text(encoding="utf-8"))
     assert data.get("paid_retrieval_opt_in") is False
     assert data.get("adr026_gate") == "closed"
-    assert "hashnode" in (data.get("base_url") or "")

@@ -1,82 +1,23 @@
 [
   {
-    "id": "R1_homepage_h1",
     "page": "https://nik-hil.hashnode.dev/",
-    "problem": "Missing H1",
-    "evidence": [
-      {
-        "evidence_class": "title_h1",
-        "provenance": "compatibility",
-        "snippet": "h1_missing"
-      }
-    ],
-    "recommendation": "add h1: H1 missing",
-    "provenance": "derived from gap+page-intel; not a ranking promise",
-    "expected_aeo_relevance": "Improves extractable page topic/brand signal for navigational probes; not a citation guarantee.",
-    "priority": 1.0,
-    "action": "add_schema"
+    "problem": "Inconsistent brand strings across titles/pages.",
+    "recommendation": "Pick one preferred brand spelling and use it consistently in titles and Organization schema.",
+    "code": "REC_CONSOLIDATE_BRAND_NAME",
+    "title": "Consolidate brand naming across titles"
   },
   {
-    "id": "R2_agent1_answer_first",
-    "page": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
-    "problem": "Under-covered query probes + weak answer-first density on agent tutorial page",
-    "evidence": [
-      {
-        "evidence_class": "article_body",
-        "matched_signals": [
-          "tools",
-          "entity:Nikhil Ikhar"
-        ],
-        "provenance": "derived",
-        "snippet": "Thin/weak mention only"
-      },
-      {
-        "evidence_class": "article_body",
-        "matched_signals": [
-          "entity:Nikhil Ikhar"
-        ],
-        "provenance": "derived",
-        "snippet": "Thin/weak mention only"
-      }
-    ],
-    "recommendation": "expand meta_description: Improve toward answer-first summary; rewrite section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling: Answer-first introduction grounded in page topic.",
-    "related_queries": [
-      {
-        "query_id": "q_021b0ad8fd01",
-        "text": "How does Physiology: The Rhythmic Dance of Life work?"
-      },
-      {
-        "query_id": "q_21c69322e1c9",
-        "text": "How does The three permission modes work?"
-      }
-    ],
-    "provenance": "derived from gap+page-intel; not a ranking promise",
-    "expected_aeo_relevance": "Raises page_coverage for tool-calling / agent-loop probes via direct answer units.",
-    "priority": 1.0,
-    "action": "expand_section"
+    "page": "https://nik-hil.hashnode.dev/",
+    "problem": "Low sample llm_mention_rate with weak entity signals.",
+    "recommendation": "Use the preferred brand spelling consistently in titles, lead paragraphs, and Organization schema.",
+    "code": "REC_CLARIFY_BRAND_IN_COPY",
+    "title": "Clarify brand naming in on-page copy"
   },
   {
-    "id": "R3_agent2_expand_faq",
-    "page": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
-    "problem": "Page 'Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools' has 31 content gaps (10 under-covered probes vs query-set-v3). Page intelligence = extractable answer units; queryse",
-    "evidence": [
-      {
-        "brief_action": "expand_section",
-        "gap_ids": [
-          "gap_thin_1c6cfc9253",
-          "gap_thin_52d3a0fff8",
-          "gap_thin_7b750fb5ca",
-          "gap_thin_88fa6d7267",
-          "gap_thin_957a15e0c1"
-        ]
-      }
-    ],
-    "recommendation": "add section:How does Physiology: The Rhythmic Dance of Life work; add section:How does The three permission modes work",
-    "faq_suggestions_sample": null,
-    "schema_suggestions": null,
-    "provenance": "derived from gap+page-intel; not a ranking promise",
-    "expected_aeo_relevance": "Adds FAQ/answer sections for thin probes; schema only when mirroring visible content.",
-    "priority": 1.0,
-    "action": "expand_section"
+    "page": "https://nik-hil.hashnode.dev/",
+    "problem": "Heading hierarchy issues (missing/duplicate h1 or level skips).",
+    "recommendation": "Ensure one h1 per page and sequential heading levels.",
+    "code": "REC_FIX_HEADING_HIERARCHY",
+    "title": "Fix heading hierarchy"
   }
 ]
