@@ -39,5 +39,10 @@
     "docs/verification/artifacts/phase7/PHASE7_PUBLISH_STATUS.json",
     "docs/verification/PHASE7-AEO-OPTIMIZATION-EXPERIMENT-2026-09-19.md"
   ],
-  "remeasure_script": "scripts/phase7_post_publish_remeasure.py"
+  "remeasure_script": "scripts/phase7_post_publish_remeasure.py",
+  "tests": {
+    "full_suite": "433 passed, 1 skipped",
+    "phase7": "tests/unit/test_phase7_experiment_pack.py",
+    "skipped": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
+  }
 }
