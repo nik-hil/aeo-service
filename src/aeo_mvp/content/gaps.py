@@ -379,10 +379,15 @@ def build_content_gap_report(
             sev: GapSeverity = (
                 "high" if row.page_coverage == "absent" else "medium"
             )
+            # Sheet-native types at emit (P1-1): absent→missing_page, thin→thin_coverage
             gtype: GapType = (
                 "intent_mismatch"
                 if row.page_coverage == "mismatched"
-                else "query"
+                else (
+                    "missing_page"
+                    if row.page_coverage == "absent"
+                    else "thin_coverage"
+                )
             )
             gid = _gap_id(row.page_coverage, row.query_id)
             gaps.append(
@@ -467,7 +472,7 @@ def build_content_gap_report(
             ContentGap(
                 id=gid,
                 kind="missing_faq",
-                gap_type="qa_coverage",
+                gap_type="no_answer_block",
                 severity="medium",
                 explanation="No FAQ schema and no question-shaped headings observed",
                 evidence=[
@@ -480,6 +485,7 @@ def build_content_gap_report(
                 action="Add 2–5 question headings with concise answers; consider FAQPage JSON-LD.",
                 confidence=0.66,
                 provenance="derived",
+                taxonomy_label="on-page question coverage",
             )
         )
         readiness_ids.append(gid)

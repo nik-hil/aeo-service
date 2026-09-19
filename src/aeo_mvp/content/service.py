@@ -274,6 +274,7 @@ def resolve_page_html(
     source_url: str | None,
     html: str | None,
     url_hint: str | None,
+    allow_empty_html: bool = False,
 ) -> tuple[str | None, str, str | None]:
     if html is not None and source_url:
         raise OptimizationRequestError(
@@ -301,7 +302,15 @@ def resolve_page_html(
             page = pages[0] if pages else None
         if page is None:
             raise OptimizationRequestError(f"Job {job_id} has no pages")
-        return page.html, page.url, page.title
+        page_html = page.html
+        if not (page_html and str(page_html).strip()) and not allow_empty_html:
+            fetch_err = getattr(page, "fetch_error", None)
+            raise OptimizationRequestError(
+                f"Page {page.id} has empty or missing HTML"
+                + (f" (fetch_error={fetch_err})" if fetch_err else "")
+                + "; pass allow_empty_html=true to analyze empty content"
+            )
+        return page_html, page.url, page.title
 
     if source_url:
         if is_obviously_unsafe_url(source_url):
@@ -309,6 +318,10 @@ def resolve_page_html(
         return None, source_url, None
 
     if html is not None:
+        if not str(html).strip() and not allow_empty_html:
+            raise OptimizationRequestError(
+                "html is empty; pass allow_empty_html=true to analyze empty content"
+            )
         return html, url_hint or "", None
 
     raise OptimizationRequestError(
@@ -339,7 +352,12 @@ def run_from_resolved(
     generate_draft: bool,
     draft_paid: bool,
     llm_api_key: str | None,
+    allow_empty_html: bool = False,
 ) -> dict[str, Any]:
+    if not (html and str(html).strip()) and not allow_empty_html:
+        raise OptimizationRequestError(
+            "empty_page_html; pass allow_empty_html=true to analyze empty content"
+        )
     result = run_content_optimization(
         html=html,
         url=url,

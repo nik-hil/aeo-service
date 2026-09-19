@@ -319,10 +319,148 @@ class PageIntelligence:
             # honesty / scope additives
             "schema_version": self.page_intel_version or self.schema_version,
             "hostname": self.hostname,
+            "meta_description": self.meta_description,
+            "h1": self.h1,
+            "headings": [h.to_dict() for h in self.headings],
+            "topics": list(self.topics),
+            "faq_coverage": dict(self.faq_coverage) if self.faq_coverage else {},
+            "body_signals": dict(self.body_signals) if self.body_signals else {},
+            "structured_data": dict(self.structured_data) if self.structured_data else {},
+            "answerability_signals": (
+                dict(self.answerability_signals) if self.answerability_signals else {}
+            ),
+            "answer_units": [u.to_dict() for u in self.answer_units],
+            "internal_links": [dict(x) for x in self.internal_links],
+            "signals": [s.to_dict() for s in self.signals],
             "target_match_scope": self.target_match_scope,
             "warnings": list(self.warnings),
             "coverage_is_not_page_affinity": True,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PageIntelligence:
+        """Rehydrate page-intel-v1 including extract additives for gap replay."""
+        if not isinstance(data, dict):
+            raise TypeError("PageIntelligence.from_dict expects a dict")
+
+        def _blocks(raw: list[Any] | None) -> list[AnswerBlock]:
+            out: list[AnswerBlock] = []
+            for item in raw or []:
+                if isinstance(item, AnswerBlock):
+                    out.append(item)
+                elif isinstance(item, dict):
+                    out.append(
+                        AnswerBlock(
+                            kind=item.get("kind") or "list",  # type: ignore[arg-type]
+                            locator=str(item.get("locator") or "body"),
+                            snippet=str(item.get("snippet") or ""),
+                            provenance=str(item.get("provenance") or "observed"),
+                        )
+                    )
+            return out
+
+        def _affinities(raw: list[Any] | None) -> list[QueryAffinity]:
+            out: list[QueryAffinity] = []
+            for item in raw or []:
+                if isinstance(item, QueryAffinity):
+                    out.append(item)
+                elif isinstance(item, dict):
+                    out.append(
+                        QueryAffinity(
+                            query_id=str(item.get("query_id") or ""),
+                            score=float(item.get("score") or 0.0),
+                            method=str(item.get("method") or "token_overlap_v1"),
+                        )
+                    )
+            return out
+
+        def _headings(raw: list[Any] | None) -> list[HeadingNode]:
+            out: list[HeadingNode] = []
+            for item in raw or []:
+                if isinstance(item, HeadingNode):
+                    out.append(item)
+                elif isinstance(item, dict):
+                    out.append(
+                        HeadingNode(
+                            level=int(item.get("level") or 2),
+                            text=str(item.get("text") or ""),
+                            provenance=str(item.get("provenance") or "observed"),  # type: ignore[arg-type]
+                        )
+                    )
+                elif isinstance(item, str):
+                    out.append(HeadingNode(level=2, text=item))
+            return out
+
+        def _units(raw: list[Any] | None) -> list[AnswerUnit]:
+            out: list[AnswerUnit] = []
+            for item in raw or []:
+                if isinstance(item, AnswerUnit):
+                    out.append(item)
+                elif isinstance(item, dict):
+                    out.append(
+                        AnswerUnit(
+                            unit_id=str(item.get("unit_id") or ""),
+                            kind=str(item.get("kind") or "section"),
+                            heading=item.get("heading"),
+                            passage_preview=item.get("passage_preview"),
+                            provenance=str(item.get("provenance") or "observed"),  # type: ignore[arg-type]
+                        )
+                    )
+            return out
+
+        def _signals(raw: list[Any] | None) -> list[ObservedSignal]:
+            out: list[ObservedSignal] = []
+            for item in raw or []:
+                if isinstance(item, ObservedSignal):
+                    out.append(item)
+                elif isinstance(item, dict):
+                    out.append(
+                        ObservedSignal(
+                            key=str(item.get("key") or ""),
+                            value=item.get("value"),
+                            provenance=str(item.get("provenance") or "compatibility"),  # type: ignore[arg-type]
+                            evidence_class=item.get("evidence_class"),
+                            locator=item.get("locator"),
+                            snippet=item.get("snippet"),
+                        )
+                    )
+            return out
+
+        version = str(
+            data.get("page_intel_version") or data.get("schema_version") or PAGE_INTEL_VERSION
+        )
+        return cls(
+            url=str(data.get("url") or ""),
+            page_id=str(data.get("page_id") or ""),
+            page_intel_version=version,
+            title=data.get("title"),
+            primary_topic=dict(data.get("primary_topic") or {}),
+            entities=list(data.get("entities") or []),
+            content_type=data.get("content_type") or "other",  # type: ignore[arg-type]
+            answer_blocks=_blocks(data.get("answer_blocks")),
+            heading_outline=list(data.get("heading_outline") or []),
+            word_count=int(data.get("word_count") or 0),
+            schema_types=list(data.get("schema_types") or []),
+            query_affinities=_affinities(data.get("query_affinities")),
+            limits=list(data.get("limits") or []),
+            content_hash=data.get("content_hash"),
+            method=str(data.get("method") or "deterministic_page_intel_v1"),
+            schema_version=version,
+            hostname=data.get("hostname"),
+            meta_description=data.get("meta_description"),
+            h1=data.get("h1"),
+            headings=_headings(data.get("headings")),
+            body_signals=dict(data.get("body_signals") or {}),
+            topics=list(data.get("topics") or []),
+            faq_coverage=dict(data.get("faq_coverage") or {}),
+            structured_data=dict(data.get("structured_data") or {}),
+            answerability_signals=dict(data.get("answerability_signals") or {}),
+            answer_units=_units(data.get("answer_units")),
+            internal_links=[dict(x) for x in (data.get("internal_links") or [])],
+            signals=_signals(data.get("signals")),
+            target_match_scope=str(data.get("target_match_scope") or "hostname"),
+            warnings=list(data.get("warnings") or []),
+        )
 
 
 # --- Gaps ---
@@ -404,44 +542,23 @@ class ContentGap:
             self.rationale = self.explanation
         if not self.explanation and self.rationale:
             self.explanation = self.rationale
-        # Prefer kind→sheet type when gap_type still legacy/default
+        # Prefer kind→sheet type when gap_type is default thin_coverage, when
+        # legacy normalizes to thin_coverage (e.g. query), or for missing_faq
+        # (canonical FAQ → no_answer_block). Other legacy short labels keep their
+        # sheet-native mapping (structure→structure_gap, metadata→schema_gap, …).
         if self.kind:
             mapped = GAP_KIND_TO_TYPE.get(self.kind)
-            if mapped and (
-                self.gap_type in LEGACY_TYPE_TO_SHEET
-                or self.gap_type == "thin_coverage"
-            ):
-                # Keep explicit sheet gap_type if already sheet-native
-                if str(self.gap_type) in LEGACY_TYPE_TO_SHEET:
-                    self.gap_type = normalize_gap_type(str(self.gap_type))
-                elif self.gap_type == "thin_coverage" and mapped:
-                    # only upgrade default when kind is more specific
-                    pass
-            self.gap_type = normalize_gap_type(
-                str(self.gap_type)
-                if str(self.gap_type) not in LEGACY_TYPE_TO_SHEET
-                and str(self.gap_type)
-                not in (
-                    "missing_page",
-                    "thin_coverage",
-                    "no_answer_block",
-                    "entity_mismatch",
-                    "schema_gap",
-                    "cite_miss",
-                    "structure_gap",
-                    "question_coverage_gap",
-                    "evidence_gap",
-                    "format_gap",
-                    "freshness_gap",
-                    "technical_extractability_gap",
-                    "genre_mismatch",
-                    "intent_mismatch",
-                    "unsupported_claim",
-                    "orphan_strength",
-                    "false_coverage_nav",
-                )
-                else str(self.gap_type)
-            )
+            raw_type = str(self.gap_type)
+            if mapped and raw_type == "thin_coverage":
+                self.gap_type = mapped
+            elif mapped and raw_type in LEGACY_TYPE_TO_SHEET:
+                legacy_sheet = LEGACY_TYPE_TO_SHEET[raw_type]
+                if legacy_sheet == "thin_coverage" or self.kind == "missing_faq":
+                    self.gap_type = mapped
+                else:
+                    self.gap_type = legacy_sheet
+            else:
+                self.gap_type = normalize_gap_type(raw_type)
         else:
             self.gap_type = normalize_gap_type(str(self.gap_type))
         self.severity = normalize_severity(str(self.severity))
@@ -792,6 +909,9 @@ class OptimizedContentDraft:
             "page_url": self.page_url,
             "change_summary": list(self.change_summary),
             "change_plan": [c.to_dict() for c in self.change_plan],
+            # P1-5: surface FAQ / JSON-LD honestly (may be empty when unsupported)
+            "faq": [dict(f) for f in self.faq],
+            "schema_jsonld": list(self.schema_jsonld),
         }
 
 

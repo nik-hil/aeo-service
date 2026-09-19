@@ -355,8 +355,14 @@ def test_t_paid_writer_refuses():
     gaps = build_content_gap_report(page, _queryset())
     brief = build_optimization_brief(page, gaps)
     paid = PaidLLMDraftGenerator(draft_paid=True, api_key="sk-fake")
-    with pytest.raises(RuntimeError, match="not implemented"):
-        paid.generate(page, brief)
+    result = paid.generate(page, brief)
+    assert result.body_markdown == ""
+    assert any("paid_llm_not_implemented" in w for w in result.warnings)
+    draft = build_optimized_draft(page, brief, gaps, generator=paid)
+    assert draft.status == "failed"
+    assert not (draft.body_markdown or "").strip()
+    assert draft.paid_llm is False
+    assert draft.paid is False
 
 
 def test_u_api_rejects_unsafe_source_url(client):

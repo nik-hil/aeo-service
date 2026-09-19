@@ -157,40 +157,63 @@ class DeterministicSkeletonDraftGenerator:
                 )
             )
 
+        # P1-5 honesty: never invent FAQ answers or publishable FAQ JSON-LD.
+        # Questions may be listed for editors; answers only when source-backed.
         faq: list[dict[str, str]] = []
+        source_backed_faq: list[dict[str, str]] = []
         for item in brief.faq_suggestions:
-            q = item.get("question") or ""
-            answer = (
-                f"{q.rstrip('?')} is addressed on this page in the related section. "
-                "[NEEDS_SOURCE] Expand with verified details only."
-            )
-            faq.append({"question": q, "answer": answer})
-            claims.append(
-                UnsupportedClaim(
-                    claim=f"faq:{q}",
-                    support="unsupported",
-                    reason="FAQ skeleton contains NEEDS_SOURCE",
-                    provenance="generated",
+            q = (item.get("question") or "").strip()
+            if not q:
+                continue
+            provided = (item.get("answer") or "").strip()
+            # Accept only explicitly source-backed answers (no NEEDS_SOURCE placeholders).
+            if (
+                provided
+                and "[NEEDS_SOURCE]" not in provided
+                and excerpts
+                and any(ex and ex[:40] in provided for ex in excerpts[:5])
+            ):
+                faq.append({"question": q, "answer": provided})
+                source_backed_faq.append({"question": q, "answer": provided})
+            else:
+                # Editor hint only — empty answer, not inventable structured data.
+                faq.append({"question": q, "answer": ""})
+                claims.append(
+                    UnsupportedClaim(
+                        claim=f"faq:{q}",
+                        support="unsupported",
+                        reason="FAQ answer omitted until source-backed evidence exists",
+                        provenance="generated",
+                    )
                 )
-            )
+                warnings.append("faq_answer_omitted_needs_source")
 
         schema: list[dict[str, Any]] = []
         for t in brief.schema_suggestions:
-            if t == "FAQPage" and faq:
-                schema.append(
-                    {
-                        "@context": "https://schema.org",
-                        "@type": "FAQPage",
-                        "mainEntity": [
-                            {
-                                "@type": "Question",
-                                "name": f["question"],
-                                "acceptedAnswer": {"@type": "Answer", "text": f["answer"]},
-                            }
-                            for f in faq
-                        ],
-                    }
-                )
+            if t == "FAQPage":
+                # Only emit FAQPage JSON-LD when every answer is source-backed.
+                if source_backed_faq and len(source_backed_faq) == len(
+                    [f for f in faq if f.get("question")]
+                ):
+                    schema.append(
+                        {
+                            "@context": "https://schema.org",
+                            "@type": "FAQPage",
+                            "mainEntity": [
+                                {
+                                    "@type": "Question",
+                                    "name": f["question"],
+                                    "acceptedAnswer": {
+                                        "@type": "Answer",
+                                        "text": f["answer"],
+                                    },
+                                }
+                                for f in source_backed_faq
+                            ],
+                        }
+                    )
+                else:
+                    warnings.append("faq_jsonld_omitted_unsupported_answers")
             elif t in ("Article", "BlogPosting"):
                 schema.append(
                     {
@@ -277,8 +300,29 @@ class PaidLLMDraftGenerator:
             fallback.paid_llm = False
             fallback.llm_used = False
             return fallback
-        raise RuntimeError(
-            "Paid LLM draft generator is not implemented; refusing external API calls."
+        # P1-4: paid opt-in preserved, but refuse live calls without fake content.
+        # Caller maps this to OptimizedContentDraft(status="failed") — never 500.
+        return GeneratorResult(
+            title=None,
+            meta_description=None,
+            body_markdown="",
+            faq=[],
+            schema_jsonld=[],
+            unsupported_claims=[
+                UnsupportedClaim(
+                    claim="paid_llm_not_implemented",
+                    support="unsupported",
+                    reason=(
+                        "Paid LLM draft generator is not implemented; "
+                        "refusing external API calls."
+                    ),
+                    provenance="generated",
+                )
+            ],
+            writer=self.name,
+            llm_used=False,
+            paid_llm=False,
+            warnings=["paid_llm_not_implemented:refusing_external_calls"],
         )
 
 
@@ -351,13 +395,24 @@ def build_optimized_draft(
     ]
 
     is_null = isinstance(gen, NullDraftGenerator) or result.writer in ("null", "null_v1")
-    status = (
-        "skipped_paid_false"
-        if is_null and not (result.body_markdown or "").strip()
-        else "generated"
+    is_paid_failure = any(
+        str(w).startswith("paid_llm_not_implemented") for w in (result.warnings or [])
+    ) or any(
+        (getattr(c, "claim", None) or getattr(c, "claim_text", None))
+        == "paid_llm_not_implemented"
+        for c in (result.unsupported_claims or [])
     )
+    if is_paid_failure:
+        status = "failed"
+    elif is_null and not (result.body_markdown or "").strip():
+        status = "skipped_paid_false"
+    else:
+        status = "generated"
 
     writer = "null" if result.writer in ("null", "null_v1") else result.writer
+    body = "" if is_paid_failure else (
+        result.body_markdown if result.body_markdown is not None else ""
+    )
     return OptimizedContentDraft(
         draft_version=DRAFT_VERSION,
         schema_version=DRAFT_VERSION,
@@ -365,17 +420,17 @@ def build_optimized_draft(
         status=status,  # type: ignore[arg-type]
         generator=writer,
         paid=bool(result.paid_llm),
-        title=result.title,
-        body_markdown=result.body_markdown if result.body_markdown is not None else "",
+        title=None if is_paid_failure else result.title,
+        body_markdown=body,
         disclaimer=(
             "Draft suggestion only — not published; not a guarantee of AI citation."
         ),
         unsupported_claims=warnings_list,
         warnings=list(result.warnings),
         page_url=page.url,
-        meta_description=result.meta_description,
-        faq=result.faq,
-        schema_jsonld=result.schema_jsonld,
+        meta_description=None if is_paid_failure else result.meta_description,
+        faq=[] if is_paid_failure else result.faq,
+        schema_jsonld=[] if is_paid_failure else result.schema_jsonld,
         internal_links=list(brief.internal_link_suggestions),
         change_summary=change_summary,
         change_plan=change_plan,
