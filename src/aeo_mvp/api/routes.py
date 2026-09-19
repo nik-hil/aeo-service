@@ -244,12 +244,14 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
             )
         except OptimizationRequestError as exc:
             detail = str(exc)
-            # Job page present but empty/missing HTML → conflict, not generic bad request.
-            status = (
-                409
-                if body.job_id and "empty or missing HTML" in detail
-                else 400
-            )
+            # Align with jobs routes: unknown job/page → 404.
+            # Job page present but empty/missing HTML → 409 conflict.
+            if detail.startswith("Unknown job") or " not found on job " in detail:
+                status = 404
+            elif body.job_id and "empty or missing HTML" in detail:
+                status = 409
+            else:
+                status = 400
             raise HTTPException(status_code=status, detail=detail) from exc
         except SSRFError as exc:
             raise HTTPException(
