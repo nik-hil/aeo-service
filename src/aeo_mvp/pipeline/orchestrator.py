@@ -24,6 +24,7 @@ from aeo_mvp.config import (
     PROMPT_SET_ID,
     get_settings,
 )
+from aeo_mvp.content.service import optimize_job_pages
 from aeo_mvp.crawler.discover import crawl_site
 from aeo_mvp.db.models import (
     AnalysisEvidence,
@@ -611,6 +612,51 @@ class JobOrchestrator:
                 p1_sections["competitors"] = competitors
             if retrieval_enabled:
                 p1_sections["target_site"] = target_identity.to_audit_dict()
+
+            # Phase 5 content optimization — after crawl pages + queryset exist.
+            # Default True matches JobOptions; false skips without fabricating results.
+            content_opt_enabled = bool(options.get("content_optimization", True))
+            if content_opt_enabled:
+                vis_obs_payload: list[dict[str, Any]] = [
+                    {
+                        "prompt_id": o.prompt_id,
+                        "query_id": o.prompt_id,
+                        "query": o.query,
+                        "detected_mention": bool(o.detected_mention),
+                        "detected_citation": bool(o.detected_citation),
+                        "cited_urls": list(o.cited_urls or []),
+                        "provenance": o.provenance,
+                        "experiment_kind": o.experiment_kind,
+                    }
+                    for o in observations
+                ]
+                draft_paid = bool(
+                    options.get("draft_paid") or options.get("paid_llm_opt_in")
+                )
+                p1_sections["content_optimization"] = optimize_job_pages(
+                    pages,
+                    queryset=discovery.to_dict(),
+                    site_profile=understanding.to_dict(),
+                    options=options,
+                    visibility_observations=vis_obs_payload or None,
+                    llm_api_key=(
+                        self.settings.openai_api_key if draft_paid else None
+                    ),
+                )
+            else:
+                p1_sections["content_optimization"] = {
+                    "enabled": False,
+                    "status": "disabled",
+                    "methodology": "content-optimization-v1",
+                    "paid_retrieval": False,
+                    "paid_llm": False,
+                    "pages_considered": len(pages),
+                    "pages_optimized": 0,
+                    "page_intelligence": None,
+                    "content_gaps": [],
+                    "optimization_briefs": [],
+                    "content_drafts": [],
+                }
 
             # Stash P1 sections into job options for report builder
             options["_p1_sections"] = p1_sections
