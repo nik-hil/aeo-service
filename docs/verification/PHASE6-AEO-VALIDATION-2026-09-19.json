@@ -92,11 +92,14 @@
     "docs/verification/artifacts/phase6/PHASE6_COS_BASELINE_REPORT_EXCERPT.json",
     "docs/verification/artifacts/phase6/PHASE6_COS_BASELINE_SNAPSHOT.json",
     "docs/verification/artifacts/phase6/PHASE6_FIXTURE_BEFORE_AFTER.json",
-    "docs/verification/artifacts/phase6/PHASE6_RECOMMENDATION_EXAMPLES.json"
+    "docs/verification/artifacts/phase6/PHASE6_RECOMMENDATION_EXAMPLES.json",
+    "docs/verification/artifacts/phase6/PHASE6_BRIEFS_POST_ACTIONABILITY_FIX.json"
   ],
   "conclusion": "partially_validated",
   "tests": {
-    "full_suite": "419 passed, 1 skipped",
+    "full_suite": "423 passed, 1 skipped",
+    "actionability": "tests/unit/test_brief_actionability.py",
     "skipped": "tests/unit/test_digitalocean_web_search.py::test_live_digitalocean_web_search_optional"
-  }
+  },
+  "brief_actionability_fix": "genre_gate+related_gap_ids+evidence_reasons"
 }

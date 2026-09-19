@@ -509,5 +509,75 @@
   "report_path": "/workspace/phase6-hashnode-baseline-report.json",
   "prior_failed_job_id": "2b56cc1b-e82f-4b8d-af2b-67b322be2a28",
   "notes": "First attempt failed: OPENAI_API_KEY was DO key against api.openai.com (401). Restarted uvicorn with OPENAI_BASE_URL=https://inference.do-ai.run/v1 and OPENAI_MODEL=openai-gpt-4o-mini; paid DigitalOcean web_search retrieval remained disabled. llm-mention via openai_compatible / DO Inference chat completions is \u2260 DigitalOcean web_search (paid retrieval stayed closed; paid_do_calls=0).",
-  "visibility_honesty": "llm-mention via openai_compatible / DO Inference chat completions is \u2260 DigitalOcean web_search (paid retrieval stayed closed; paid_do_calls=0)."
+  "visibility_honesty": "llm-mention via openai_compatible / DO Inference chat completions is \u2260 DigitalOcean web_search (paid retrieval stayed closed; paid_do_calls=0).",
+  "optimization_briefs_post_actionability_fix": [
+    {
+      "page_url": "https://nik-hil.hashnode.dev/",
+      "action": "add_schema",
+      "listing_index_page": true,
+      "executive_summary": "Page 'Nikhil Ikhar's blog' has 4 content gaps (2 under-covered probes vs query-set-v3). Listing/index genre gate: recommend H1/brand/schema/internal links \u2014 not per-query article answer sections. Page intelligence = extractable answer units; queryset matrix = page_coverage only \u2014 not AI visibility and not health-v1.",
+      "work_queue": [
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #1: Building an AI Agent from Scratch wi",
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ]
+        },
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 ",
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ]
+        },
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #3: Giving an AI Agent a Shell Without G",
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ]
+        },
+        {
+          "action": "expand",
+          "target": "meta_description",
+          "reason": "Tighten meta description to answer-first summary with preferred brand cues (current='Learning AI, working on MLOps, RAG, Golang, Python, System Design'); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ]
+        },
+        {
+          "action": "add",
+          "target": "h1",
+          "reason": "H1 missing \u2014 add one preferred brand/topic H1; evidence=\"h1_missing\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_metadata_a5f143680a"
+          ]
+        },
+        {
+          "action": "add",
+          "target": "schema:Organization",
+          "reason": "Listing/index: add Organization schema with one preferred brand name (observed schema_types=[]); evidence=\"h1_missing\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_metadata_a5f143680a"
+          ]
+        }
+      ],
+      "note": "Post-fix regenerated \u2014 genre-safe ops with related_gap_ids"
+    }
+  ],
+  "actionability_fix_note": "optimization_briefs in this file retain the original live job snapshot for audit; use optimization_briefs_post_actionability_fix / PHASE6_BRIEFS_POST_ACTIONABILITY_FIX.json for genre-gated linked work_queue examples after the Content Optimizer fix."
 }

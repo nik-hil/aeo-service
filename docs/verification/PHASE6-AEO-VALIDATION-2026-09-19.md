@@ -89,6 +89,13 @@ Historical paid DO record only (not Phase 6 remeasure): `PHASE6_PHASE4_AISEARCH_
 
 ---
 
+## Phase 5 briefs after actionability fix
+
+Post-fix regenerated excerpts (fixture HTML + CoS baseline identity):  
+`docs/verification/artifacts/phase6/PHASE6_BRIEFS_POST_ACTIONABILITY_FIX.json`
+
+Homepage listing gate: **no** `section:` adds for article probes (permissions / Plan mode); work_queue items cite real `related_gap_ids` with query/evidence in reasons. Catalog R1–R3 remain valid owner actions and align with H1 / brand / Organization / hierarchy ops.
+
 ## Phase 5 / catalog recommendation examples
 
 ### R1 — Consolidate brand naming
@@ -165,6 +172,9 @@ Do **not** claim causal visibility improvement.
 
 ## Testing
 
+Actionability: `tests/unit/test_brief_actionability.py` (homepage genre gate, related_gap_ids, non-templaty reasons, no cross-article bleed).
+
+
 ```
 pytest -q tests/unit/test_phase6_measurement.py \
         tests/unit/test_content_optimization_phase5.py \
@@ -176,7 +186,7 @@ pytest -q -rs
 
 ```
 Focused Phase 5/6 + ADR-026: 86+ passed (see suite)
-Full: pytest -q -rs → **419 passed, 1 skipped**
+Full: pytest -q -rs → **423 passed, 1 skipped**
 ```
 Skipped: live DO retrieval optional test (credentials / `AEO_LIVE_RETRIEVAL_TEST` not set).
 

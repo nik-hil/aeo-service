@@ -652,6 +652,8 @@ class EditOp:
     instruction: str = ""
     must_cite_locators: list[str] = field(default_factory=list)
     proposed_outline: list[str] = field(default_factory=list)
+    related_gap_ids: list[str] = field(default_factory=list)
+    related_query_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -677,6 +679,8 @@ class ContentChange:
             instruction=self.reason,
             must_cite_locators=[],
             proposed_outline=[],
+            related_gap_ids=list(self.related_gap_ids),
+            related_query_ids=list(self.related_query_ids),
         )
 
     def to_dict(self) -> dict[str, Any]:
