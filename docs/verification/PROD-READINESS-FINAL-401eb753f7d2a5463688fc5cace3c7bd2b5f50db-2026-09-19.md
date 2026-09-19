@@ -1,12 +1,11 @@
 # Production-readiness FINAL audit — aeo-service
 
 **Date:** 2026-09-19  
-**FINAL MAIN SHA (PR tip):** `ca25a6ecb47d6ca44cf5edb8a85a0b8030d13607`
-**E-complete audited tree:** `2e18e843ae6b401fc73dbef06c2ca0c71eeff88c`
-**Audit tip (this PR / candidate main):** `ca25a6ecb47d6ca44cf5edb8a85a0b8030d13607`  
-**Base main before E:** `762db4e0b4d83e615e643a000baa928d50adcafb` (includes Workstream D PR #32)  
-**Prior re-audit:** `docs/verification/PROD-READINESS-REAUDIT-MAIN-e9bbad7-2026-09-19.md` (`e9bbad7`)  
-**Prior audit:** `docs/verification/PROD-READINESS-AUDIT-MAIN-21ab341-2026-09-19.md` (`21ab341`)  
+**FINAL MAIN SHA (PR tip at audit packaging):**   
+**E-complete tree (code + E residual):**   
+**Base main before E:**  (includes Workstream D PR #32)  
+**Prior re-audit:**  ()  
+**Prior audit:**  ()  
 **Scope:** Workstream E (low-risk P2/doc cleanup) + final classification of all original P0/P1/P2 IDs. No Phase 6. No live DO / Hashnode. No CI/lease/trusted-base-URL systems built.
 
 ---
