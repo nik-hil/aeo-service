@@ -179,7 +179,7 @@ def _isolate_settings_without_do_keys(monkeypatch):
     """Ensure provider key resolution cannot see DO keys from os.environ or .env.
 
     Clearing os.environ alone is insufficient: production Settings still loads
-    env_file=\".env\". Tests must supply Settings(_env_file=None) with both keys
+    env_file=".env". Tests must supply Settings(_env_file=None) with both keys
     absent and patch get_settings used by the provider module.
     """
     monkeypatch.delenv("DO_MODEL_ACCESS_KEY", raising=False)
