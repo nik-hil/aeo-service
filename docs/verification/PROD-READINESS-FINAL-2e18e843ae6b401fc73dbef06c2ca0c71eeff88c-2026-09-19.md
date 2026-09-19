@@ -1,7 +1,7 @@
 # Production-readiness FINAL audit — aeo-service
 
 **Date:** 2026-09-19  
-**FINAL MAIN SHA:** PR #33 head (`cursor/prod-e-final-audit-c565`) — verify with `git rev-parse HEAD` on that branch
+**FINAL MAIN SHA:** `d55a46370f6fc42d078390ed4624358ea4b1b759` (PR #33 head `cursor/prod-e-final-audit-c565`)
 **E-complete audited tree:** `2e18e843ae6b401fc73dbef06c2ca0c71eeff88c`  
 **Base main before E:** `762db4e0b4d83e615e643a000baa928d50adcafb` (includes Workstream D PR #32)  
 **Prior re-audit:** `docs/verification/PROD-READINESS-REAUDIT-MAIN-e9bbad7-2026-09-19.md` (`e9bbad7`)  
