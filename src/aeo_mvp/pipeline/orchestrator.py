@@ -78,17 +78,31 @@ class JobOrchestrator:
             job.completed_at = utc_now_iso()
         self.session.flush()
 
+    @staticmethod
+    def _allow_paid_do_retrieval(
+        *, paid_opt_in: bool, paid_retrieval_ready: bool
+    ) -> bool:
+        """ADR-026: paid DO web_search only when explicit opt-in ∧ ready QuerySet."""
+        return bool(paid_opt_in) and bool(paid_retrieval_ready)
+
     def _select_provider(
-        self, job: Job, options: dict[str, Any]
+        self,
+        job: Job,
+        options: dict[str, Any],
+        *,
+        allow_paid_retrieval: bool = False,
     ) -> tuple[Any, str | None, bool]:
         """Return (provider, model_id, used_demo_fallback).
 
         Selection order (non-demo):
           1. Explicit options.provider or AEO_VISIBILITY_PROVIDER
-          2. auto → DigitalOcean web_search if DO key present,
+          2. auto → DigitalOcean web_search if DO key present **and**
+             allow_paid_retrieval (ADR-026 opt-in ∧ ready QuerySet),
              else OpenAI-compatible if OPENAI_API_KEY,
              else DemoProvider + fallback flag
         Demo mode always uses DemoProvider (deterministic).
+
+        A configured DO API key never implicitly authorizes paid retrieval.
         """
         settings = self.settings
         provider_opt = (
@@ -102,6 +116,11 @@ class JobOrchestrator:
             return DemoProvider(), None, False
 
         if provider_opt in ("digitalocean_web_search", "digitalocean", "do_web_search"):
+            if not allow_paid_retrieval:
+                raise DigitalOceanWebSearchError(
+                    "provider=digitalocean_web_search requires paid_retrieval_opt_in=true "
+                    "and a ready QuerySet (ADR-026); DO API key alone is not sufficient"
+                )
             if not settings.effective_do_api_key:
                 raise DigitalOceanWebSearchError(
                     "provider=digitalocean_web_search requires DO_MODEL_ACCESS_KEY "
@@ -124,8 +143,8 @@ class JobOrchestrator:
                 "Use auto, demo, openai_compatible, or digitalocean_web_search."
             )
 
-        # auto — prefer real retrieval when DO key is present; never silent Perplexity stub
-        if settings.effective_do_api_key:
+        # auto — paid DO only when opt-in ∧ ready; never silent Perplexity stub
+        if allow_paid_retrieval and settings.effective_do_api_key:
             p = DigitalOceanWebSearchProvider()
             return p, p.model, False
         if settings.openai_api_key:
@@ -280,10 +299,21 @@ class JobOrchestrator:
                 page_count=len(pages),
             )
             p1_sections["discovered_queries"] = discovery.to_dict()
+            # ADR-026 hard gate: opt-in ∧ ready QuerySet. A DO key alone never
+            # authorizes paid web_search; logging alone is not sufficient.
+            allow_paid_retrieval = self._allow_paid_do_retrieval(
+                paid_opt_in=paid_opt_in,
+                paid_retrieval_ready=discovery.paid_retrieval_ready,
+            )
             if paid_opt_in and not discovery.paid_retrieval_ready:
                 logger.info(
                     "paid_retrieval_opt_in set but query set not ready; "
-                    "skipping auto retrieval (Phase 3 cost control)"
+                    "hard-skipping DigitalOcean paid retrieval (ADR-026)"
+                )
+            elif not paid_opt_in:
+                logger.info(
+                    "paid_retrieval_opt_in false; "
+                    "hard-skipping DigitalOcean paid retrieval (ADR-026)"
                 )
 
             # 6. Health
@@ -351,7 +381,11 @@ class JobOrchestrator:
                 metric_prov = "derived_metric"
                 metric_rows = []
             else:
-                provider, model_id, used_demo_fallback = self._select_provider(job, options)
+                provider, model_id, used_demo_fallback = self._select_provider(
+                    job,
+                    options,
+                    allow_paid_retrieval=allow_paid_retrieval,
+                )
                 brand = (
                     understanding.organization_brand
                     or (entity.brand_tokens[0] if entity.brand_tokens else None)
