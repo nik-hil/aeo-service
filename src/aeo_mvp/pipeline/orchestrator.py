@@ -220,6 +220,26 @@ class JobOrchestrator:
         ]
         return [{"id": i, "intent": intent, "query": q} for i, intent, q in templates]
 
+    @staticmethod
+    def _prompt_set_id_from_discovery(discovery: Any) -> str:
+        """Stamp ``prompt_set_id`` from discovery query-set version (SoT).
+
+        Source of truth is ``DiscoveryResult.query_set_version`` (same field
+        used by fingerprint / replay / report methodology), then nested
+        ``query_set.query_set_version``. Never hardcode ``discovered-queries-v1``.
+        """
+        version = str(getattr(discovery, "query_set_version", None) or "").strip()
+        if not version:
+            qs = getattr(discovery, "query_set", None)
+            if isinstance(qs, dict) and qs.get("query_set_version"):
+                version = str(qs["query_set_version"]).strip()
+        if version:
+            return version
+        method = str(getattr(discovery, "method", None) or "").strip()
+        if method:
+            return method
+        return "discovered-queries"
+
     def _build_prompts(
         self,
         job: Job,
@@ -227,11 +247,14 @@ class JobOrchestrator:
         brand: str,
         *,
         discovered: list[dict[str, str]] | None = None,
+        prompt_set_id: str | None = None,
     ) -> tuple[list[dict[str, str]], str]:
         """Return (prompts, prompt_set_id).
 
         Demo mode keeps fixture prompt-set for bit-stable visibility metrics.
         Otherwise prefer discovered queries; fall back to fixed templates.
+        Discovered sets must pass ``prompt_set_id`` from discovery metadata
+        (``query_set_version``), not a frozen v1 alias.
         """
         if job.demo_mode:
             fixture = load_prompt_set_fixture()
@@ -242,7 +265,12 @@ class JobOrchestrator:
             return prompts, fixture.get("prompt_set_id", PROMPT_SET_ID)
 
         if discovered:
-            return discovered, "discovered-queries-v1"
+            if not prompt_set_id:
+                raise ValueError(
+                    "discovered prompts require prompt_set_id from discovery "
+                    "query_set_version (P1-15)"
+                )
+            return discovered, prompt_set_id
 
         return self._fixed_template_prompts(job, options, brand), PROMPT_SET_ID
 
@@ -433,7 +461,9 @@ class JobOrchestrator:
                     if not discovery.fallback_used
                     else []
                 )
-                prompt_set_id = "discovered-queries-dry-run"
+                # Same SoT as full runs: query_set_version (fingerprint / methodology).
+                # discovery_only is already recorded via experiment_kind.
+                prompt_set_id = self._prompt_set_id_from_discovery(discovery)
                 runs_per_prompt = 0
                 retrieval_enabled = False
                 experiment_kind = "discovery_only"
@@ -476,11 +506,19 @@ class JobOrchestrator:
                     or (entity.brand_tokens[0] if entity.brand_tokens else None)
                     or domain_label(job.base_url)
                 )
+                discovered_prompts = (
+                    discovery.as_prompts() if not discovery.fallback_used else None
+                )
                 prompts, prompt_set_id = self._build_prompts(
                     job,
                     options,
                     brand,
-                    discovered=discovery.as_prompts() if not discovery.fallback_used else None,
+                    discovered=discovered_prompts,
+                    prompt_set_id=(
+                        self._prompt_set_id_from_discovery(discovery)
+                        if discovered_prompts
+                        else None
+                    ),
                 )
                 runs_per_prompt = int(options.get("runs_per_prompt", 3))
                 runs_per_prompt = max(1, min(runs_per_prompt, 5))
