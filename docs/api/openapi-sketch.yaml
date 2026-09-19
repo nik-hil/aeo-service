@@ -11,16 +11,23 @@ servers:
   - url: http://127.0.0.1:8000
     description: Local MVP
 
+security:
+  - bearerAuth: []
+
 tags:
   - name: health
   - name: jobs
+
+# P0-3: all routes except GET /health require Bearer AEO_API_KEY (fail-closed).
+# See docs/security/API_AUTH.md.
 
 paths:
   /health:
     get:
       tags: [health]
-      summary: Liveness probe
+      summary: Liveness probe (public — no auth)
       operationId: getHealth
+      security: []
       responses:
         "200":
           description: Service is up
@@ -36,6 +43,8 @@ paths:
       tags: [jobs]
       summary: Create an analysis job
       operationId: createJob
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -199,6 +208,13 @@ paths:
           description: Malformed body (e.g. topic-only generate)
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: Shared secret from AEO_API_KEY (Authorization: Bearer <key>)
+
   parameters:
     JobId:
       name: job_id

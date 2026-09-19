@@ -23,15 +23,18 @@ Copy `.env.example` to `.env` if you want local overrides (optional for demo).
 
 ```bash
 source .venv/bin/activate
+export AEO_API_KEY=dev-local-key-change-me
 uvicorn aeo_mvp.api.app:app --host 127.0.0.1 --port 8000
 ```
 
-Liveness: `GET http://127.0.0.1:8000/health`
+Liveness (public): `GET http://127.0.0.1:8000/health`  
+All other routes require `Authorization: Bearer $AEO_API_KEY` (see `docs/security/API_AUTH.md`).
 
-## Demo job (no API keys / no network crawl)
+## Demo job (no live provider keys / no network crawl)
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/api/v1/jobs \
+  -H "Authorization: Bearer $AEO_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://demo.example/","demo_mode":true,"options":{"provider":"demo"}}'
 ```
@@ -40,9 +43,9 @@ Poll status, then fetch the report:
 
 ```bash
 JOB_ID=<id from create response>
-curl -s http://127.0.0.1:8000/api/v1/jobs/$JOB_ID
-curl -s http://127.0.0.1:8000/api/v1/jobs/$JOB_ID/report | python -m json.tool
-curl -s http://127.0.0.1:8000/api/v1/jobs/$JOB_ID/pages
+curl -s -H "Authorization: Bearer $AEO_API_KEY" http://127.0.0.1:8000/api/v1/jobs/$JOB_ID
+curl -s -H "Authorization: Bearer $AEO_API_KEY" http://127.0.0.1:8000/api/v1/jobs/$JOB_ID/report | python -m json.tool
+curl -s -H "Authorization: Bearer $AEO_API_KEY" http://127.0.0.1:8000/api/v1/jobs/$JOB_ID/pages
 ```
 
 Demo fixtures live under `src/aeo_mvp/demo/fixtures/` for fictional site `https://demo.example/`.
@@ -75,6 +78,7 @@ else OpenAI key → LLM mention; else DemoProvider. Demo mode always stays deter
 - `docs/methodology/AI_VISIBILITY.md` — `vis-exp-v1` protocol
 - `docs/methodology/RECOMMENDATIONS.md` — `rec-catalog-v1`
 - `docs/api/openapi-sketch.yaml` — OpenAPI sketch
+- `docs/security/API_AUTH.md` — fail-closed API authentication (P0-3)
 - `docs/IMPLEMENTATION_STATUS.md` — what works / gaps
 
 ## Example JSON
