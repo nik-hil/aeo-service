@@ -482,7 +482,7 @@
     "observations_count": 60
   },
   "paid_do_calls": 0,
-  "paid_do_calls_confirmation": "paid_do_calls=0 confirmed: AEO_PAID_RETRIEVAL_OPT_IN=false; job options paid_retrieval_opt_in=false; report paid_retrieval=false; discovered_queries.paid_retrieval_opt_in=false; experiment.retrieval_enabled=false; visibility provider=openai_compatible (llm-mention only via DO Inference); orchestrator logged hard-skip of DigitalOcean paid retrieval.",
+  "paid_do_calls_confirmation": "paid_do_calls=0 confirmed: AEO_PAID_RETRIEVAL_OPT_IN=false; job options paid_retrieval_opt_in=false; report paid_retrieval=false; discovered_queries.paid_retrieval_opt_in=false; experiment.retrieval_enabled=false; visibility provider=openai_compatible (llm-mention only via DO Inference); orchestrator logged hard-skip of DigitalOcean paid retrieval. Explicit: openai_compatible llm-mention (DO Inference chat completions) is not DigitalOcean web_search paid retrieval.",
   "example_actionable_recommendations": [
     {
       "page": "https://nik-hil.hashnode.dev/",
@@ -508,5 +508,6 @@
   ],
   "report_path": "/workspace/phase6-hashnode-baseline-report.json",
   "prior_failed_job_id": "2b56cc1b-e82f-4b8d-af2b-67b322be2a28",
-  "notes": "First attempt failed: OPENAI_API_KEY was DO key against api.openai.com (401). Restarted uvicorn with OPENAI_BASE_URL=https://inference.do-ai.run/v1 and OPENAI_MODEL=openai-gpt-4o-mini; paid DigitalOcean web_search retrieval remained disabled."
+  "notes": "First attempt failed: OPENAI_API_KEY was DO key against api.openai.com (401). Restarted uvicorn with OPENAI_BASE_URL=https://inference.do-ai.run/v1 and OPENAI_MODEL=openai-gpt-4o-mini; paid DigitalOcean web_search retrieval remained disabled. llm-mention via openai_compatible / DO Inference chat completions is \u2260 DigitalOcean web_search (paid retrieval stayed closed; paid_do_calls=0).",
+  "visibility_honesty": "llm-mention via openai_compatible / DO Inference chat completions is \u2260 DigitalOcean web_search (paid retrieval stayed closed; paid_do_calls=0)."
 }

@@ -40,7 +40,7 @@ Yes — a real Hashnode run produces **actionable** Phase 5 / catalog recommenda
 | Seed | **3236362228** |
 | Fingerprint | `2d79e25bd6f4513556c97f41b7d40851b74887573df594b206b1b221952175ec` |
 | Discovery | `query-discovery-v2` |
-| Visibility provider | `openai_compatible` (`openai-gpt-4o-mini`) |
+| Visibility provider | `openai_compatible` (`openai-gpt-4o-mini`) — **llm-mention chat completions ≠ DigitalOcean web_search**; paid retrieval stayed closed (`paid_do_calls=0`) |
 | Experiment | `llm_mention` / `llm-mention-v1` |
 | Retrieval enabled | **false** |
 | Paid DO calls | **0** |
