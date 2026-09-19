@@ -1,0 +1,354 @@
+{
+  "note": "Regenerated after Content Optimizer actionability fix (genre gate + related_gap_ids + evidence reasons).",
+  "baseline_job_id": "e26c5919-0ac5-4aab-86f4-36def39ec882",
+  "paid_do_calls": 0,
+  "visibility_honesty": "llm-mention via openai_compatible / DO Inference chat completions is \u2260 DigitalOcean web_search (paid retrieval stayed closed; paid_do_calls=0).",
+  "pages": [
+    {
+      "label": "homepage",
+      "page_url": "https://nik-hil.hashnode.dev/",
+      "listing_index_page": true,
+      "action": "add_schema",
+      "executive_summary": "Page 'Nikhil Ikhar's blog' has 4 content gaps (2 under-covered probes vs query-set-v3). Listing/index genre gate: recommend H1/brand/schema/internal links \u2014 not per-query article answer sections. Page intelligence = extractable answer units; queryset matrix = page_coverage only \u2014 not AI visibility and not health-v1.",
+      "work_queue": [
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #1: Building an AI Agent from Scratch wi",
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ]
+        },
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 ",
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ]
+        },
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #3: Giving an AI Agent a Shell Without G",
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ]
+        },
+        {
+          "action": "expand",
+          "target": "meta_description",
+          "reason": "Tighten meta description to answer-first summary with preferred brand cues (current='Learning AI, working on MLOps, RAG, Golang, Python, System Design'); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ]
+        },
+        {
+          "action": "add",
+          "target": "h1",
+          "reason": "H1 missing \u2014 add one preferred brand/topic H1; evidence=\"h1_missing\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_metadata_a5f143680a"
+          ]
+        },
+        {
+          "action": "add",
+          "target": "schema:Organization",
+          "reason": "Listing/index: add Organization schema with one preferred brand name (observed schema_types=[]); evidence=\"h1_missing\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_metadata_a5f143680a"
+          ]
+        }
+      ],
+      "edit_ops_sample": [
+        {
+          "op_id": "op_0_expand_internal_link:Agents Zero to Hero #1: Building an AI Agent from Scra",
+          "action": "expand",
+          "target_locator": "internal_link:Agents Zero to Hero #1: Building an AI Agent from Scratch wi",
+          "anchor_locator": null,
+          "position": null,
+          "instruction": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ],
+          "related_query_ids": []
+        },
+        {
+          "op_id": "op_1_expand_internal_link:Agents Zero to Hero #2: Giving an AI Agent Eyes and Ha",
+          "action": "expand",
+          "target_locator": "internal_link:Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 ",
+          "anchor_locator": null,
+          "position": null,
+          "instruction": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ],
+          "related_query_ids": []
+        },
+        {
+          "op_id": "op_2_expand_internal_link:Agents Zero to Hero #3: Giving an AI Agent a Shell Wit",
+          "action": "expand",
+          "target_locator": "internal_link:Agents Zero to Hero #3: Giving an AI Agent a Shell Without G",
+          "anchor_locator": null,
+          "position": null,
+          "instruction": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ],
+          "related_query_ids": []
+        },
+        {
+          "op_id": "op_3_expand_meta_description",
+          "action": "expand",
+          "target_locator": "meta_description",
+          "anchor_locator": null,
+          "position": null,
+          "instruction": "Tighten meta description to answer-first summary with preferred brand cues (current='Learning AI, working on MLOps, RAG, Golang, Python, System Design'); evidence=\"Thin/weak mention only\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ],
+          "related_query_ids": []
+        },
+        {
+          "op_id": "op_4_add_h1",
+          "action": "add",
+          "target_locator": null,
+          "anchor_locator": "h1",
+          "position": "append_section",
+          "instruction": "H1 missing \u2014 add one preferred brand/topic H1; evidence=\"h1_missing\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_metadata_a5f143680a"
+          ],
+          "related_query_ids": []
+        },
+        {
+          "op_id": "op_5_add_schema:Organization",
+          "action": "add",
+          "target_locator": null,
+          "anchor_locator": "schema:Organization",
+          "position": "append_section",
+          "instruction": "Listing/index: add Organization schema with one preferred brand name (observed schema_types=[]); evidence=\"h1_missing\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_metadata_a5f143680a"
+          ],
+          "related_query_ids": []
+        }
+      ],
+      "draft_change_plan_sample": [
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #1: Building an AI Agent from Scratch wi",
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ],
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\""
+        },
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 ",
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ],
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\""
+        },
+        {
+          "action": "expand",
+          "target": "internal_link:Agents Zero to Hero #3: Giving an AI Agent a Shell Without G",
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ],
+          "reason": "Listing page: strengthen internal link toward the article that best answers under-covered probes (do not thin-probe answers on the index); evidence=\"Thin/weak mention only\""
+        },
+        {
+          "action": "expand",
+          "target": "meta_description",
+          "related_gap_ids": [
+            "gap_thin_2018064d57",
+            "gap_thin_8972a34b0a"
+          ],
+          "reason": "Tighten meta description to answer-first summary with preferred brand cues (current='Learning AI, working on MLOps, RAG, Golang, Python, System Design'); evidence=\"Thin/weak mention only\""
+        },
+        {
+          "action": "add",
+          "target": "h1",
+          "related_gap_ids": [
+            "gap_metadata_a5f143680a"
+          ],
+          "reason": "H1 missing \u2014 add one preferred brand/topic H1; evidence=\"h1_missing\""
+        },
+        {
+          "action": "add",
+          "target": "schema:Organization",
+          "related_gap_ids": [
+            "gap_metadata_a5f143680a"
+          ],
+          "reason": "Listing/index: add Organization schema with one preferred brand name (observed schema_types=[]); evidence=\"h1_missing\""
+        }
+      ]
+    },
+    {
+      "label": "article_agent1",
+      "page_url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+      "listing_index_page": false,
+      "action": "clarify_entity",
+      "executive_summary": "Page 'Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling' has 3 content gaps (1 under-covered probes vs query-set-v3). Page intelligence = extractable answer units; queryset matrix = page_coverage only \u2014 not AI visibility and not health-v1.",
+      "work_queue": [
+        {
+          "action": "expand",
+          "target": "meta_description",
+          "reason": "Tighten meta description to answer-first summary with preferred brand cues (current='Stop relying on complex frameworks! Learn how to build an AI agent from first pr'); evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34",
+            "gap_entity_1052269cb3"
+          ]
+        },
+        {
+          "action": "add",
+          "target": "cross_page_link",
+          "reason": "Probe is off-topic for this article \u2014 link to best_page (choose matching article) instead of adding a thin answer section here; query=\"Where can I find content from Nikhil Ikhar?\"; evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [
+            "q_brand"
+          ],
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34"
+          ]
+        },
+        {
+          "action": "rewrite",
+          "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+          "reason": "Answer-first introduction grounded in page topic; query=\"Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling\"; evidence=\"Thin/weak mention only\"",
+          "related_query_ids": [],
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34"
+          ]
+        }
+      ],
+      "edit_ops_sample": [
+        {
+          "op_id": "op_0_retain_h1",
+          "action": "retain",
+          "target_locator": "h1",
+          "anchor_locator": null,
+          "position": null,
+          "instruction": "Existing H1 present ('Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling'); keep single H1; evidence=\"Thin/weak mention only\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34"
+          ],
+          "related_query_ids": []
+        },
+        {
+          "op_id": "op_2_expand_meta_description",
+          "action": "expand",
+          "target_locator": "meta_description",
+          "anchor_locator": null,
+          "position": null,
+          "instruction": "Tighten meta description to answer-first summary with preferred brand cues (current='Stop relying on complex frameworks! Learn how to build an AI agent from first pr'); evidence=\"Thin/weak mention only\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34",
+            "gap_entity_1052269cb3"
+          ],
+          "related_query_ids": []
+        },
+        {
+          "op_id": "op_3_add_cross_page_link",
+          "action": "add",
+          "target_locator": null,
+          "anchor_locator": "cross_page_link",
+          "position": "append_section",
+          "instruction": "Probe is off-topic for this article \u2014 link to best_page (choose matching article) instead of adding a thin answer section here; query=\"Where can I find content from Nikhil Ikhar?\"; evidence=\"Thin/weak mention only\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34"
+          ],
+          "related_query_ids": [
+            "q_brand"
+          ]
+        },
+        {
+          "op_id": "op_1_rewrite_section:Agents Zero to Hero #1: Building an AI Agent from Scratch w",
+          "action": "rewrite",
+          "target_locator": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+          "anchor_locator": null,
+          "position": null,
+          "instruction": "Answer-first introduction grounded in page topic; query=\"Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling\"; evidence=\"Thin/weak mention only\"",
+          "must_cite_locators": [],
+          "proposed_outline": [],
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34"
+          ],
+          "related_query_ids": []
+        }
+      ],
+      "draft_change_plan_sample": [
+        {
+          "action": "retain",
+          "target": "h1",
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34"
+          ],
+          "reason": "Existing H1 present ('Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling'); keep single H1; evidence=\"Thin/weak mention only\""
+        },
+        {
+          "action": "rewrite",
+          "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34"
+          ],
+          "reason": "Answer-first introduction grounded in page topic; query=\"Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling\"; evidence=\"Thin/weak mention only\""
+        },
+        {
+          "action": "expand",
+          "target": "meta_description",
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34",
+            "gap_entity_1052269cb3"
+          ],
+          "reason": "Tighten meta description to answer-first summary with preferred brand cues (current='Stop relying on complex frameworks! Learn how to build an AI agent from first pr'); evidence=\"Thin/weak mention only\""
+        },
+        {
+          "action": "add",
+          "target": "cross_page_link",
+          "related_gap_ids": [
+            "gap_thin_ff150a2c34"
+          ],
+          "reason": "Probe is off-topic for this article \u2014 link to best_page (choose matching article) instead of adding a thin answer section here; query=\"Where can I find content from Nikhil Ikhar?\"; evidence=\"Thin/weak mention only\""
+        }
+      ]
+    }
+  ]
+}
