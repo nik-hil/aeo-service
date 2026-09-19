@@ -64,6 +64,7 @@ from aeo_mvp.visibility.openai_compatible import (
     OpenAICompatibleProvider,
     redact_secrets,
 )
+from aeo_mvp.pipeline.job_claim import claim_job, new_worker_id
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class JobOrchestrator:
         if status == "completed":
             job.completed_at = utc_now_iso()
         self.session.flush()
+        logger.info("job_status_transition job_id=%s status=%s", job.id, status)
 
     @staticmethod
     def _allow_paid_do_retrieval(
@@ -216,10 +218,16 @@ class JobOrchestrator:
 
         return self._fixed_template_prompts(job, options, brand), PROMPT_SET_ID
 
-    async def run(self, job_id: str) -> Job:
-        job = self.session.get(Job, job_id)
-        if job is None:
-            raise ValueError(f"unknown job {job_id}")
+    async def run(self, job_id: str, *, worker_id: str | None = None) -> Job:
+        """Execute the pipeline for ``job_id`` after an atomic DB claim.
+
+        Claim (pending|failed → claimed) is committed before crawl / providers.
+        ``JobClaimConflict`` means another owner holds the job — not a provider
+        failure (job status is left unchanged by the loser).
+        """
+        wid = worker_id or new_worker_id()
+        # Durable ownership first — do not hold this claim txn across crawl/LLM.
+        job = claim_job(self.session, job_id, worker_id=wid, commit=True)
         options = json.loads(job.options_json or "{}")
         provenance = "synthetic_demo" if job.demo_mode else "derived_metric"
         p1_sections: dict[str, Any] = {}
@@ -692,8 +700,8 @@ class JobOrchestrator:
             raise
 
 
-async def run_job(session: Session, job_id: str) -> Job:
-    return await JobOrchestrator(session).run(job_id)
+async def run_job(session: Session, job_id: str, *, worker_id: str | None = None) -> Job:
+    return await JobOrchestrator(session).run(job_id, worker_id=worker_id)
 
 
 def create_job_record(
