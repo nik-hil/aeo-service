@@ -175,12 +175,62 @@ def test_parse_query_singular_only():
     assert parsed["search_queries"] == ["solo query"]
 
 
-def test_provider_requires_key(monkeypatch):
+def _isolate_settings_without_do_keys(monkeypatch):
+    """Ensure provider key resolution cannot see DO keys from os.environ or .env.
+
+    Clearing os.environ alone is insufficient: production Settings still loads
+    env_file=\".env\". Tests must supply Settings(_env_file=None) with both keys
+    absent and patch get_settings used by the provider module.
+    """
     monkeypatch.delenv("DO_MODEL_ACCESS_KEY", raising=False)
     monkeypatch.delenv("MODEL_ACCESS_KEY", raising=False)
-    from aeo_mvp.config import get_settings
+    from aeo_mvp.config import Settings, get_settings
 
     get_settings.cache_clear()
+    isolated = Settings(_env_file=None)
+    assert isolated.do_model_access_key is None
+    assert isolated.model_access_key is None
+    monkeypatch.setattr(
+        "aeo_mvp.visibility.digitalocean_web_search.get_settings",
+        lambda: isolated,
+    )
+    return isolated
+
+
+def test_provider_requires_key(monkeypatch):
+    _isolate_settings_without_do_keys(monkeypatch)
+    from aeo_mvp.config import get_settings
+
+    with pytest.raises(DigitalOceanWebSearchError, match="DO_MODEL_ACCESS_KEY"):
+        DigitalOceanWebSearchProvider(api_key=None)
+    get_settings.cache_clear()
+
+
+def test_provider_requires_key_isolated_from_dotenv(monkeypatch, tmp_path):
+    """Regression: a developer .env must not satisfy api_key=None resolution."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "DO_MODEL_ACCESS_KEY=secret-from-dotenv\n"
+        "MODEL_ACCESS_KEY=fallback-from-dotenv\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DO_MODEL_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("MODEL_ACCESS_KEY", raising=False)
+
+    from aeo_mvp.config import Settings, get_settings
+
+    get_settings.cache_clear()
+    # Prove clearing os.environ alone is insufficient: Settings still loads .env.
+    leaky = Settings()
+    assert leaky.do_model_access_key == "secret-from-dotenv"
+    assert leaky.model_access_key == "fallback-from-dotenv"
+
+    # Also poison process env — isolation must clear both sources.
+    monkeypatch.setenv("DO_MODEL_ACCESS_KEY", "secret-from-environ")
+    monkeypatch.setenv("MODEL_ACCESS_KEY", "fallback-from-environ")
+
+    _isolate_settings_without_do_keys(monkeypatch)
     with pytest.raises(DigitalOceanWebSearchError, match="DO_MODEL_ACCESS_KEY"):
         DigitalOceanWebSearchProvider(api_key=None)
     get_settings.cache_clear()
