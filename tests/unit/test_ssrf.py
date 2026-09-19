@@ -89,6 +89,30 @@ def test_is_obviously_unsafe_covers_literals() -> None:
     assert is_obviously_unsafe_url("http://127.0.0.1/") is True
     assert is_obviously_unsafe_url("http://10.0.0.1/") is True
     assert is_obviously_unsafe_url("https://example.com/") is False
+    # Decimal / hex integer IPv4 forms (P1-10 create-time gate)
+    assert is_obviously_unsafe_url("http://2130706433/") is True  # 127.0.0.1
+    assert is_obviously_unsafe_url("http://0x7f000001/") is True
+    # Public-looking hostname still not "obvious" without DNS
+    assert is_obviously_unsafe_url("https://example.com/path") is False
+
+
+def test_decimal_hex_loopback_blocked_at_fetch() -> None:
+    """Fetch-time SSRF also rejects decimal/hex loopback (authoritative path)."""
+    with pytest.raises(SSRFError):
+        assert_safe_public_url("http://2130706433/")
+    with pytest.raises(SSRFError):
+        assert_safe_public_url("http://0x7f000001/")
+
+
+def test_normalize_public_url_strips_userinfo() -> None:
+    from aeo_mvp.security.ssrf import normalize_public_url
+
+    out = normalize_public_url("http://user:s3cret@Example.COM/path?q=1#frag")
+    assert "user" not in out
+    assert "s3cret" not in out
+    assert out.startswith("http://example.com/path")
+    assert "q=1" in out
+    assert "frag" not in out
 
 
 @pytest.mark.asyncio

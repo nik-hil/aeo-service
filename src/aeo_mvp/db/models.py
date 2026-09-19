@@ -155,6 +155,14 @@ class ExperimentConfig(Base):
 
 class VisibilityObservation(Base):
     __tablename__ = "visibility_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "experiment_config_id",
+            "prompt_id",
+            "run_index",
+            name="uq_vis_obs_cfg_prompt_run",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     job_id: Mapped[str] = mapped_column(String(36), ForeignKey("jobs.id"), nullable=False)
