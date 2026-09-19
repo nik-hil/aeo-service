@@ -208,6 +208,13 @@ paths:
           description: Malformed body (e.g. topic-only generate)
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: Shared secret from AEO_API_KEY (Authorization: Bearer <key>)
+
   parameters:
     JobId:
       name: job_id
