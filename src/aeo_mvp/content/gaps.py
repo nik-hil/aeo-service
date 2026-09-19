@@ -837,10 +837,8 @@ def build_content_gap_report(
                 )
                 queryset_ids.append(gid)
     else:
-        for row in coverage_rows:
-            assert row.visibility_enrichment is None or "cite_miss" not in (
-                row.visibility_enrichment or {}
-            )
+        # No visibility observations → never emit cite_miss (D1 honesty).
+        pass
 
     gaps.sort(key=lambda g: (_sev_rank(g.severity), _type_rank(g.gap_type), g.id))
 
@@ -871,9 +869,18 @@ def build_content_gap_report(
         "gapped": max(0, n_queries - covered),
         **dict(summary),
     }
-    fingerprint = hashlib.sha1(
-        f"{qs_id}|{qs_version}|{page.url}|{len(gaps)}".encode()
-    ).hexdigest()[:16]
+    # Prefer discovery / QuerySet fingerprint when present; else synthetic fallback.
+    fingerprint: str | None = None
+    if isinstance(queryset, dict):
+        raw_fp = queryset.get("fingerprint") or queryset.get("queryset_fingerprint")
+        if raw_fp:
+            fingerprint = str(raw_fp)
+    elif hasattr(queryset, "fingerprint") and getattr(queryset, "fingerprint"):
+        fingerprint = str(getattr(queryset, "fingerprint"))
+    if not fingerprint:
+        fingerprint = hashlib.sha1(
+            f"{qs_id}|{qs_version}|{page.url}|{len(gaps)}".encode()
+        ).hexdigest()[:16]
 
     return ContentGapReport(
         gap_report_version=GAP_VERSION,

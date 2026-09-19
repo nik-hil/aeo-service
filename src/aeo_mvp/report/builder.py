@@ -224,6 +224,7 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
     discovered_queries = pipeline_extras.get("discovered_queries")
     competitors = pipeline_extras.get("competitors")
     target_site = pipeline_extras.get("target_site")
+    content_optimization = pipeline_extras.get("content_optimization")
 
     if site_understanding is None and site_profile_row:
         try:
@@ -343,21 +344,27 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
         experiment_block["llm_url_mention_rate"] = metric_obj("llm_url_mention_rate")
         experiment_block["query_coverage"] = metric_obj("query_coverage")
 
+    methodology_block: dict[str, Any] = {
+        "health_formula_version": job.health_formula_version or "health-v1",
+        "experiment_protocol_version": job.experiment_protocol_version or "llm-mention-v1",
+        "prompt_set_id": exp_cfg.prompt_set_id if exp_cfg else "prompt-set-v1",
+        "crawl": {
+            "max_pages": options.get("max_pages", 25),
+            "max_depth": options.get("max_depth", 2),
+            "user_agent": USER_AGENT,
+        },
+    }
+    if content_optimization and content_optimization.get("methodology"):
+        methodology_block["content_optimization_methodology"] = content_optimization[
+            "methodology"
+        ]
+
     report: dict[str, Any] = {
         "job_id": job.id,
         "base_url": job.base_url,
         "demo_mode": bool(job.demo_mode),
         "status": job.status,
-        "methodology": {
-            "health_formula_version": job.health_formula_version or "health-v1",
-            "experiment_protocol_version": job.experiment_protocol_version or "llm-mention-v1",
-            "prompt_set_id": exp_cfg.prompt_set_id if exp_cfg else "prompt-set-v1",
-            "crawl": {
-                "max_pages": options.get("max_pages", 25),
-                "max_depth": options.get("max_depth", 2),
-                "user_agent": USER_AGENT,
-            },
-        },
+        "methodology": methodology_block,
         "caveats": caveats,
         "executive_summary": executive_summary,
         "scores": scores_block,
@@ -407,6 +414,47 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
         from aeo_mvp.target_site import resolve_target_site_identity
 
         report["target_site"] = resolve_target_site_identity(job.base_url).to_audit_dict()
+
+    # Phase 5 — additive/versioned; same keys as standalone when optimization ran.
+    if content_optimization is not None:
+        report["content_optimization"] = {
+            "enabled": bool(content_optimization.get("enabled")),
+            "status": content_optimization.get("status"),
+            "methodology": content_optimization.get("methodology"),
+            "pages_considered": content_optimization.get("pages_considered", 0),
+            "pages_optimized": content_optimization.get("pages_optimized", 0),
+            "page_ids": list(content_optimization.get("page_ids") or []),
+            "skipped_page_ids": list(
+                content_optimization.get("skipped_page_ids") or []
+            ),
+            "page_selection": content_optimization.get("page_selection"),
+            "paid_retrieval": bool(content_optimization.get("paid_retrieval", False)),
+            "paid_llm": bool(content_optimization.get("paid_llm", False)),
+            "warnings": list(content_optimization.get("warnings") or []),
+        }
+        # Authoritative ContentOptimizationResult.to_dict keys when Phase 5 completed.
+        if content_optimization.get("status") == "completed":
+            if content_optimization.get("page_intelligence") is not None:
+                report["page_intelligence"] = content_optimization["page_intelligence"]
+            report["content_gaps"] = list(
+                content_optimization.get("content_gaps") or []
+            )
+            report["optimization_briefs"] = list(
+                content_optimization.get("optimization_briefs") or []
+            )
+            report["content_drafts"] = list(
+                content_optimization.get("content_drafts") or []
+            )
+            if content_optimization.get("gap_report") is not None:
+                report["gap_report"] = content_optimization["gap_report"]
+            if content_optimization.get("brief") is not None:
+                report["brief"] = content_optimization["brief"]
+            if content_optimization.get("draft") is not None:
+                report["draft"] = content_optimization["draft"]
+            report["paid_retrieval"] = bool(
+                content_optimization.get("paid_retrieval", False)
+            )
+            report["paid_llm"] = bool(content_optimization.get("paid_llm", False))
 
     emitted = report["emitted_at"]
     existing = session.query(Report).filter(Report.job_id == job.id).one_or_none()

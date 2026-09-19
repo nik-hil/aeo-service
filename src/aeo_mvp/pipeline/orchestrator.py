@@ -24,6 +24,7 @@ from aeo_mvp.config import (
     PROMPT_SET_ID,
     get_settings,
 )
+from aeo_mvp.content.service import load_site_profile, optimize_job_pages, queryset_from_discovery
 from aeo_mvp.crawler.discover import crawl_site
 from aeo_mvp.db.models import (
     AnalysisEvidence,
@@ -229,6 +230,13 @@ class JobOrchestrator:
         # Durable ownership first — do not hold this claim txn across crawl/LLM.
         job = claim_job(self.session, job_id, worker_id=wid, commit=True)
         options = json.loads(job.options_json or "{}")
+        # Drop stale Phase 5 / P1 stash from prior claimable attempts so a retry
+        # with content_optimization=false (or different results) cannot leave
+        # success-shaped artifacts in options_json mid-run or after failure.
+        if "_p1_sections" in options:
+            options.pop("_p1_sections", None)
+            job.options_json = json.dumps(options, sort_keys=True)
+            self.session.flush()
         provenance = "synthetic_demo" if job.demo_mode else "derived_metric"
         p1_sections: dict[str, Any] = {}
 
@@ -611,6 +619,53 @@ class JobOrchestrator:
                 p1_sections["competitors"] = competitors
             if retrieval_enabled:
                 p1_sections["target_site"] = target_identity.to_audit_dict()
+
+            # Phase 5 content optimization — single call site after crawl + queryset.
+            # Gated by options.content_optimization. No re-crawl / re-discover.
+            # Inputs: Page HTML, discovery QuerySet/fingerprint, SiteProfile, optional obs.
+            content_opt_enabled = bool(options.get("content_optimization", True))
+            if content_opt_enabled:
+                vis_obs_payload: list[dict[str, Any]] = [
+                    {
+                        "prompt_id": o.prompt_id,
+                        "query_id": o.prompt_id,
+                        "query": o.query,
+                        "detected_mention": bool(o.detected_mention),
+                        "detected_citation": bool(o.detected_citation),
+                        "cited_urls": list(o.cited_urls or []),
+                        "provenance": o.provenance,
+                        "experiment_kind": o.experiment_kind,
+                    }
+                    for o in observations
+                ]
+                draft_paid = bool(
+                    options.get("draft_paid") or options.get("paid_llm_opt_in")
+                )
+                site_profile = load_site_profile(self.session, job) or understanding.to_dict()
+                p1_sections["content_optimization"] = optimize_job_pages(
+                    pages,
+                    queryset=queryset_from_discovery(discovery),
+                    site_profile=site_profile,
+                    options=options,
+                    visibility_observations=vis_obs_payload or None,
+                    llm_api_key=(
+                        self.settings.openai_api_key if draft_paid else None
+                    ),
+                )
+            else:
+                p1_sections["content_optimization"] = {
+                    "enabled": False,
+                    "status": "disabled",
+                    "methodology": "content-optimization-v1",
+                    "paid_retrieval": False,
+                    "paid_llm": False,
+                    "pages_considered": len(pages),
+                    "pages_optimized": 0,
+                    "page_intelligence": None,
+                    "content_gaps": [],
+                    "optimization_briefs": [],
+                    "content_drafts": [],
+                }
 
             # Stash P1 sections into job options for report builder
             options["_p1_sections"] = p1_sections

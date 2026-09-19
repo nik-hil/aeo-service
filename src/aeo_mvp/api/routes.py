@@ -17,6 +17,7 @@ from aeo_mvp.api.schemas import (
     HealthResponse,
     JobCreatedResponse,
     JobLinks,
+    JobOptions,
     JobStatusResponse,
     PageItem,
     PagesResponse,
@@ -76,7 +77,9 @@ def create_job(
     body: CreateJobRequest,
     background_tasks: BackgroundTasks,
 ) -> JobCreatedResponse:
-    options = body.options.model_dump(exclude_none=True) if body.options else {}
+    # Persist JobOptions defaults (incl. content_optimization=True) so stored
+    # options_json matches API schema defaults and orchestrator execution.
+    options = (body.options or JobOptions()).model_dump(exclude_none=True)
     if not body.demo_mode and is_obviously_unsafe_url(body.url):
         raise HTTPException(
             status_code=400,

@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from aeo_mvp.config import USER_AGENT, get_settings
+from aeo_mvp.content.models import CONTENT_OPTIMIZATION_METHODOLOGY
 from aeo_mvp.content.pipeline import run_content_optimization
 from aeo_mvp.crawler.fetch import fetch_url
 from aeo_mvp.db.models import ExperimentConfig, Job, Page, SiteProfile
@@ -17,6 +18,222 @@ from aeo_mvp.security.ssrf import SSRFError, is_obviously_unsafe_url
 
 class OptimizationRequestError(ValueError):
     """Client-facing validation error for optimization requests."""
+
+
+# Job pipeline selects a primary page (homepage / important / shallowest) and
+# optionally a small number of additional pages — never the full crawl set.
+CONTENT_OPT_PAGE_CAP = 3
+
+
+def _page_has_html(page: Page) -> bool:
+    return bool(page.html and str(page.html).strip())
+
+
+def _path_of(url: str) -> str:
+    from urllib.parse import urlparse
+
+    return (urlparse(url or "").path or "/").rstrip("/") or "/"
+
+
+def select_pages_for_content_optimization(
+    pages: list[Page],
+    *,
+    site_profile: dict[str, Any] | None = None,
+    max_pages: int = CONTENT_OPT_PAGE_CAP,
+) -> tuple[list[Page], dict[str, Any]]:
+    """Select primary page(s) for Phase 5 — documented selection rule.
+
+    Priority (stable):
+      1. Homepage: depth 0 and path ``/``
+      2. URLs listed in SiteProfile ``important_pages``
+      3. Remaining by depth, then URL (same order as ``resolve_page_html``)
+
+    Cap: at most ``max_pages`` (default 3). Prefer a single homepage when present.
+    """
+    eligible = [p for p in pages if _page_has_html(p)]
+    cap = max(1, min(int(max_pages), CONTENT_OPT_PAGE_CAP))
+    selection: dict[str, Any] = {
+        "rule": "homepage_then_important_then_depth",
+        "cap": cap,
+        "eligible_count": len(eligible),
+    }
+    if not eligible:
+        selection["reason"] = "no_eligible_page_html"
+        return [], selection
+
+    important_urls: set[str] = set()
+    profile = site_profile or {}
+    for item in profile.get("important_pages") or []:
+        if isinstance(item, dict) and item.get("url"):
+            important_urls.add(str(item["url"]))
+        elif isinstance(item, str):
+            important_urls.add(item)
+    # StructuredSiteProfile nest (when SiteUnderstanding.to_dict is stored)
+    structured = profile.get("structured") if isinstance(profile.get("structured"), dict) else {}
+    for item in (structured or {}).get("important_pages") or []:
+        if isinstance(item, dict) and item.get("url"):
+            important_urls.add(str(item["url"]))
+
+    def _rank(p: Page) -> tuple[int, int, int, str, str]:
+        path = _path_of(p.url or "")
+        is_home = 0 if (int(p.depth or 0) == 0 and path == "/") else 1
+        is_important = 0 if (p.url or "") in important_urls else 1
+        return (is_home, is_important, int(p.depth or 0), p.url or "", p.id or "")
+
+    ranked = sorted(eligible, key=_rank)
+    # Prefer exactly the homepage when it ranks first; still allow up to cap.
+    chosen = ranked[:cap]
+    selection["selected_urls"] = [p.url for p in chosen]
+    selection["selected_page_ids"] = [p.id for p in chosen]
+    selection["reason"] = (
+        "homepage"
+        if chosen and _path_of(chosen[0].url or "") == "/" and int(chosen[0].depth or 0) == 0
+        else ("important_page" if chosen and (chosen[0].url or "") in important_urls else "depth_order")
+    )
+    return chosen, selection
+
+
+def queryset_from_discovery(discovery: Any) -> Any:
+    """Prefer frozen discovery QuerySet (+ fingerprint) over ad-hoc reshapes."""
+    if discovery is None:
+        return {"members": [], "query_set_version": "query-set-v3"}
+    qs = getattr(discovery, "query_set", None)
+    fingerprint = getattr(discovery, "fingerprint", None)
+    if isinstance(qs, dict) and (qs.get("members") or qs.get("queries")):
+        out = dict(qs)
+        if fingerprint and not out.get("fingerprint"):
+            out["fingerprint"] = fingerprint
+        return out
+    if hasattr(discovery, "to_dict"):
+        data = discovery.to_dict()
+        if isinstance(data, dict):
+            if fingerprint and not data.get("fingerprint"):
+                data = {**data, "fingerprint": fingerprint}
+            return data
+    if isinstance(discovery, dict):
+        return discovery
+    return {"members": [], "query_set_version": "query-set-v3"}
+
+
+def optimize_job_pages(
+    pages: list[Page],
+    *,
+    queryset: Any,
+    site_profile: dict[str, Any] | None,
+    options: dict[str, Any] | None = None,
+    visibility_observations: list[dict[str, Any]] | None = None,
+    llm_api_key: str | None = None,
+) -> dict[str, Any]:
+    """Run Phase 5 via shared ``run_content_optimization`` on selected crawl pages.
+
+    Selection: homepage → important_pages → depth order; capped (see
+    ``select_pages_for_content_optimization``). Honest skip when no HTML.
+    Never enables paid DO retrieval. Draft Null unless content_draft/draft_paid.
+    Wire shape matches ``ContentOptimizationResult.to_dict`` (+ job metadata).
+    """
+    opts = dict(options or {})
+    content_draft = bool(opts.get("content_draft") or opts.get("generate_draft"))
+    draft_paid = bool(opts.get("draft_paid") or opts.get("paid_llm_opt_in"))
+    cfg = {
+        "generate_draft": content_draft,
+        "content_draft": content_draft,
+        "content_draft_provider": opts.get("content_draft_provider"),
+        "draft_paid": draft_paid,
+    }
+    # Fail-safe: only pass LLM key when paid draft is explicitly opted in.
+    api_key = llm_api_key if draft_paid else None
+    max_pages = int(opts.get("content_optimization_max_pages") or CONTENT_OPT_PAGE_CAP)
+    max_pages = max(1, min(max_pages, CONTENT_OPT_PAGE_CAP))
+
+    base: dict[str, Any] = {
+        "methodology": CONTENT_OPTIMIZATION_METHODOLOGY,
+        "enabled": True,
+        "paid_retrieval": False,
+        "paid_llm": False,
+        "pages_considered": len(pages),
+        "pages_optimized": 0,
+        "page_ids": [],
+        "skipped_page_ids": [p.id for p in pages if not _page_has_html(p)],
+        "page_selection": None,
+    }
+
+    if not pages:
+        return {
+            **base,
+            "status": "skipped_no_pages",
+            "page_intelligence": None,
+            "content_gaps": [],
+            "optimization_briefs": [],
+            "content_drafts": [],
+            "warnings": ["no_crawled_pages"],
+            "page_selection": {"rule": "homepage_then_important_then_depth", "reason": "no_pages"},
+        }
+
+    selected, selection = select_pages_for_content_optimization(
+        pages, site_profile=site_profile, max_pages=max_pages
+    )
+    base["page_selection"] = selection
+
+    if not selected:
+        return {
+            **base,
+            "status": "skipped_no_html",
+            "page_intelligence": None,
+            "content_gaps": [],
+            "optimization_briefs": [],
+            "content_drafts": [],
+            "warnings": ["no_eligible_page_html"],
+        }
+
+    # Single primary page → exact ContentOptimizationResult.to_dict shape.
+    # Additional capped pages append to list keys only.
+    content_gaps: list[dict[str, Any]] = []
+    optimization_briefs: list[dict[str, Any]] = []
+    content_drafts: list[dict[str, Any]] = []
+    page_ids: list[str] = []
+    primary_intel: dict[str, Any] | None = None
+    any_paid_llm = False
+
+    for idx, page in enumerate(selected):
+        result = run_content_optimization(
+            html=page.html,
+            url=page.url or "",
+            title_hint=page.title,
+            queryset=queryset,
+            site_profile=site_profile,
+            config=cfg,
+            generate_draft=content_draft,
+            draft_paid=draft_paid,
+            llm_api_key=api_key,
+            visibility_observations=visibility_observations,
+        )
+        wire = result.to_dict()
+        intel = dict(wire["page_intelligence"])
+        intel["page_id"] = page.id
+        if idx == 0:
+            primary_intel = intel
+        content_gaps.extend(wire.get("content_gaps") or [])
+        optimization_briefs.extend(wire.get("optimization_briefs") or [])
+        content_drafts.extend(wire.get("content_drafts") or [])
+        page_ids.append(page.id)
+        any_paid_llm = any_paid_llm or bool(wire.get("paid_llm"))
+
+    return {
+        **base,
+        "status": "completed",
+        "pages_optimized": len(page_ids),
+        "page_ids": page_ids,
+        # Authoritative ContentOptimizationResult.to_dict keys
+        "page_intelligence": primary_intel,
+        "content_gaps": content_gaps,
+        "optimization_briefs": optimization_briefs,
+        "content_drafts": content_drafts,
+        "gap_report": content_gaps[0] if content_gaps else None,
+        "brief": optimization_briefs[0] if optimization_briefs else None,
+        "draft": content_drafts[0] if content_drafts else None,
+        "paid_llm": any_paid_llm,
+        "paid_retrieval": False,
+    }
 
 
 def _load_queryset_from_job(session: Session, job: Job) -> dict[str, Any] | None:
