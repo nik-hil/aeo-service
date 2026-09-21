@@ -466,12 +466,13 @@ class _ImmediateJob:
 
 def test_run_analysis_yields_report_before_first_page_enrichment(monkeypatch):
     """First completed UI yield must happen before the enrichment POST starts."""
-    calls = {"n": 0}
+    events: list[str] = []
     report = _mismatch_report()
 
     async def fake_fetch(client, *, job_id, page_id, content_draft=True):
-        calls["n"] += 1
+        events.append("enrichment_started")
         await asyncio.sleep(0)
+        events.append("enrichment_finished")
         return EnrichmentEntry(
             status=EnrichmentStatus.SUCCESS,
             payload={
@@ -502,7 +503,6 @@ def test_run_analysis_yields_report_before_first_page_enrichment(monkeypatch):
     monkeypatch.setattr("app._client", lambda: _ImmediateJob(report))
     monkeypatch.setattr("app.fetch_content_optimization", fake_fetch)
 
-    seen_calls: list[int] = []
     completed = []
     for out in run_analysis(
         "https://demo.example/",
@@ -511,18 +511,24 @@ def test_run_analysis_yields_report_before_first_page_enrichment(monkeypatch):
         True,
         AnalysisState(),
     ):
-        if "## Analysis overview" in str(out[3]):
-            seen_calls.append(calls["n"])
-            completed.append(out)
+        if "## Analysis overview" not in str(out[3]):
+            continue
+        completed.append(out)
+        if "Additional optimization analysis loading" in str(out[8]):
+            events.append("report_yield")
+        elif "ENRICHED-HOME" in str(out[7]):
+            events.append("enriched_yield")
 
-    assert len(completed) >= 2
-    assert seen_calls[0] == 0
+    assert events == [
+        "report_yield",
+        "enrichment_started",
+        "enrichment_finished",
+        "enriched_yield",
+    ]
+    assert len(completed) == 2
     assert "CURRENT" in completed[0][7]
     assert "ENRICHED-HOME" not in completed[0][7]
-    assert "Additional optimization analysis loading" in completed[0][8]
-    assert calls["n"] == 1
     assert "ENRICHED-HOME" in completed[-1][7]
-    assert "## Analysis overview" in completed[-1][3]
     assert completed[-1][0].report is not None
 
 
@@ -603,9 +609,9 @@ async def test_inflight_reselect_single_post(monkeypatch):
     release.set()
     late, final = await asyncio.gather(owner, waiter)
     assert calls["n"] == 1
-    assert late == []
-    assert final
-    assert "About" in final[-1][2] or "add_entity" in final[-1][4]
+    assert late and final
+    assert "About" in late[-1][2]
+    assert "About" in final[-1][2]
     cached = state.enrichment_cache.get("job-demo-1", "p2")
     assert cached is not None and cached.status == EnrichmentStatus.SUCCESS
     assert state.selected_page_url == url
@@ -639,3 +645,163 @@ async def test_close_during_stage_a_clears_only_owner_loading(monkeypatch):
     assert state.enrichment_cache.pop_if_loading("job-demo-1", "p2", token) is False
     assert state.enrichment_cache.get("job-demo-1", "p2").status == EnrichmentStatus.LOADING
     assert new_token != token
+
+
+def _about_state() -> AnalysisState:
+    return AnalysisState(
+        job_id="job-demo-1",
+        report=_mismatch_report(),
+        pages=PAGES_PAYLOAD,
+    )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_handlers_one_post_same_terminal(monkeypatch):
+    """Two handlers start together, before either finishes claim's fetch."""
+    state = _about_state()
+    calls = {"n": 0}
+    release = asyncio.Event()
+    started = asyncio.Event()
+
+    async def fake_fetch(client, *, job_id, page_id, content_draft=True):
+        calls["n"] += 1
+        started.set()
+        await release.wait()
+        return EnrichmentEntry(status=EnrichmentStatus.SUCCESS, payload=OPT_PAYLOAD_ABOUT)
+
+    monkeypatch.setattr("app.fetch_content_optimization", fake_fetch)
+    url = "https://demo.example/about"
+
+    async def drain():
+        outs = []
+        async for out in on_select_page(url, state):
+            outs.append(out)
+        return outs
+
+    first = asyncio.create_task(drain())
+    second = asyncio.create_task(drain())
+    await asyncio.wait_for(started.wait(), timeout=2)
+    await asyncio.sleep(0.05)
+    assert calls["n"] == 1
+    loading = state.enrichment_cache.get("job-demo-1", "p2")
+    assert loading is not None and loading.status == EnrichmentStatus.LOADING
+    foreign = (loading.owner_token or 0) + 99
+    assert state.enrichment_cache.pop_if_loading("job-demo-1", "p2", foreign) is False
+    assert state.enrichment_cache.get("job-demo-1", "p2").status == EnrichmentStatus.LOADING
+    release.set()
+    left, right = await asyncio.gather(first, second)
+    assert calls["n"] == 1
+    assert "About AcmeFlow" in left[-1][2]
+    assert "About AcmeFlow" in right[-1][2]
+    assert left[-1][2] == right[-1][2]
+    cached = state.enrichment_cache.get("job-demo-1", "p2")
+    assert cached is not None and cached.status == EnrichmentStatus.SUCCESS
+
+
+@pytest.mark.asyncio
+async def test_cache_lifecycle_success_error_and_no_retry(monkeypatch):
+    state = _about_state()
+    calls = {"n": 0}
+    mode = {"err": False}
+    active = {"state": state}
+
+    async def fake_fetch(client, *, job_id, page_id, content_draft=True):
+        calls["n"] += 1
+        current = active["state"].enrichment_cache.get(job_id, page_id)
+        assert current is not None and current.status == EnrichmentStatus.LOADING
+        if mode["err"]:
+            return EnrichmentEntry(
+                status=EnrichmentStatus.ERROR,
+                error_message="Optimization analysis is temporarily unavailable. Page signals above remain valid.",
+            )
+        return EnrichmentEntry(status=EnrichmentStatus.SUCCESS, payload=OPT_PAYLOAD_ABOUT)
+
+    monkeypatch.setattr("app.fetch_content_optimization", fake_fetch)
+
+    async def drain(url, target):
+        outs = []
+        async for out in on_select_page(url, target):
+            outs.append(out)
+        return outs
+
+    url = "https://demo.example/about"
+    ok = await drain(url, state)
+    assert calls["n"] == 1
+    assert state.enrichment_cache.get("job-demo-1", "p2").status == EnrichmentStatus.SUCCESS
+    assert "About AcmeFlow" in ok[-1][2]
+    await drain(url, state)
+    assert calls["n"] == 1
+
+    mode["err"] = True
+    err_state = _about_state()
+    active["state"] = err_state
+    bad = await drain(url, err_state)
+    assert calls["n"] == 2
+    assert err_state.enrichment_cache.get("job-demo-1", "p2").status == EnrichmentStatus.ERROR
+    assert "CURRENT" in bad[-1][2]
+    assert "unavailable" in bad[-1][3].lower() or "Could not load" in bad[-1][3]
+    await drain(url, err_state)
+    assert calls["n"] == 2
+
+    other = AnalysisState(job_id="job-demo-1", report=_mismatch_report(), pages=PAGES_PAYLOAD)
+    assert other.enrichment_cache.get("job-demo-1", "p2") is None
+    fresh = AnalysisState(job_id="job-other", report=state.report, pages=PAGES_PAYLOAD)
+    assert fresh.enrichment_cache.get("job-demo-1", "p2") is None
+
+
+def test_new_analysis_does_not_reuse_prior_job_cache(monkeypatch):
+    monkeypatch.setattr("app._client", lambda: _ImmediateJob(SAMPLE_REPORT))
+    prior = AnalysisState(job_id="old-job", report=SAMPLE_REPORT, pages=PAGES_PAYLOAD)
+    prior.enrichment_cache.set(
+        "old-job",
+        "p2",
+        EnrichmentEntry(status=EnrichmentStatus.SUCCESS, payload=OPT_PAYLOAD_ABOUT),
+    )
+    outs = list(
+        run_analysis("https://demo.example/", "Single page URL", True, True, prior)
+    )
+    state = outs[-1][0]
+    assert state.job_id == "job-1"
+    assert state.enrichment_cache.get("old-job", "p2") is None
+
+
+@pytest.mark.asyncio
+async def test_enrichment_500_timeout_and_network_keep_current(monkeypatch):
+    def client_for(handler):
+        return AeoApiClient(
+            base_url="http://test",
+            api_key="k",
+            async_transport=httpx.MockTransport(handler),
+        )
+
+    async def run(handler):
+        monkeypatch.setattr("app._client", lambda: client_for(handler))
+        state = _about_state()
+        outs = []
+        async for out in on_select_page("https://demo.example/about", state):
+            outs.append(out)
+        return state, outs[-1]
+
+    state, final = await run(lambda request: httpx.Response(500, json={"detail": "SECRET_DB_PASSWORD"}))
+    assert state.report is not None
+    assert "CURRENT" in final[2]
+    blob = " ".join(str(part) for part in final)
+    assert "SECRET_DB_PASSWORD" not in blob
+    assert "unavailable" in final[3].lower()
+    assert state.enrichment_cache.get("job-demo-1", "p2").status == EnrichmentStatus.ERROR
+
+    def timeout_handler(request):
+        raise httpx.ReadTimeout("slow")
+
+    state, final = await run(timeout_handler)
+    assert "CURRENT" in final[2]
+    assert "timed out" in final[3].lower()
+    assert "ReadTimeout" not in " ".join(str(part) for part in final)
+
+    def down(request):
+        raise httpx.ConnectError("connection refused")
+
+    state, final = await run(down)
+    assert "CURRENT" in final[2]
+    assert "could not reach" in final[3].lower()
+    assert state.report["page_intelligence"]["title"] == "AcmeFlow — Demo"

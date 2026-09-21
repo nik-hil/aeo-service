@@ -78,12 +78,12 @@ Now:
 2. **Stage B (async):** `AeoApiClient.content_optimization_async` uses **`httpx.AsyncClient`** (not a blocking Client inside `async def`).
 3. **Selection token:** each select bumps `selection_id`; stale responses after A→B navigation are discarded.
 4. **Session cache:** keyed by `job_id + page_id` on Gradio `State` (loading|success|error). Revisiting a page is instant; no process-global cross-user cache.
-5. **Prefetch:** after the primary report and CURRENT (observed) signals are yielded, enrichment runs for the **first selected page only** — not all crawled pages — then the enrichment panels update. That fetch does not block the first completed report render.
-6. **In-flight dedupe:** a second select of the same `job_id + page_id` while the session cache is `LOADING` does not POST again. The owner token is session-scoped; SUCCESS/ERROR entries stay cached. Dropping a cancelled load removes only that owner's `LOADING` marker.
+5. **First-page enrichment:** Analyze create/poll stays a **synchronous** generator. It is not fully async. When the first page still needs enrichment, that generator yields the report and CURRENT signals first, then calls enrichment in the **same** generator, then yields the panels. The enrichment call does not run before that first report yield.
+6. **In-flight ownership:** ``claim`` on the session cache is atomic for one `job_id + page_id`. Only the owner POSTs. Concurrent handlers on that same session cache wait for SUCCESS or ERROR. A mutex serializes the claim; it does not store payloads and is not a cross-session cache. Cleanup removes only that owner's `LOADING` marker.
 7. **Queue:** Gradio `queue(default_concurrency_limit=4)`; enrichment is not `queue=False`. In-process semaphore bounds concurrent enrichment calls.
 8. **Errors:** 404/409/timeout/5xx map to user-safe copy; unexpected failures are logged. Observed signals stay visible.
 
-Analyze → create job → poll stays synchronous. First-page enrichment, when needed, is a later yield on that same generator. Page-select enrichment stays async.
+Page selection is a separate async generator. Revisiting a cached page does not POST again.
 
 ## Multi-page `max_pages`
 

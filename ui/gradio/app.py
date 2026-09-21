@@ -4,7 +4,9 @@ Presentation-only. All analysis goes through the secured AEO API.
 Never fetches target URLs from the browser/UI process for crawling.
 
 Page-select enrichment uses ``httpx.AsyncClient`` with selection tokens and a
-session-scoped cache so the UI stays responsive and stale responses are discarded.
+session-scoped cache. Analyze job create and poll stay a synchronous generator.
+The report is yielded before first-page enrichment, which then continues in that
+same generator. Only page selection is an async generator.
 """
 
 from __future__ import annotations
@@ -510,6 +512,17 @@ def _empty_detail(state: AnalysisState) -> DetailOutput:
     )
 
 
+def _same_selected_page(state: AnalysisState, page_url: str, job_id: str) -> bool:
+    """True when this session is still showing this job and page.
+
+    A second select of the same page bumps ``selection_id`` but must not cancel
+    the in-flight owner. A different page must not be overwritten.
+    """
+    if state.job_id != job_id:
+        return False
+    return (state.selected_page_url or "").rstrip("/") == (page_url or "").rstrip("/")
+
+
 async def _owned_enrichment(
     state: AnalysisState, job_id: str, page_id: str, token: int | None
 ) -> EnrichmentEntry | None:
@@ -538,16 +551,15 @@ async def on_select_page(
     """Stage A: immediate identity + observed signals; Stage B: async enrichment.
 
     Uses a selection_id token so A→B→(A finishes late) cannot overwrite B.
-    Session cache keyed by job_id+page_id avoids repeat API calls. A LOADING
-    entry for the same key is in-flight: this call does not POST again.
+    ``claim`` is atomic on this session cache: only one owner POSTs for a
+    job_id+page_id. A concurrent handler waits for that owner's SUCCESS/ERROR.
     """
     state = state or AnalysisState()
     if not state.report or not page_url:
         yield _empty_detail(state)
         return
 
-    selection_id = next_selection_id(state.selection_id)
-    state.selection_id = selection_id
+    state.selection_id = next_selection_id(state.selection_id)
     state.selected_page_url = page_url
     page_id = _page_id_for(state, page_url)
 
@@ -595,10 +607,10 @@ async def on_select_page(
 
     if role == "in_flight":
         yield _loading_detail(state, page_url)
-        if is_stale(state.selection_id, selection_id):
+        if not _same_selected_page(state, page_url, job_id):
             return
         entry = await wait_for_terminal(state.enrichment_cache, job_id, page_id)
-        if is_stale(state.selection_id, selection_id) or state.job_id != job_id:
+        if not _same_selected_page(state, page_url, job_id):
             return
         if entry is None:
             # Owner dropped LOADING without a result. Become the owner once.
@@ -607,7 +619,7 @@ async def on_select_page(
                 entry = await _owned_enrichment(state, job_id, page_id, token2)
             else:
                 entry = await wait_for_terminal(state.enrichment_cache, job_id, page_id)
-        if is_stale(state.selection_id, selection_id) or state.job_id != job_id:
+        if not _same_selected_page(state, page_url, job_id):
             return
         if entry is None or entry.status == EnrichmentStatus.LOADING:
             yield _terminal_detail(
@@ -626,13 +638,13 @@ async def on_select_page(
 
     stored = False
     try:
-        # LOADING is already on the session cache so a re-select will not POST.
+        # LOADING is already claimed, so a concurrent select will not POST.
         yield _loading_detail(state, page_url)
-        if is_stale(state.selection_id, selection_id) or state.job_id != job_id:
+        if state.job_id != job_id:
             return
         entry = await _owned_enrichment(state, job_id, page_id, token)
         stored = entry is not None
-        if entry is None or is_stale(state.selection_id, selection_id) or state.job_id != job_id:
+        if entry is None or not _same_selected_page(state, page_url, job_id):
             return
         yield _terminal_detail(state, page_url, entry)
     finally:
