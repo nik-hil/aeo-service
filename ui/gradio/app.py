@@ -4,7 +4,9 @@ Presentation-only. All analysis goes through the secured AEO API.
 Never fetches target URLs from the browser/UI process for crawling.
 
 Page-select enrichment uses ``httpx.AsyncClient`` with selection tokens and a
-session-scoped cache so the UI stays responsive and stale responses are discarded.
+session-scoped cache. Analyze job create and poll stay a synchronous generator.
+The report is yielded before first-page enrichment, which then continues in that
+same generator. Only page selection is an async generator.
 """
 
 from __future__ import annotations
@@ -57,7 +59,7 @@ from services.adapters import (
     pages_table,
     recommendations_markdown,
 )
-from services.api_client import AeoApiClient, AeoApiError
+from services.api_client import AeoApiClient, AeoApiError, user_safe_enrichment_error
 from services.enrichment import (
     EnrichmentEntry,
     EnrichmentStatus,
@@ -65,6 +67,8 @@ from services.enrichment import (
     is_stale,
     needs_page_enrichment,
     next_selection_id,
+    wait_for_terminal,
+    wait_for_terminal_sync,
 )
 from services.opportunities import (
     build_opportunities,
@@ -202,6 +206,83 @@ def _blank_ui(state: AnalysisState, status: str, *, kind: str = "err") -> Analys
     )
 
 
+def _loading_detail(state: AnalysisState, page_url: str) -> DetailOutput:
+    base = state.report or {}
+    header = page_header(base, state.pages, page_url)
+    before_obs = adapt_before(base, page_url=page_url).markdown
+    return (
+        state,
+        header.html,
+        before_obs,
+        loading_enrichment_markdown("Recommendations"),
+        loading_enrichment_markdown("Brief & Draft"),
+        loading_enrichment_markdown("Evidence"),
+        loading_enrichment_markdown("CURRENT vs RECOMMENDED"),
+    )
+
+
+def _terminal_detail(
+    state: AnalysisState, page_url: str, entry: EnrichmentEntry
+) -> DetailOutput:
+    base = state.report or {}
+    header = page_header(base, state.pages, page_url)
+    before_obs = adapt_before(base, page_url=page_url).markdown
+    if entry.status == EnrichmentStatus.SUCCESS and entry.payload:
+        display = merge_page_opt_into_report(base, entry.payload)
+        before, recs_md, after_md, evidence_md = detail_panels(display, page_url)
+        compare = comparison_markdown(display, page_url)
+        header = page_header(display, state.pages, page_url)
+        return state, header.html, before, recs_md, after_md, evidence_md, compare
+    err = entry.error_message or "Optimization analysis unavailable."
+    before, _, _, _ = detail_panels(base, page_url)
+    return (
+        state,
+        header.html,
+        before or before_obs,
+        enrichment_error_markdown("Recommendations", err),
+        enrichment_error_markdown("Brief & Draft", err),
+        enrichment_error_markdown("Evidence", err),
+        enrichment_error_markdown("CURRENT vs RECOMMENDED", err),
+    )
+
+
+def _analysis_output(
+    state: AnalysisState,
+    *,
+    status_msg: str,
+    vm: Any,
+    opps: list[Any],
+    page_rows: list[Any],
+    mode_key: str,
+    header_html: str,
+    before: str,
+    recs_md: str,
+    after_md: str,
+    evidence_md: str,
+    compare: str,
+    page_choices: list[str],
+    selected: str,
+) -> AnalysisOutput:
+    import gradio as gr
+
+    return (
+        state,
+        gr_update_status(status_msg, kind="ok"),
+        kpi_cards_html(vm),
+        overview_markdown(vm),
+        opportunities_table(opps),
+        pages_table(page_rows) if mode_key == "multi" else [],
+        header_html,
+        before,
+        recs_md,
+        after_md,
+        evidence_md,
+        compare,
+        gr.update(choices=page_choices, value=selected),
+        gr.update(choices=opportunity_choices(state), value=None),
+    )
+
+
 def run_analysis(
     url: str,
     mode: str,
@@ -211,9 +292,9 @@ def run_analysis(
 ) -> Generator[AnalysisOutput, None, None]:
     """Clear stale results, create job, poll, adapt report.
 
-    Analyze → create job → poll → report stays sync. Only page-select enrichment
-    is async (see ``on_select_page``). After complete, optionally prefetch enrichment
-    for the **first selected page only**.
+    Analyze → create job → poll stays synchronous. When the first selected page
+    still needs enrichment, the primary report and CURRENT (observed) signals
+    are yielded before that fetch. Enrichment panels update on a later yield.
     """
     import gradio as gr
 
@@ -285,50 +366,128 @@ def run_analysis(
         selected = page_choices[0]
         state.selected_page_url = selected
         state.selection_id = next_selection_id(state.selection_id)
+        prefetch_selection = state.selection_id
+        captured_job = state.job_id
 
-        # Prefetch enrichment for the first selected page only (not all pages).
         first_page_id = _page_id_for(state, selected)
-        if (
+        will_enrich = bool(
             first_page_id
-            and state.job_id
+            and captured_job
             and needs_page_enrichment(report, page_url=selected, page_id=first_page_id)
-        ):
-            try:
-                entry = asyncio.run(
-                    fetch_content_optimization(
-                        client,
-                        job_id=state.job_id,
-                        page_id=first_page_id,
-                        content_draft=True,
-                    )
-                )
-                state.enrichment_cache.set(state.job_id, first_page_id, entry)
-            except Exception:  # noqa: BLE001
-                logger.exception("prefetch enrichment failed for first page")
-
-        display = report_for_display(state, selected, first_page_id)
-        before, recs_md, after_md, evidence_md = detail_panels(display, selected)
-        header = page_header(display, pages, selected)
-        compare = comparison_markdown(display, selected)
+        )
         status_msg = "Analysis complete."
         if vm.crawl_partial:
             status_msg += " Partial crawl noted — see overview."
 
-        yield (
+        header = page_header(report, pages, selected)
+        if not will_enrich or not first_page_id or not captured_job:
+            display = report_for_display(state, selected, first_page_id)
+            before, recs_md, after_md, evidence_md = detail_panels(display, selected)
+            yield _analysis_output(
+                state,
+                status_msg=status_msg,
+                vm=vm,
+                opps=opps,
+                page_rows=page_rows,
+                mode_key=mode_key,
+                header_html=page_header(display, pages, selected).html,
+                before=before,
+                recs_md=recs_md,
+                after_md=after_md,
+                evidence_md=evidence_md,
+                compare=comparison_markdown(display, selected),
+                page_choices=page_choices,
+                selected=selected,
+            )
+            return
+
+        role, token = state.enrichment_cache.claim(captured_job, first_page_id)
+        before_obs = adapt_before(report, page_url=selected).markdown
+        loading = _loading_detail(state, selected)
+        yield _analysis_output(
             state,
-            gr_update_status(status_msg, kind="ok"),
-            kpi_cards_html(vm),
-            overview_markdown(vm),
-            opportunities_table(opps),
-            pages_table(page_rows) if mode_key == "multi" else [],
-            header.html,
-            before,
-            recs_md,
-            after_md,
-            evidence_md,
-            compare,
-            gr.update(choices=page_choices, value=selected),
-            gr.update(choices=opportunity_choices(state), value=None),
+            status_msg=status_msg,
+            vm=vm,
+            opps=opps,
+            page_rows=page_rows,
+            mode_key=mode_key,
+            header_html=header.html,
+            before=before_obs,
+            recs_md=loading[3],
+            after_md=loading[4],
+            evidence_md=loading[5],
+            compare=loading[6],
+            page_choices=page_choices,
+            selected=selected,
+        )
+
+        if role == "owner":
+            stored = False
+            try:
+                try:
+                    entry = asyncio.run(
+                        fetch_content_optimization(
+                            client,
+                            job_id=captured_job,
+                            page_id=first_page_id,
+                            content_draft=True,
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("prefetch enrichment failed for first page")
+                    entry = EnrichmentEntry(
+                        status=EnrichmentStatus.ERROR,
+                        error_message=user_safe_enrichment_error(exc),
+                    )
+                if state.job_id == captured_job:
+                    state.enrichment_cache.set(captured_job, first_page_id, entry)
+                    stored = True
+            finally:
+                if not stored:
+                    state.enrichment_cache.pop_if_loading(captured_job, first_page_id, token)
+        else:
+            entry = (
+                state.enrichment_cache.get(captured_job, first_page_id)
+                if role == "settled"
+                else wait_for_terminal_sync(state.enrichment_cache, captured_job, first_page_id)
+            )
+            if entry is None or entry.status == EnrichmentStatus.LOADING:
+                entry = EnrichmentEntry(
+                    status=EnrichmentStatus.ERROR,
+                    error_message="Optimization analysis timed out. Page signals above remain valid.",
+                )
+
+        if state.job_id != captured_job or is_stale(state.selection_id, prefetch_selection):
+            return
+        if entry.status == EnrichmentStatus.SUCCESS and entry.payload:
+            display = merge_page_opt_into_report(report, entry.payload)
+            before, recs_md, after_md, evidence_md = detail_panels(display, selected)
+            header = page_header(display, pages, selected)
+            compare = comparison_markdown(display, selected)
+        else:
+            err = entry.error_message or "Optimization analysis unavailable."
+            before, _, _, _ = detail_panels(report, selected)
+            before = before or before_obs
+            recs_md = enrichment_error_markdown("Recommendations", err)
+            after_md = enrichment_error_markdown("Brief & Draft", err)
+            evidence_md = enrichment_error_markdown("Evidence", err)
+            compare = enrichment_error_markdown("CURRENT vs RECOMMENDED", err)
+            header = page_header(report, pages, selected)
+        yield _analysis_output(
+            state,
+            status_msg=status_msg,
+            vm=vm,
+            opps=opps,
+            page_rows=page_rows,
+            mode_key=mode_key,
+            header_html=header.html,
+            before=before,
+            recs_md=recs_md,
+            after_md=after_md,
+            evidence_md=evidence_md,
+            compare=compare,
+            page_choices=page_choices,
+            selected=selected,
         )
     except AeoApiError as exc:
         state.clear_results()
@@ -353,28 +512,60 @@ def _empty_detail(state: AnalysisState) -> DetailOutput:
     )
 
 
+def _same_selected_page(state: AnalysisState, page_url: str, job_id: str) -> bool:
+    """True when this session is still showing this job and page.
+
+    A second select of the same page bumps ``selection_id`` but must not cancel
+    the in-flight owner. A different page must not be overwritten.
+    """
+    if state.job_id != job_id:
+        return False
+    return (state.selected_page_url or "").rstrip("/") == (page_url or "").rstrip("/")
+
+
+async def _owned_enrichment(
+    state: AnalysisState, job_id: str, page_id: str, token: int | None
+) -> EnrichmentEntry | None:
+    """Fetch and store a terminal entry. Pop only this owner's LOADING marker."""
+    stored = False
+    try:
+        entry = await fetch_content_optimization(
+            _client(),
+            job_id=job_id,
+            page_id=page_id,
+            content_draft=True,
+        )
+        if state.job_id != job_id:
+            return None
+        state.enrichment_cache.set(job_id, page_id, entry)
+        stored = True
+        return entry
+    finally:
+        if not stored:
+            state.enrichment_cache.pop_if_loading(job_id, page_id, token)
+
+
 async def on_select_page(
     page_url: str | None, state: AnalysisState | None
 ) -> AsyncGenerator[DetailOutput, None]:
     """Stage A: immediate identity + observed signals; Stage B: async enrichment.
 
     Uses a selection_id token so A→B→(A finishes late) cannot overwrite B.
-    Session cache keyed by job_id+page_id avoids repeat API calls.
+    ``claim`` is atomic on this session cache: only one owner POSTs for a
+    job_id+page_id. A concurrent handler waits for that owner's SUCCESS/ERROR.
     """
     state = state or AnalysisState()
     if not state.report or not page_url:
         yield _empty_detail(state)
         return
 
-    selection_id = next_selection_id(state.selection_id)
-    state.selection_id = selection_id
+    state.selection_id = next_selection_id(state.selection_id)
     state.selected_page_url = page_url
     page_id = _page_id_for(state, page_url)
 
     # Stage A — never blank the whole page.
     base = state.report
     header = page_header(base, state.pages, page_url)
-    before_obs = adapt_before(base, page_url=page_url).markdown
 
     cached = (
         state.enrichment_cache.get(state.job_id, page_id)
@@ -392,13 +583,7 @@ async def on_select_page(
 
     if cached and cached.status == EnrichmentStatus.ERROR:
         # Prior failure — show observed + error; do not auto-retry forever.
-        before, recs_md, after_md, evidence_md = detail_panels(base, page_url)
-        err = cached.error_message or "Optimization analysis unavailable."
-        recs_md = enrichment_error_markdown("Recommendations", err)
-        after_md = enrichment_error_markdown("Brief & Draft", err)
-        evidence_md = enrichment_error_markdown("Evidence", err)
-        compare = enrichment_error_markdown("CURRENT vs RECOMMENDED", err)
-        yield state, header.html, before or before_obs, recs_md, after_md, evidence_md, compare
+        yield _terminal_detail(state, page_url, cached)
         return
 
     needs = needs_page_enrichment(base, page_url=page_url, page_id=page_id)
@@ -408,58 +593,63 @@ async def on_select_page(
         yield state, header.html, before, recs_md, after_md, evidence_md, compare
         return
 
-    # Stage A: show observed + loading placeholders for enrichment panels.
-    yield (
-        state,
-        header.html,
-        before_obs,
-        loading_enrichment_markdown("Recommendations"),
-        loading_enrichment_markdown("Brief & Draft"),
-        loading_enrichment_markdown("Evidence"),
-        loading_enrichment_markdown("CURRENT vs RECOMMENDED"),
-    )
-
-    if is_stale(state.selection_id, selection_id):
+    job_id = state.job_id
+    role, token = state.enrichment_cache.claim(job_id, page_id)
+    if role == "settled":
+        settled = state.enrichment_cache.get(job_id, page_id)
+        if settled is not None:
+            yield _terminal_detail(state, page_url, settled)
+        else:
+            before, recs_md, after_md, evidence_md = detail_panels(base, page_url)
+            compare = comparison_markdown(base, page_url)
+            yield state, header.html, before, recs_md, after_md, evidence_md, compare
         return
 
-    state.enrichment_cache.set(
-        state.job_id,
-        page_id,
-        EnrichmentEntry(status=EnrichmentStatus.LOADING),
-    )
-
-    entry = await fetch_content_optimization(
-        _client(),
-        job_id=state.job_id,
-        page_id=page_id,
-        content_draft=True,
-    )
-
-    # Stage B — discard if user navigated away.
-    if is_stale(state.selection_id, selection_id):
+    if role == "in_flight":
+        yield _loading_detail(state, page_url)
+        if not _same_selected_page(state, page_url, job_id):
+            return
+        entry = await wait_for_terminal(state.enrichment_cache, job_id, page_id)
+        if not _same_selected_page(state, page_url, job_id):
+            return
+        if entry is None:
+            # Owner dropped LOADING without a result. Become the owner once.
+            role2, token2 = state.enrichment_cache.claim(job_id, page_id)
+            if role2 == "owner":
+                entry = await _owned_enrichment(state, job_id, page_id, token2)
+            else:
+                entry = await wait_for_terminal(state.enrichment_cache, job_id, page_id)
+        if not _same_selected_page(state, page_url, job_id):
+            return
+        if entry is None or entry.status == EnrichmentStatus.LOADING:
+            yield _terminal_detail(
+                state,
+                page_url,
+                EnrichmentEntry(
+                    status=EnrichmentStatus.ERROR,
+                    error_message=(
+                        "Optimization analysis timed out. Page signals above remain valid."
+                    ),
+                ),
+            )
+            return
+        yield _terminal_detail(state, page_url, entry)
         return
 
-    state.enrichment_cache.set(state.job_id, page_id, entry)
-
-    if entry.status == EnrichmentStatus.SUCCESS and entry.payload:
-        display = merge_page_opt_into_report(base, entry.payload)
-        before, recs_md, after_md, evidence_md = detail_panels(display, page_url)
-        compare = comparison_markdown(display, page_url)
-        header = page_header(display, state.pages, page_url)
-        yield state, header.html, before, recs_md, after_md, evidence_md, compare
-        return
-
-    err = entry.error_message or "Optimization analysis unavailable."
-    before, _, _, _ = detail_panels(base, page_url)
-    yield (
-        state,
-        header.html,
-        before or before_obs,
-        enrichment_error_markdown("Recommendations", err),
-        enrichment_error_markdown("Brief & Draft", err),
-        enrichment_error_markdown("Evidence", err),
-        enrichment_error_markdown("CURRENT vs RECOMMENDED", err),
-    )
+    stored = False
+    try:
+        # LOADING is already claimed, so a concurrent select will not POST.
+        yield _loading_detail(state, page_url)
+        if state.job_id != job_id:
+            return
+        entry = await _owned_enrichment(state, job_id, page_id, token)
+        stored = entry is not None
+        if entry is None or not _same_selected_page(state, page_url, job_id):
+            return
+        yield _terminal_detail(state, page_url, entry)
+    finally:
+        if not stored:
+            state.enrichment_cache.pop_if_loading(job_id, page_id, token)
 
 
 async def on_select_opportunity_choice(

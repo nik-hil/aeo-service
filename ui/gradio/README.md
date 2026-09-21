@@ -78,11 +78,12 @@ Now:
 2. **Stage B (async):** `AeoApiClient.content_optimization_async` uses **`httpx.AsyncClient`** (not a blocking Client inside `async def`).
 3. **Selection token:** each select bumps `selection_id`; stale responses after A→B navigation are discarded.
 4. **Session cache:** keyed by `job_id + page_id` on Gradio `State` (loading|success|error). Revisiting a page is instant; no process-global cross-user cache.
-5. **Prefetch:** after Analyze completes, enrichment is prefetched for the **first selected page only** — not all crawled pages.
-6. **Queue:** Gradio `queue(default_concurrency_limit=4)`; enrichment is not `queue=False`. In-process semaphore bounds concurrent enrichment calls.
-7. **Errors:** 404/409/timeout/5xx map to user-safe copy; unexpected failures are logged. Observed signals stay visible.
+5. **First-page enrichment:** Analyze create/poll stays a **synchronous** generator. It is not fully async. When the first page still needs enrichment, that generator yields the report and CURRENT signals first, then calls enrichment in the **same** generator, then yields the panels. The enrichment call does not run before that first report yield.
+6. **In-flight ownership:** ``claim`` on the session cache is atomic for one `job_id + page_id`. Only the owner POSTs. Concurrent handlers on that same session cache wait for SUCCESS or ERROR. A mutex serializes the claim; it does not store payloads and is not a cross-session cache. Cleanup removes only that owner's `LOADING` marker.
+7. **Queue:** Gradio `queue(default_concurrency_limit=4)`; enrichment is not `queue=False`. In-process semaphore bounds concurrent enrichment calls.
+8. **Errors:** 404/409/timeout/5xx map to user-safe copy; unexpected failures are logged. Observed signals stay visible.
 
-Analyze → create job → poll → report remains the same architecture; only page-select enrichment is async.
+Page selection is a separate async generator. Revisiting a cached page does not POST again.
 
 ## Multi-page `max_pages`
 
@@ -145,7 +146,7 @@ UI tests live under `ui/gradio/tests/` including `test_async_enrichment.py` (asy
 - Visibility metrics are sample estimates — not consumer ChatGPT/Gemini/Perplexity rankings
 - No job cancel/list; poll-only progress
 - Drafts default to deterministic skeleton when requested — not paid LLM prose unless the API is configured for that separately
-- Prefetch covers only the first selected page after analyze
+- Prefetch covers only the first selected page, and only after the primary report is on screen
 
 ## Visual QA artifacts
 
