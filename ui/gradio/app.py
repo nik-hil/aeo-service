@@ -2,15 +2,20 @@
 
 Presentation-only. All analysis goes through the secured AEO API.
 Never fetches target URLs from the browser/UI process for crawling.
+
+Page-select enrichment uses ``httpx.AsyncClient`` with selection tokens and a
+session-scoped cache so the UI stays responsive and stale responses are discarded.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any, AsyncGenerator, Generator
 
 _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
@@ -30,8 +35,10 @@ if _bad is not None:
             if _k.startswith("gradio."):
                 del sys.modules[_k]
 
-from glossary import GUIDE_MARKDOWN, all_terms_markdown, info_text
+from components.kpi_cards import kpi_cards_html
+from glossary import GUIDE_MARKDOWN, all_terms_markdown, executive_glossary_markdown, info_text
 from services.adapters import (
+    UI_MULTI_MAX_PAGES,
     AnalysisState,
     adapt_before,
     adapt_brief,
@@ -41,15 +48,34 @@ from services.adapters import (
     adapt_overview,
     adapt_pages,
     adapt_recommendations,
+    comparison_markdown,
+    enrichment_error_markdown,
+    loading_enrichment_markdown,
     merge_page_opt_into_report,
     overview_markdown,
+    page_header,
     pages_table,
     recommendations_markdown,
 )
 from services.api_client import AeoApiClient, AeoApiError
-from services.opportunities import build_opportunities, opportunities_table
+from services.enrichment import (
+    EnrichmentEntry,
+    EnrichmentStatus,
+    fetch_content_optimization,
+    is_stale,
+    needs_page_enrichment,
+    next_selection_id,
+)
+from services.opportunities import (
+    build_opportunities,
+    opportunities_table,
+    resolve_opportunity_page_url,
+)
 from services.sanitize import escape_text
 from styles.theme import CUSTOM_CSS, build_theme
+from views.analyze import build_job_options
+
+logger = logging.getLogger(__name__)
 
 STAGE_LABELS = {
     "pending": "Queued",
@@ -66,12 +92,18 @@ STAGE_LABELS = {
 EMPTY_OVERVIEW = "_Run an analysis to see AEO Health, gaps, and recommendations._"
 EMPTY_DETAIL = (
     "_Select a page (multi-page) or run analysis (single-page) to inspect "
-    "Before → Recommendations → Brief & Draft → Evidence._"
+    "CURRENT (observed) → Recommendations → Brief & Draft → Evidence._"
 )
+EMPTY_RECS = "_No recommendations yet._"
+EMPTY_BRIEF = "_No brief/draft yet._"
+EMPTY_EVIDENCE = "_No evidence yet._"
+EMPTY_COMPARE = "_Run analysis and select a page to compare CURRENT vs RECOMMENDED._"
+EMPTY_HEADER = ""
 OPP_HEADERS = ["#", "Kind", "Title", "Summary", "Page", "Signal"]
 PAGE_HEADERS = ["Title", "URL", "Depth", "Status", "Error"]
 
 AnalysisOutput = tuple[Any, ...]
+DetailOutput = tuple[Any, ...]
 
 
 def _client() -> AeoApiClient:
@@ -105,6 +137,30 @@ def clear_state(state: AnalysisState | None) -> AnalysisState:
     return s
 
 
+def _page_id_for(state: AnalysisState, page_url: str | None) -> str | None:
+    if not page_url:
+        return None
+    for p in adapt_pages(state.pages):
+        if p.url == page_url or p.url.rstrip("/") == page_url.rstrip("/"):
+            return p.page_id or None
+    return None
+
+
+def report_for_display(
+    state: AnalysisState,
+    page_url: str | None,
+    page_id: str | None,
+) -> dict[str, Any]:
+    """Merge cached per-page enrichment for display without mutating shared report PI."""
+    report = state.report or {}
+    if not page_id or not state.job_id:
+        return report
+    entry = state.enrichment_cache.get(state.job_id, page_id)
+    if entry and entry.status == EnrichmentStatus.SUCCESS and entry.payload:
+        return merge_page_opt_into_report(report, entry.payload)
+    return report
+
+
 def detail_panels(report: dict[str, Any], page_url: str | None) -> tuple[str, str, str, str]:
     before = adapt_before(report, page_url=page_url)
     gaps_md = adapt_gaps(report, page_url=page_url)
@@ -131,13 +187,16 @@ def _blank_ui(state: AnalysisState, status: str, *, kind: str = "err") -> Analys
     return (
         state,
         gr_update_status(status, kind=kind),
+        kpi_cards_html(None),
         EMPTY_OVERVIEW,
         [],
         [],
+        EMPTY_HEADER,
         EMPTY_DETAIL,
-        "_No recommendations yet._",
-        "_No brief/draft yet._",
-        "_No evidence yet._",
+        EMPTY_RECS,
+        EMPTY_BRIEF,
+        EMPTY_EVIDENCE,
+        EMPTY_COMPARE,
         gr.update(choices=[], value=None),
         gr.update(choices=[], value=None),
     )
@@ -150,7 +209,12 @@ def run_analysis(
     include_draft: bool,
     state: AnalysisState | None,
 ) -> Generator[AnalysisOutput, None, None]:
-    """Clear stale results, create job, poll, adapt report."""
+    """Clear stale results, create job, poll, adapt report.
+
+    Analyze → create job → poll → report stays sync. Only page-select enrichment
+    is async (see ``on_select_page``). After complete, optionally prefetch enrichment
+    for the **first selected page only**.
+    """
     import gradio as gr
 
     state = clear_state(state)
@@ -165,18 +229,10 @@ def run_analysis(
             yield _blank_ui(state, err, kind="err")
             return
 
-    options: dict[str, Any] = {
-        "provider": "demo" if use_demo else "auto",
-        "content_optimization": True,
-        "content_draft": bool(include_draft or use_demo),
-    }
-    if mode_key == "single":
-        options["max_pages"] = 1
-        options["max_depth"] = 0
-    else:
-        options["max_pages"] = 10
-        options["max_depth"] = 2
-
+    options = build_job_options(
+        mode=mode_key, use_demo=use_demo, include_draft=include_draft
+    )
+    state.last_options = dict(options)
     client = _client()
     try:
         yield _blank_ui(state, "Starting analysis…", kind="busy")
@@ -223,13 +279,37 @@ def run_analysis(
             for o in opps
         ]
 
-        vm = adapt_overview(report, mode=mode_key)
+        vm = adapt_overview(report, mode=mode_key, opportunity_count=len(opps))
         page_rows = adapt_pages(pages)
         page_choices = [p.url for p in page_rows] or [str(report.get("base_url") or url)]
         selected = page_choices[0]
         state.selected_page_url = selected
+        state.selection_id = next_selection_id(state.selection_id)
 
-        before, recs_md, after_md, evidence_md = detail_panels(report, selected)
+        # Prefetch enrichment for the first selected page only (not all pages).
+        first_page_id = _page_id_for(state, selected)
+        if (
+            first_page_id
+            and state.job_id
+            and needs_page_enrichment(report, page_url=selected, page_id=first_page_id)
+        ):
+            try:
+                entry = asyncio.run(
+                    fetch_content_optimization(
+                        client,
+                        job_id=state.job_id,
+                        page_id=first_page_id,
+                        content_draft=True,
+                    )
+                )
+                state.enrichment_cache.set(state.job_id, first_page_id, entry)
+            except Exception:  # noqa: BLE001
+                logger.exception("prefetch enrichment failed for first page")
+
+        display = report_for_display(state, selected, first_page_id)
+        before, recs_md, after_md, evidence_md = detail_panels(display, selected)
+        header = page_header(display, pages, selected)
+        compare = comparison_markdown(display, selected)
         status_msg = "Analysis complete."
         if vm.crawl_partial:
             status_msg += " Partial crawl noted — see overview."
@@ -237,13 +317,16 @@ def run_analysis(
         yield (
             state,
             gr_update_status(status_msg, kind="ok"),
+            kpi_cards_html(vm),
             overview_markdown(vm),
             opportunities_table(opps),
             pages_table(page_rows) if mode_key == "multi" else [],
+            header.html,
             before,
             recs_md,
             after_md,
             evidence_md,
+            compare,
             gr.update(choices=page_choices, value=selected),
             gr.update(choices=opportunity_choices(state), value=None),
         )
@@ -258,67 +341,154 @@ def run_analysis(
         yield _blank_ui(state, f"Unexpected error: {exc}", kind="err")
 
 
-def on_select_page(page_url: str | None, state: AnalysisState | None):
+def _empty_detail(state: AnalysisState) -> DetailOutput:
+    return (
+        state,
+        EMPTY_HEADER,
+        EMPTY_DETAIL,
+        EMPTY_RECS,
+        EMPTY_BRIEF,
+        EMPTY_EVIDENCE,
+        EMPTY_COMPARE,
+    )
+
+
+async def on_select_page(
+    page_url: str | None, state: AnalysisState | None
+) -> AsyncGenerator[DetailOutput, None]:
+    """Stage A: immediate identity + observed signals; Stage B: async enrichment.
+
+    Uses a selection_id token so A→B→(A finishes late) cannot overwrite B.
+    Session cache keyed by job_id+page_id avoids repeat API calls.
+    """
     state = state or AnalysisState()
     if not state.report or not page_url:
-        return (
-            state,
-            EMPTY_DETAIL,
-            "_No recommendations yet._",
-            "_No brief/draft yet._",
-            "_No evidence yet._",
-        )
+        yield _empty_detail(state)
+        return
+
+    selection_id = next_selection_id(state.selection_id)
+    state.selection_id = selection_id
     state.selected_page_url = page_url
-    report = state.report
-    page_id = None
-    for p in adapt_pages(state.pages):
-        if p.url == page_url:
-            page_id = p.page_id
-            break
-    pi = report.get("page_intelligence") if isinstance(report.get("page_intelligence"), dict) else {}
-    needs_opt = (
-        bool(page_id)
-        and bool(pi)
-        and bool(pi.get("url"))
-        and str(pi.get("url")).rstrip("/") != page_url.rstrip("/")
+    page_id = _page_id_for(state, page_url)
+
+    # Stage A — never blank the whole page.
+    base = state.report
+    header = page_header(base, state.pages, page_url)
+    before_obs = adapt_before(base, page_url=page_url).markdown
+
+    cached = (
+        state.enrichment_cache.get(state.job_id, page_id)
+        if state.job_id and page_id
+        else None
     )
-    if needs_opt and state.job_id:
-        try:
-            opt = _client().content_optimization(
-                job_id=state.job_id,
-                page_id=page_id,
-                content_draft=True,
-            )
-            report = merge_page_opt_into_report(report, opt)
-        except (AeoApiError, OSError, Exception):  # noqa: BLE001 — UI must not crash on enrich
-            pass
-    before, recs_md, after_md, evidence_md = detail_panels(report, page_url)
-    return state, before, recs_md, after_md, evidence_md
+
+    if cached and cached.status == EnrichmentStatus.SUCCESS and cached.payload:
+        display = merge_page_opt_into_report(base, cached.payload)
+        before, recs_md, after_md, evidence_md = detail_panels(display, page_url)
+        compare = comparison_markdown(display, page_url)
+        header = page_header(display, state.pages, page_url)
+        yield state, header.html, before, recs_md, after_md, evidence_md, compare
+        return
+
+    if cached and cached.status == EnrichmentStatus.ERROR:
+        # Prior failure — show observed + error; do not auto-retry forever.
+        before, recs_md, after_md, evidence_md = detail_panels(base, page_url)
+        err = cached.error_message or "Optimization analysis unavailable."
+        recs_md = enrichment_error_markdown("Recommendations", err)
+        after_md = enrichment_error_markdown("Brief & Draft", err)
+        evidence_md = enrichment_error_markdown("Evidence", err)
+        compare = enrichment_error_markdown("CURRENT vs RECOMMENDED", err)
+        yield state, header.html, before or before_obs, recs_md, after_md, evidence_md, compare
+        return
+
+    needs = needs_page_enrichment(base, page_url=page_url, page_id=page_id)
+    if not needs or not state.job_id or not page_id:
+        before, recs_md, after_md, evidence_md = detail_panels(base, page_url)
+        compare = comparison_markdown(base, page_url)
+        yield state, header.html, before, recs_md, after_md, evidence_md, compare
+        return
+
+    # Stage A: show observed + loading placeholders for enrichment panels.
+    yield (
+        state,
+        header.html,
+        before_obs,
+        loading_enrichment_markdown("Recommendations"),
+        loading_enrichment_markdown("Brief & Draft"),
+        loading_enrichment_markdown("Evidence"),
+        loading_enrichment_markdown("CURRENT vs RECOMMENDED"),
+    )
+
+    if is_stale(state.selection_id, selection_id):
+        return
+
+    state.enrichment_cache.set(
+        state.job_id,
+        page_id,
+        EnrichmentEntry(status=EnrichmentStatus.LOADING),
+    )
+
+    entry = await fetch_content_optimization(
+        _client(),
+        job_id=state.job_id,
+        page_id=page_id,
+        content_draft=True,
+    )
+
+    # Stage B — discard if user navigated away.
+    if is_stale(state.selection_id, selection_id):
+        return
+
+    state.enrichment_cache.set(state.job_id, page_id, entry)
+
+    if entry.status == EnrichmentStatus.SUCCESS and entry.payload:
+        display = merge_page_opt_into_report(base, entry.payload)
+        before, recs_md, after_md, evidence_md = detail_panels(display, page_url)
+        compare = comparison_markdown(display, page_url)
+        header = page_header(display, state.pages, page_url)
+        yield state, header.html, before, recs_md, after_md, evidence_md, compare
+        return
+
+    err = entry.error_message or "Optimization analysis unavailable."
+    before, _, _, _ = detail_panels(base, page_url)
+    yield (
+        state,
+        header.html,
+        before or before_obs,
+        enrichment_error_markdown("Recommendations", err),
+        enrichment_error_markdown("Brief & Draft", err),
+        enrichment_error_markdown("Evidence", err),
+        enrichment_error_markdown("CURRENT vs RECOMMENDED", err),
+    )
 
 
-def on_select_opportunity_choice(choice: str | None, state: AnalysisState | None):
+async def on_select_opportunity_choice(
+    choice: str | None, state: AnalysisState | None
+) -> AsyncGenerator[tuple[Any, ...], None]:
     """Dropdown selection → page detail (reliable vs Dataframe.select quirks)."""
     state = state or AnalysisState()
     blank = (
         state,
         state.selected_page_url,
+        EMPTY_HEADER,
         EMPTY_DETAIL,
-        "_No recommendations yet._",
-        "_No brief/draft yet._",
-        "_No evidence yet._",
+        EMPTY_RECS,
+        EMPTY_BRIEF,
+        EMPTY_EVIDENCE,
+        EMPTY_COMPARE,
     )
     if not state.report or not choice or not state.opportunities:
-        return blank
-    # choice format: "1. title"
-    try:
-        idx = int(str(choice).split(".", 1)[0]) - 1
-    except ValueError:
-        return blank
-    if idx < 0 or idx >= len(state.opportunities):
-        return blank
-    page_url = state.opportunities[idx].get("page_url") or state.selected_page_url
-    state, before, recs_md, after_md, evidence_md = on_select_page(page_url, state)
-    return state, page_url, before, recs_md, after_md, evidence_md
+        yield blank
+        return
+    page_url = resolve_opportunity_page_url(
+        state.opportunities, choice, fallback=state.selected_page_url
+    )
+    if not page_url:
+        yield blank
+        return
+    async for out in on_select_page(page_url, state):
+        # Prepend page_url for dropdown sync.
+        yield (out[0], page_url, *out[1:])
 
 
 def opportunity_choices(state: AnalysisState) -> list[str]:
@@ -363,7 +533,10 @@ def build_app():
                     ],
                     value="Single page URL",
                     label="Analysis mode",
-                    info="Multi-page is a same-host crawl from the seed — not a CMS series.",
+                    info=(
+                        f"Multi-page requests up to {UI_MULTI_MAX_PAGES} same-host pages "
+                        "(backend ceiling 25). Not a CMS series."
+                    ),
                 )
                 draft_in = gr.Checkbox(
                     value=True,
@@ -377,20 +550,14 @@ def build_app():
                     guide_btn = gr.Button("? How to read this report", elem_id="guide-btn", variant="secondary")
             with gr.Column(scale=2, elem_classes=["aeo-panel"]):
                 status_html = gr.HTML(value="")
-                gr.Markdown(
-                    f"**ⓘ Quick glossary**\n\n"
-                    f"- {info_text('aeo_health')}\n"
-                    f"- {info_text('ai_llm_visibility')}\n"
-                    f"- {info_text('content_gap')}\n"
-                    f"- {info_text('recommendation')}\n"
-                    f"- {info_text('provenance')}"
-                )
+                gr.Markdown(executive_glossary_markdown())
 
-        with gr.Accordion("Guide & full glossary", open=False) as guide_acc:
+        with gr.Accordion("Guide & technical glossary", open=False) as guide_acc:
             gr.Markdown(GUIDE_MARKDOWN + "\n\n" + all_terms_markdown())
 
         with gr.Row():
             with gr.Column(elem_classes=["aeo-panel"]):
+                kpi_html = gr.HTML(value=kpi_cards_html(None))
                 overview_md = gr.Markdown(EMPTY_OVERVIEW)
 
         with gr.Row():
@@ -404,6 +571,7 @@ def build_app():
                     interactive=False,
                     wrap=True,
                     label="Deterministic ranking from recommendations + high-severity gaps",
+                    column_widths=["48px", "120px", "22%", "28%", "22%", "10%"],
                 )
                 opp_select = gr.Dropdown(
                     choices=[],
@@ -419,39 +587,53 @@ def build_app():
                     value=[],
                     interactive=False,
                     wrap=True,
-                    label="Crawled pages (multi-page mode)",
+                    label=f"Crawled pages (multi-page; UI requests up to {UI_MULTI_MAX_PAGES})",
+                    column_widths=["22%", "38%", "10%", "12%", "18%"],
                 )
                 page_select = gr.Dropdown(
                     choices=[],
                     label="Inspect page",
-                    info="Select a page for Before / Recommendations / Brief & Draft / Evidence.",
+                    info="Select a page for CURRENT / Recommendations / Brief & Draft / Evidence.",
                 )
             with gr.Column(scale=2, elem_classes=["aeo-panel"]):
+                page_header_html = gr.HTML(value=EMPTY_HEADER)
                 with gr.Tabs():
-                    with gr.Tab("Before"):
+                    with gr.Tab("CURRENT (observed)"):
+                        gr.Markdown(
+                            "_Observed page signals — not a live browser render._"
+                        )
                         before_md = gr.Markdown(EMPTY_DETAIL)
                     with gr.Tab("Recommendations"):
-                        recs_md = gr.Markdown("_No recommendations yet._")
+                        recs_md = gr.Markdown(EMPTY_RECS)
                     with gr.Tab("Brief & Draft"):
                         gr.Markdown(
-                            "_Brief & Draft = content gaps (existing fields) + optimization brief "
+                            "_Brief & Draft = content gaps + optimization brief "
                             "+ recommended content/draft when provided. "
                             "Skeleton drafts are labeled honestly — never a final optimized page._"
                         )
-                        after_md = gr.Markdown("_No brief/draft yet._")
+                        after_md = gr.Markdown(EMPTY_BRIEF)
+                    with gr.Tab("CURRENT vs RECOMMENDED"):
+                        gr.Markdown(
+                            "_Side-by-side: observed signals vs brief/structure/draft. "
+                            "Honest labels only — never a final optimized page._"
+                        )
+                        compare_md = gr.Markdown(EMPTY_COMPARE)
                     with gr.Tab("Evidence"):
-                        evidence_md = gr.Markdown("_No evidence yet._")
+                        evidence_md = gr.Markdown(EMPTY_EVIDENCE)
 
         outputs = [
             state,
             status_html,
+            kpi_html,
             overview_md,
             opp_table,
             page_table,
+            page_header_html,
             before_md,
             recs_md,
             after_md,
             evidence_md,
+            compare_md,
             page_select,
             opp_select,
         ]
@@ -478,13 +660,16 @@ def build_app():
             return (
                 s,
                 gr_update_status("Cleared.", kind="idle"),
+                kpi_cards_html(None),
                 EMPTY_OVERVIEW,
                 [],
                 [],
+                EMPTY_HEADER,
                 EMPTY_DETAIL,
-                "_No recommendations yet._",
-                "_No brief/draft yet._",
-                "_No evidence yet._",
+                EMPTY_RECS,
+                EMPTY_BRIEF,
+                EMPTY_EVIDENCE,
+                EMPTY_COMPARE,
                 gr.update(choices=[], value=None),
                 gr.update(choices=[], value=None),
                 "",
@@ -502,23 +687,35 @@ def build_app():
             outputs=[guide_acc],
         )
 
+        detail_outputs = [
+            state,
+            page_header_html,
+            before_md,
+            recs_md,
+            after_md,
+            evidence_md,
+            compare_md,
+        ]
+
         page_select.change(
             fn=on_select_page,
             inputs=[page_select, state],
-            outputs=[state, before_md, recs_md, after_md, evidence_md],
+            outputs=detail_outputs,
         )
 
         opp_select.change(
             fn=on_select_opportunity_choice,
             inputs=[opp_select, state],
-            outputs=[state, page_select, before_md, recs_md, after_md, evidence_md],
+            outputs=[state, page_select, *detail_outputs[1:]],
         )
 
         gr.Markdown(
             "<sub>Laptop/desktop optimized (1366×768+). Visibility metrics are sample "
-            "estimates, not rankings. Drafts are never final optimized pages.</sub>"
+            "estimates, not rankings. Drafts are never final optimized pages. "
+            f"Multi-page UI request cap: {UI_MULTI_MAX_PAGES} (backend ceiling 25).</sub>"
         )
 
+    # Bound concurrency for expensive work; do not disable the queue.
     return demo
 
 
@@ -526,7 +723,9 @@ def main() -> None:
     demo = build_app()
     host = os.environ.get("GRADIO_SERVER_NAME", "127.0.0.1")
     port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
-    demo.queue().launch(server_name=host, server_port=port, show_error=True)
+    demo.queue(default_concurrency_limit=4).launch(
+        server_name=host, server_port=port, show_error=True
+    )
 
 
 if __name__ == "__main__":

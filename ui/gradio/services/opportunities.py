@@ -159,3 +159,28 @@ def opportunities_table(rows: list[Opportunity]) -> list[list[str]]:
 
 def opportunity_as_dict(row: Opportunity) -> dict[str, Any]:
     return asdict(row)
+
+
+def resolve_opportunity_page_url(
+    opportunities: list[Any],
+    choice: str | None,
+    *,
+    fallback: str | None = None,
+) -> str | None:
+    """Map dropdown choice → page URL; stable when page_url is missing."""
+    if not choice or not opportunities:
+        return fallback
+    try:
+        idx = int(str(choice).split(".", 1)[0]) - 1
+    except ValueError:
+        return fallback
+    if idx < 0 or idx >= len(opportunities):
+        return fallback
+    row = opportunities[idx]
+    if isinstance(row, Opportunity):
+        return row.page_url or fallback
+    if isinstance(row, dict):
+        url = row.get("page_url")
+        return url if isinstance(url, str) and url else fallback
+    return fallback
+

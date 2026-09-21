@@ -23,16 +23,22 @@ def test_glossary_has_required_terms():
 def test_info_and_detail_text():
     info = glossary.info_text("aeo_health")
     assert "AEO Health" in info
+    assert "readiness" in info.lower() or "answer engines" in info.lower()
     detail = glossary.detail_text("aeo_health")
     assert "health-v1" in detail
     assert "visibility" in detail.lower()
+    exec_md = glossary.executive_glossary_markdown()
+    assert "executive" in exec_md.lower()
+    assert "ⓘ" in exec_md or "AEO Health" in exec_md
 
 
 def test_guide_mentions_honesty():
-    assert "final optimized page" in glossary.GUIDE_MARKDOWN.lower() or "final optimized" in glossary.GUIDE_MARKDOWN.lower()
+    assert "optimized page" in glossary.GUIDE_MARKDOWN.lower()
     assert "same-host" in glossary.GUIDE_MARKDOWN.lower()
+    assert "observed page signals" in glossary.GUIDE_MARKDOWN.lower()
     md = glossary.all_terms_markdown()
     assert "Provenance" in md
+    assert "Technical details" in md or "health-v1" in md
 
 
 def test_unknown_key_raises():

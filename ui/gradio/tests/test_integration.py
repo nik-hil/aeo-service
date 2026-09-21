@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import httpx
 import pytest
 
@@ -17,9 +15,10 @@ from app import (
     on_select_page,
     run_analysis,
 )
+from components.kpi_cards import kpi_cards_html
 from fixture_report import PAGES_PAYLOAD, SAMPLE_REPORT
 from glossary import GUIDE_MARKDOWN, info_text
-from services.adapters import AnalysisState
+from services.adapters import AnalysisState, adapt_overview
 from services.api_client import AeoApiClient, AeoApiError
 
 
@@ -39,31 +38,37 @@ def test_guide_and_info_icons_copy():
     assert "How to read" in GUIDE_MARKDOWN
     assert "AEO Health" in info_text("aeo_health")
     assert "Entity" in info_text("entity_score")
+    assert "ranking" in info_text("aeo_health").lower() or "readiness" in info_text("aeo_health").lower()
 
 
 def test_detail_panels_tabs_content():
     before, recs, brief_draft, evidence = detail_panels(SAMPLE_REPORT, "https://demo.example/")
-    assert "Before" in before
+    assert "CURRENT" in before or "observed" in before.lower()
     assert "Recommendations" in recs or "answer-first" in recs.lower()
     assert "Content gaps" in brief_draft
-    assert "Optimization brief" in brief_draft or "brief" in brief_draft.lower()
+    assert "brief" in brief_draft.lower() or "RECOMMENDED" in brief_draft
     assert "skeleton" in brief_draft.lower() or "Draft" in brief_draft
     assert "```markdown" in brief_draft
     assert "Evidence" in evidence
+    assert "Optimized Page" not in brief_draft
 
 
-def test_page_select_updates_detail():
+@pytest.mark.asyncio
+async def test_page_select_updates_detail():
     state = AnalysisState(
         job_id="job-demo-1",
         report=SAMPLE_REPORT,
         pages=PAGES_PAYLOAD,
         selected_page_url="https://demo.example/",
     )
-    state, before, recs, brief_draft, evidence = on_select_page("https://demo.example/about", state)
+    outs = []
+    async for o in on_select_page("https://demo.example/about", state):
+        outs.append(o)
+    assert outs
     assert state.selected_page_url == "https://demo.example/about"
-    assert before
-    assert brief_draft
-    assert evidence
+    assert outs[-1][2]  # before
+    assert outs[-1][4]  # brief
+    assert outs[-1][5]  # evidence
 
 
 def test_clear_state_resets():
@@ -81,6 +86,15 @@ def test_stage_labels_cover_pipeline():
 def test_build_app_smoke():
     demo = build_app()
     assert demo is not None
+
+
+def test_kpi_cards_html():
+    vm = adapt_overview(SAMPLE_REPORT, mode="single", opportunity_count=3)
+    html = kpi_cards_html(vm)
+    assert "aeo-kpi-card" in html
+    assert "AEO Health" in html
+    assert "ⓘ" in html
+    assert "<script>" not in html
 
 
 def test_api_client_with_mock_transport():
@@ -154,15 +168,15 @@ def test_run_analysis_single_and_multi_with_mocks(monkeypatch):
 
     monkeypatch.setattr("app._client", lambda: FakeClient())
 
-    # single
     outputs = list(
         run_analysis("https://demo.example/", "Single page URL", True, True, AnalysisState())
     )
-    assert outputs[-1][2]  # overview markdown
-    assert "AEO Health" in outputs[-1][2]
-    assert outputs[-1][0].report is not None
+    final = outputs[-1]
+    assert final[3]  # overview markdown
+    assert "AEO Health" in final[3]
+    assert "aeo-kpi" in final[2]
+    assert final[0].report is not None
 
-    # multi — pages table populated
     calls["n"] = 0
     outputs = list(
         run_analysis(
@@ -173,8 +187,8 @@ def test_run_analysis_single_and_multi_with_mocks(monkeypatch):
             AnalysisState(),
         )
     )
-    assert outputs[-1][4]  # page table non-empty in multi
-    assert len(outputs[-1][3]) >= 1  # opportunities
+    assert outputs[-1][5]  # page table non-empty in multi
+    assert len(outputs[-1][4]) >= 1  # opportunities
 
 
 def test_run_analysis_clears_on_failure(monkeypatch):
@@ -205,3 +219,43 @@ def test_run_analysis_empty_url_clears():
 def test_api_error_shape():
     err = AeoApiError("nope", status_code=404)
     assert err.status_code == 404
+
+
+def test_mode_transition_clears_via_new_analysis(monkeypatch):
+    """Single↔multi: new analysis clears prior enrichment cache / selection."""
+
+    class FakeClient:
+        def create_job(self, *a, **k):
+            from services.api_client import JobRef
+
+            return JobRef(id="job-2", status="pending", base_url="https://demo.example/", demo_mode=True)
+
+        def get_job(self, job_id):
+            return {"id": job_id, "status": "completed"}
+
+        def get_report(self, job_id):
+            return SAMPLE_REPORT
+
+        def get_pages(self, job_id):
+            return PAGES_PAYLOAD
+
+    monkeypatch.setattr("app._client", lambda: FakeClient())
+    prior = AnalysisState(job_id="old", report=SAMPLE_REPORT, mode="single")
+    prior.enrichment_cache.set(
+        "old", "p2", __import__("services.enrichment", fromlist=["EnrichmentEntry"]).EnrichmentEntry(
+            status=__import__("services.enrichment", fromlist=["EnrichmentStatus"]).EnrichmentStatus.SUCCESS,
+            payload={"x": 1},
+        )
+    )
+    outs = list(
+        run_analysis(
+            "https://demo.example/",
+            "Multi-page crawl seed (same-host from seed)",
+            True,
+            True,
+            prior,
+        )
+    )
+    st = outs[-1][0]
+    assert st.mode == "multi"
+    assert st.enrichment_cache.get("old", "p2") is None

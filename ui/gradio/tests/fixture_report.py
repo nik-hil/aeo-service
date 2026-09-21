@@ -160,4 +160,69 @@ PAGES_PAYLOAD = {
     ],
 }
 
+# SYNTHETIC — for UI table/pagination tests only; not a live crawl fixture.
+SYNTHETIC_20_PAGES = {
+    "job_id": "job-synthetic-20",
+    "count": 20,
+    "synthetic": True,
+    "pages": [
+        {
+            "id": f"sp{i}",
+            "url": f"https://demo.example/section/path/page-{i:02d}/very/long/slug/for-truncation-testing",
+            "title": f"Synthetic page {i}",
+            "depth": 0 if i == 1 else (1 if i < 10 else 2),
+            "status_code": 200 if i % 7 else 404,
+            "fetch_error": None if i % 7 else "not found",
+        }
+        for i in range(1, 21)
+    ],
+}
+
 XSS_PAYLOAD = '<script>alert("xss")</script><img src=x onerror=alert(1)>'
+
+OPT_PAYLOAD_ABOUT = {
+    "page_intelligence": {
+        "url": "https://demo.example/about",
+        "title": "About AcmeFlow",
+        "meta_description": "About page",
+        "heading_outline": ["About", "Team"],
+        "answer_blocks": [{"kind": "definition", "text": "AcmeFlow is a demo."}],
+        "word_count": 180,
+    },
+    "content_gaps": [
+        {
+            "page_url": "https://demo.example/about",
+            "gaps": [
+                {
+                    "gap_id": "g-about",
+                    "gap_type": "entity_gap",
+                    "severity": "medium",
+                    "rationale": "About page lacks sameAs links",
+                }
+            ],
+        }
+    ],
+    "optimization_briefs": [
+        {
+            "brief_id": "b-about",
+            "page_url": "https://demo.example/about",
+            "action": "add_entity_markup",
+            "proposed_title": "About AcmeFlow",
+            "executive_summary": "Add Organization schema on About",
+            "outline": ["Intro", "Team", "Contact"],
+            "work_queue": [],
+            "caveats": [],
+            "provenance_notes": ["Enriched via content-optimization"],
+        }
+    ],
+    "content_drafts": [
+        {
+            "page_url": "https://demo.example/about",
+            "status": "generated",
+            "generator": "deterministic_skeleton",
+            "content_provenance": "generated",
+            "disclaimer": "Draft suggestion only",
+            "body_markdown": "# About AcmeFlow\n\n*(Skeleton)*\n",
+        }
+    ],
+}
