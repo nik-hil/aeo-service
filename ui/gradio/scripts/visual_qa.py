@@ -116,9 +116,9 @@ def run() -> int:
                 page.get_by_role("tab", name="Recommendations").click()
                 time.sleep(0.4)
                 shoot(page, f"demo-multi-recs-{tag}")
-                page.get_by_role("tab", name="After").click()
+                page.get_by_role("tab", name="Brief & Draft").click()
                 time.sleep(0.4)
-                shoot(page, f"demo-multi-after-{tag}")
+                shoot(page, f"demo-multi-brief-draft-{tag}")
                 page.get_by_role("tab", name="Evidence").click()
                 time.sleep(0.4)
                 shoot(page, f"demo-multi-evidence-{tag}")
@@ -153,7 +153,7 @@ def run() -> int:
                 "- One-click demo — single page",
                 "- Guide accordion open",
                 "- One-click demo — multi-page (same-host crawl seed)",
-                "- Detail tabs: Recommendations / After / Evidence",
+                "- Detail tabs: Recommendations / Brief & Draft / Evidence",
                 "",
                 "## Observations",
                 "- Brand (AEO Leadership Demo) is hero-level in the first viewport.",

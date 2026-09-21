@@ -9,6 +9,7 @@ from services.adapters import (
     adapt_brief,
     adapt_draft,
     adapt_evidence,
+    adapt_gaps,
     adapt_recommendations,
     recommendations_markdown,
 )
@@ -16,6 +17,7 @@ from services.adapters import (
 
 def render_page_detail(report: dict[str, Any], page_url: str | None) -> dict[str, str]:
     before = adapt_before(report, page_url=page_url)
+    gaps_md = adapt_gaps(report, page_url=page_url)
     brief = adapt_brief(report, page_url=page_url)
     draft = adapt_draft(report, page_url=page_url)
     recs = adapt_recommendations(report, page_url=page_url)
@@ -29,6 +31,6 @@ def render_page_detail(report: dict[str, Any], page_url: str | None) -> dict[str
     return {
         "before": before.markdown,
         "recommendations": recommendations_markdown(recs),
-        "after": brief_md + "\n\n---\n\n" + draft_md,
+        "brief_and_draft": gaps_md + "\n\n---\n\n" + brief_md + "\n\n---\n\n" + draft_md,
         "evidence": evidence.markdown,
     }

@@ -130,8 +130,9 @@ GUIDE_MARKDOWN = """
 5. **Why** — evidence snippets and provenance labels.
 6. **Recommended content** — optimization briefs and drafts when the API provides them.
 
-## Before / After honesty
+## Before / Brief & Draft honesty
 - **Before** = observed extracted signals (title, headings, answer blocks). Raw HTML, if shown, is escaped in a code viewer only.
+- **Content gaps** = existing `content_gaps` rows for the page (content-gap-v1) — not health or visibility scores.
 - **Optimization brief** = what to change and why (`opt-brief-v1`).
 - **Recommended Content / Optimization Draft** = only when the backend returns a draft. Skeleton drafts are labeled as such — **not** a “final optimized page.”
 

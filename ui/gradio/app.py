@@ -37,6 +37,7 @@ from services.adapters import (
     adapt_brief,
     adapt_draft,
     adapt_evidence,
+    adapt_gaps,
     adapt_overview,
     adapt_pages,
     adapt_recommendations,
@@ -65,7 +66,7 @@ STAGE_LABELS = {
 EMPTY_OVERVIEW = "_Run an analysis to see AEO Health, gaps, and recommendations._"
 EMPTY_DETAIL = (
     "_Select a page (multi-page) or run analysis (single-page) to inspect "
-    "Before → Recommendations → After → Evidence._"
+    "Before → Recommendations → Brief & Draft → Evidence._"
 )
 OPP_HEADERS = ["#", "Kind", "Title", "Summary", "Page", "Signal"]
 PAGE_HEADERS = ["Title", "URL", "Depth", "Status", "Error"]
@@ -106,6 +107,7 @@ def clear_state(state: AnalysisState | None) -> AnalysisState:
 
 def detail_panels(report: dict[str, Any], page_url: str | None) -> tuple[str, str, str, str]:
     before = adapt_before(report, page_url=page_url)
+    gaps_md = adapt_gaps(report, page_url=page_url)
     brief = adapt_brief(report, page_url=page_url)
     draft = adapt_draft(report, page_url=page_url)
     recs = adapt_recommendations(report, page_url=page_url)
@@ -119,8 +121,8 @@ def detail_panels(report: dict[str, Any], page_url: str | None) -> tuple[str, st
             "or generated suggestions — never a final optimized page._"
         )
     )
-    after_md = brief_md + "\n\n---\n\n" + draft_md
-    return before.markdown, recommendations_markdown(recs), after_md, evidence.markdown
+    brief_draft_md = gaps_md + "\n\n---\n\n" + brief_md + "\n\n---\n\n" + draft_md
+    return before.markdown, recommendations_markdown(recs), brief_draft_md, evidence.markdown
 
 
 def _blank_ui(state: AnalysisState, status: str, *, kind: str = "err") -> AnalysisOutput:
@@ -134,7 +136,7 @@ def _blank_ui(state: AnalysisState, status: str, *, kind: str = "err") -> Analys
         [],
         EMPTY_DETAIL,
         "_No recommendations yet._",
-        "_No after content yet._",
+        "_No brief/draft yet._",
         "_No evidence yet._",
         gr.update(choices=[], value=None),
         gr.update(choices=[], value=None),
@@ -263,7 +265,7 @@ def on_select_page(page_url: str | None, state: AnalysisState | None):
             state,
             EMPTY_DETAIL,
             "_No recommendations yet._",
-            "_No after content yet._",
+            "_No brief/draft yet._",
             "_No evidence yet._",
         )
     state.selected_page_url = page_url
@@ -302,7 +304,7 @@ def on_select_opportunity_choice(choice: str | None, state: AnalysisState | None
         state.selected_page_url,
         EMPTY_DETAIL,
         "_No recommendations yet._",
-        "_No after content yet._",
+        "_No brief/draft yet._",
         "_No evidence yet._",
     )
     if not state.report or not choice or not state.opportunities:
@@ -422,7 +424,7 @@ def build_app():
                 page_select = gr.Dropdown(
                     choices=[],
                     label="Inspect page",
-                    info="Select a page for Before / Recommendations / After / Evidence.",
+                    info="Select a page for Before / Recommendations / Brief & Draft / Evidence.",
                 )
             with gr.Column(scale=2, elem_classes=["aeo-panel"]):
                 with gr.Tabs():
@@ -430,12 +432,13 @@ def build_app():
                         before_md = gr.Markdown(EMPTY_DETAIL)
                     with gr.Tab("Recommendations"):
                         recs_md = gr.Markdown("_No recommendations yet._")
-                    with gr.Tab("After"):
+                    with gr.Tab("Brief & Draft"):
                         gr.Markdown(
-                            "_After = optimization brief + recommended content/draft when "
-                            "provided. Skeleton drafts are labeled honestly._"
+                            "_Brief & Draft = content gaps (existing fields) + optimization brief "
+                            "+ recommended content/draft when provided. "
+                            "Skeleton drafts are labeled honestly — never a final optimized page._"
                         )
-                        after_md = gr.Markdown("_No after content yet._")
+                        after_md = gr.Markdown("_No brief/draft yet._")
                     with gr.Tab("Evidence"):
                         evidence_md = gr.Markdown("_No evidence yet._")
 
@@ -480,7 +483,7 @@ def build_app():
                 [],
                 EMPTY_DETAIL,
                 "_No recommendations yet._",
-                "_No after content yet._",
+                "_No brief/draft yet._",
                 "_No evidence yet._",
                 gr.update(choices=[], value=None),
                 gr.update(choices=[], value=None),

@@ -74,13 +74,13 @@ Gradio is an optional extra (`pip install -e ".[ui]"` or `.[demo-ui]`). Core API
 3. Overview: AEO Health + components + visibility caveats
 4. Biggest Opportunities (deterministic; click → page detail)
 5. Pages table (multi-page) + page selector
-6. Detail tabs: **Before** → **Recommendations** → **After** → **Evidence**
+6. Detail tabs: **Before** → **Recommendations** → **Brief & Draft** → **Evidence**
 7. Guide accordion: “How to read this report” + full glossary
 
-### Before / After honesty
+### Before / Brief & Draft honesty
 
 - **Before** = observed/derived extracted signals (title, headings, answer blocks)
-- **After** = optimization brief + draft when the API returns one
+- **Brief & Draft** = content gaps (existing report fields) + optimization brief + draft when the API returns one
 - Skeleton drafts labeled **Optimization Draft (deterministic skeleton)** — never “final optimized page”
 
 ### Biggest Opportunities ordering

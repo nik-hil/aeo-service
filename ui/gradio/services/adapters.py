@@ -404,6 +404,44 @@ def adapt_brief(report: dict[str, Any], *, page_url: str | None = None) -> Brief
     )
 
 
+def adapt_gaps(report: dict[str, Any], *, page_url: str | None = None) -> str:
+    """Render existing content-gap rows for a page — no new metrics."""
+    lines: list[str] = [
+        "### Content gaps ⓘ",
+        "",
+        "_Evidence-backed gaps vs the frozen QuerySet (content-gap-v1). "
+        "Not AEO Health and not AI visibility._",
+        "",
+    ]
+    rows: list[dict[str, Any]] = []
+    for block in report.get("content_gaps") or []:
+        if not isinstance(block, dict):
+            continue
+        block_url = block.get("page_url")
+        if page_url and block_url and _normalize_url(block_url) != _normalize_url(page_url):
+            continue
+        for gap in block.get("gaps") or []:
+            if not isinstance(gap, dict):
+                continue
+            item = dict(gap)
+            item.setdefault("best_page_url", block_url)
+            if page_url:
+                gap_page = item.get("best_page_url") or block_url
+                if gap_page and _normalize_url(gap_page) != _normalize_url(page_url):
+                    continue
+            rows.append(item)
+    if not rows:
+        lines.append("_No content gaps listed for this page._")
+        return "\n".join(lines)
+    for gap in rows[:20]:
+        gtype = escape_text(gap.get("gap_type") or "gap")
+        sev = escape_text(gap.get("severity") or "—")
+        rationale = escape_text(gap.get("rationale") or gap.get("explanation") or "")
+        gid = escape_text(gap.get("gap_id") or "")
+        lines.append(f"- **{gtype}** (severity: `{sev}`) {f'`{gid}` ' if gid else ''}— {rationale}")
+    return "\n".join(lines)
+
+
 def draft_ui_label(draft: dict[str, Any]) -> str:
     status = str(draft.get("status") or "")
     generator = str(draft.get("generator") or draft.get("writer") or "")
@@ -440,8 +478,6 @@ def adapt_draft(report: dict[str, Any], *, page_url: str | None = None) -> Draft
         draft.get("disclaimer")
         or "Draft suggestion only — not published; not a guarantee of AI citation."
     )
-    # Escape body for markdown display (treat as preformatted text)
-    body_safe = escape_text(body) if body else "_No draft body returned by the API._"
     header = (
         f"### {escape_text(label)}\n\n"
         f"**Status:** `{escape_text(draft.get('status'))}` · "
@@ -453,7 +489,8 @@ def adapt_draft(report: dict[str, Any], *, page_url: str | None = None) -> Draft
     if empty:
         md = header + "_Draft not generated for this page (null/skipped)._"
     else:
-        md = header + f"```markdown\n{body.replace('```', '``\\u200b`')}\n```"
+        # Sanitize + fence; never inject raw HTML into Gradio Markdown unsafely.
+        md = header + sanitize_code_block(body, language="markdown")
 
     return DraftView(
         page_url=str(draft.get("page_url") or page_url or ""),

@@ -14,6 +14,7 @@ from services.adapters import (
     adapt_brief,
     adapt_draft,
     adapt_evidence,
+    adapt_gaps,
     adapt_overview,
     adapt_pages,
     adapt_recommendations,
@@ -53,6 +54,9 @@ def test_before_after_adapters():
     before = adapt_before(SAMPLE_REPORT, page_url="https://demo.example/")
     assert "AcmeFlow" in before.title
     assert "Heading outline" in before.markdown
+    gaps = adapt_gaps(SAMPLE_REPORT, page_url="https://demo.example/pricing")
+    assert "Content gaps" in gaps
+    assert "thin_coverage" in gaps
     brief = adapt_brief(SAMPLE_REPORT, page_url="https://demo.example/")
     assert brief is not None
     assert brief.action == "expand_section"
@@ -60,6 +64,10 @@ def test_before_after_adapters():
     assert draft is not None
     assert "skeleton" in draft.label.lower()
     assert draft.content_provenance == "generated"
+    assert "```markdown" in draft.body_markdown
+    # homepage has no gap rows in fixture → empty-state copy
+    home_gaps = adapt_gaps(SAMPLE_REPORT, page_url="https://demo.example/")
+    assert "No content gaps" in home_gaps
 
 
 def test_recommendations_and_evidence():

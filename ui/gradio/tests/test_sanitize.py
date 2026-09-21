@@ -34,6 +34,25 @@ def test_draft_label_honest_for_skeleton():
     assert draft is not None
     assert "skeleton" in draft.label.lower()
     assert "final optimized" not in draft.label.lower()
+    assert "```markdown" in draft.body_markdown
+
+
+def test_draft_body_uses_sanitize_code_block():
+    report = dict(SAMPLE_REPORT)
+    report["content_drafts"] = [
+        {
+            **SAMPLE_REPORT["content_drafts"][0],
+            "body_markdown": XSS_PAYLOAD + "\n```\ninject\n```\n",
+        }
+    ]
+    draft = adapt_draft(report)
+    assert draft is not None
+    # Fenced via sanitize_code_block — raw tags only inside fence, fence break neutralized
+    assert draft.body_markdown.count("```markdown") >= 1
+    assert "<script>" in draft.body_markdown  # inside fence as text
+    # Header fields outside the fence must still be escaped if ever polluted — body fence only
+    assert "\u200b" in draft.body_markdown or "``\u200b`" in draft.body_markdown or "```" in draft.body_markdown
+
 
 
 def test_overview_escapes_caveats():

@@ -42,11 +42,13 @@ def test_guide_and_info_icons_copy():
 
 
 def test_detail_panels_tabs_content():
-    before, recs, after, evidence = detail_panels(SAMPLE_REPORT, "https://demo.example/")
+    before, recs, brief_draft, evidence = detail_panels(SAMPLE_REPORT, "https://demo.example/")
     assert "Before" in before
     assert "Recommendations" in recs or "answer-first" in recs.lower()
-    assert "Optimization brief" in after or "brief" in after.lower()
-    assert "skeleton" in after.lower() or "Draft" in after
+    assert "Content gaps" in brief_draft
+    assert "Optimization brief" in brief_draft or "brief" in brief_draft.lower()
+    assert "skeleton" in brief_draft.lower() or "Draft" in brief_draft
+    assert "```markdown" in brief_draft
     assert "Evidence" in evidence
 
 
@@ -57,9 +59,11 @@ def test_page_select_updates_detail():
         pages=PAGES_PAYLOAD,
         selected_page_url="https://demo.example/",
     )
-    state, before, recs, after, evidence = on_select_page("https://demo.example/about", state)
+    state, before, recs, brief_draft, evidence = on_select_page("https://demo.example/about", state)
     assert state.selected_page_url == "https://demo.example/about"
     assert before
+    assert brief_draft
+    assert evidence
 
 
 def test_clear_state_resets():
