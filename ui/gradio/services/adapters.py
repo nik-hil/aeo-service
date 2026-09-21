@@ -588,7 +588,12 @@ def overview_markdown(vm: OverviewVM) -> str:
         f"**Seed / base URL:** {escape_text(vm.base_url)}",
         f"**Mode:** {'Single page' if vm.mode == 'single' else 'Multi-page (same-host crawl from seed)'}",
         f"**Demo mode:** {'yes' if vm.demo_mode else 'no'}",
-        f"**Pages crawled:** {vm.pages_crawled}",
+        f"**Pages crawled:** {vm.pages_crawled}"
+        + (
+            " _(demo fixtures load the full fixture site; API ignores max_pages/max_depth)_"
+            if vm.demo_mode
+            else ""
+        ),
         f"**Job:** `{escape_text(vm.job_id)}`",
         "",
         f"### {escape_text(vm.health.label)}: **{escape_text(vm.health.value)}**",

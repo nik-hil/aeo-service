@@ -137,6 +137,7 @@ def _blank_ui(state: AnalysisState, status: str, *, kind: str = "err") -> Analys
         "_No after content yet._",
         "_No evidence yet._",
         gr.update(choices=[], value=None),
+        gr.update(choices=[], value=None),
     )
 
 
@@ -242,6 +243,7 @@ def run_analysis(
             after_md,
             evidence_md,
             gr.update(choices=page_choices, value=selected),
+            gr.update(choices=opportunity_choices(state), value=None),
         )
     except AeoApiError as exc:
         state.clear_results()
@@ -292,18 +294,8 @@ def on_select_page(page_url: str | None, state: AnalysisState | None):
     return state, before, recs_md, after_md, evidence_md
 
 
-def on_select_opportunity(evt: Any, state: AnalysisState | None):
-    """Dataframe select → jump to page detail.
-
-    Gradio may call with (evt, state) or inject evt as the only event arg when
-    wired via ``.select``; accept both.
-    """
-    # When Gradio passes only the event, ``state`` may actually be the event.
-    if state is None or not isinstance(state, AnalysisState):
-        if isinstance(evt, AnalysisState):
-            state, evt = evt, None
-        else:
-            state = AnalysisState()
+def on_select_opportunity_choice(choice: str | None, state: AnalysisState | None):
+    """Dropdown selection → page detail (reliable vs Dataframe.select quirks)."""
     state = state or AnalysisState()
     blank = (
         state,
@@ -313,27 +305,33 @@ def on_select_opportunity(evt: Any, state: AnalysisState | None):
         "_No after content yet._",
         "_No evidence yet._",
     )
-    if not state.report or evt is None:
+    if not state.report or not choice or not state.opportunities:
         return blank
+    # choice format: "1. title"
     try:
-        if hasattr(evt, "index"):
-            idx = evt.index
-            row_idx = int(idx[0] if isinstance(idx, (list, tuple)) else idx)
-        else:
-            row_idx = int(evt)
-    except Exception:  # noqa: BLE001
+        idx = int(str(choice).split(".", 1)[0]) - 1
+    except ValueError:
         return blank
-    if row_idx < 0 or row_idx >= len(state.opportunities):
+    if idx < 0 or idx >= len(state.opportunities):
         return blank
-    page_url = state.opportunities[row_idx].get("page_url") or state.selected_page_url
+    page_url = state.opportunities[idx].get("page_url") or state.selected_page_url
     state, before, recs_md, after_md, evidence_md = on_select_page(page_url, state)
     return state, page_url, before, recs_md, after_md, evidence_md
+
+
+def opportunity_choices(state: AnalysisState) -> list[str]:
+    return [
+        f"{i}. {o.get('title') or o.get('id') or 'opportunity'}"
+        for i, o in enumerate(state.opportunities, start=1)
+    ]
 
 
 def build_app():
     import gradio as gr
 
-    with gr.Blocks(title="AEO Leadership Demo") as demo:
+    theme = build_theme()
+
+    with gr.Blocks(title="AEO Leadership Demo", theme=theme, css=CUSTOM_CSS) as demo:
         state = gr.State(AnalysisState())
 
         gr.HTML(
@@ -371,10 +369,10 @@ def build_app():
                     info="Drafts are generated suggestions — never a final optimized page.",
                 )
                 with gr.Row():
-                    analyze_btn = gr.Button("Analyze", elem_id="analyze-btn")
-                    demo_btn = gr.Button("▶ One-click demo", elem_id="demo-btn")
-                    clear_btn = gr.Button("Clear", elem_id="clear-btn")
-                    guide_btn = gr.Button("? How to read this report", elem_id="guide-btn")
+                    analyze_btn = gr.Button("Analyze", elem_id="analyze-btn", variant="primary")
+                    demo_btn = gr.Button("▶ One-click demo", elem_id="demo-btn", variant="secondary")
+                    clear_btn = gr.Button("Clear", elem_id="clear-btn", variant="secondary")
+                    guide_btn = gr.Button("? How to read this report", elem_id="guide-btn", variant="secondary")
             with gr.Column(scale=2, elem_classes=["aeo-panel"]):
                 status_html = gr.HTML(value="")
                 gr.Markdown(
@@ -404,6 +402,11 @@ def build_app():
                     interactive=False,
                     wrap=True,
                     label="Deterministic ranking from recommendations + high-severity gaps",
+                )
+                opp_select = gr.Dropdown(
+                    choices=[],
+                    label="Open opportunity page",
+                    info="Select an opportunity to jump to its primary page detail.",
                 )
 
         with gr.Row():
@@ -447,15 +450,22 @@ def build_app():
             after_md,
             evidence_md,
             page_select,
+            opp_select,
         ]
 
+        def analyze_click(u, m, d, s):
+            yield from run_analysis(u, m, False, d, s)
+
+        def demo_click(m, d, s):
+            yield from run_analysis("https://demo.example/", m, True, d, s)
+
         analyze_btn.click(
-            fn=lambda u, m, d, s: run_analysis(u, m, False, d, s),
+            fn=analyze_click,
             inputs=[url_in, mode_in, draft_in, state],
             outputs=outputs,
         )
         demo_btn.click(
-            fn=lambda m, d, s: run_analysis("https://demo.example/", m, True, d, s),
+            fn=demo_click,
             inputs=[mode_in, draft_in, state],
             outputs=outputs,
         )
@@ -472,6 +482,7 @@ def build_app():
                 "_No recommendations yet._",
                 "_No after content yet._",
                 "_No evidence yet._",
+                gr.update(choices=[], value=None),
                 gr.update(choices=[], value=None),
                 "",
             )
@@ -494,9 +505,9 @@ def build_app():
             outputs=[state, before_md, recs_md, after_md, evidence_md],
         )
 
-        opp_table.select(
-            fn=on_select_opportunity,
-            inputs=[state],
+        opp_select.change(
+            fn=on_select_opportunity_choice,
+            inputs=[opp_select, state],
             outputs=[state, page_select, before_md, recs_md, after_md, evidence_md],
         )
 
@@ -512,14 +523,7 @@ def main() -> None:
     demo = build_app()
     host = os.environ.get("GRADIO_SERVER_NAME", "127.0.0.1")
     port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
-    theme = build_theme()
-    demo.queue().launch(
-        server_name=host,
-        server_port=port,
-        show_error=True,
-        theme=theme,
-        css=CUSTOM_CSS,
-    )
+    demo.queue().launch(server_name=host, server_port=port, show_error=True)
 
 
 if __name__ == "__main__":
