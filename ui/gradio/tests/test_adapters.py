@@ -47,19 +47,22 @@ def test_pages_table():
     rows = adapt_pages(PAGES_PAYLOAD)
     assert len(rows) == 2
     table = pages_table(rows)
-    assert table[0][1] == "https://demo.example/"
+    assert "demo.example" in table[0][1]
 
 
 def test_before_after_adapters():
     before = adapt_before(SAMPLE_REPORT, page_url="https://demo.example/")
     assert "AcmeFlow" in before.title
     assert "Heading outline" in before.markdown
+    assert "CURRENT" in before.markdown
+    assert "not a live browser render" in before.markdown.lower()
     gaps = adapt_gaps(SAMPLE_REPORT, page_url="https://demo.example/pricing")
     assert "Content gaps" in gaps
     assert "thin_coverage" in gaps
     brief = adapt_brief(SAMPLE_REPORT, page_url="https://demo.example/")
     assert brief is not None
     assert brief.action == "expand_section"
+    assert "Optimized Page" not in brief.markdown
     draft = adapt_draft(SAMPLE_REPORT, page_url="https://demo.example/")
     assert draft is not None
     assert "skeleton" in draft.label.lower()
@@ -68,6 +71,19 @@ def test_before_after_adapters():
     # homepage has no gap rows in fixture → empty-state copy
     home_gaps = adapt_gaps(SAMPLE_REPORT, page_url="https://demo.example/")
     assert "No content gaps" in home_gaps
+
+
+def test_page_header_and_overview_counts():
+    from services.adapters import page_header
+
+    vm = adapt_overview(SAMPLE_REPORT, mode="multi", opportunity_count=3)
+    assert vm.gap_count == 2
+    assert vm.opportunity_count == 3
+    assert vm.visibility_summary
+    h = page_header(SAMPLE_REPORT, PAGES_PAYLOAD, "https://demo.example/about")
+    assert "About" in h.title
+    assert h.depth == "1"
+    assert "aeo-page-header" in h.html
 
 
 def test_recommendations_and_evidence():

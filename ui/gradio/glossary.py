@@ -13,6 +13,7 @@ from typing import TypedDict
 class GlossaryEntry(TypedDict):
     term: str
     short: str
+    executive: str
     detail: str
     source: str
 
@@ -21,6 +22,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "aeo_health": {
         "term": "AEO Health",
         "short": "Weighted readiness score (0–100) from crawl/analysis only.",
+        "executive": "Overall readiness of your pages for answer engines (0–100). Higher is better. Not a search ranking.",
         "detail": (
             "AEO Health (formula_version health-v1) is a clamped weighted mean: "
             "0.25×Technical + 0.25×Content + 0.20×Entity Clarity + "
@@ -32,6 +34,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "entity_score": {
         "term": "Entity Score",
         "short": "Entity Clarity (E): brand/org consistency on the site.",
+        "executive": "How clearly the site states who you are (brand/org). Helps answer engines attribute answers correctly.",
         "detail": (
             "Product label for Entity Clarity Score (E) in health-v1 — brand token "
             "consistency, Organization signal, contact/sameAs, and an ambiguity "
@@ -42,6 +45,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "ai_llm_visibility": {
         "term": "AI / LLM Visibility",
         "short": "Sample estimate from a controlled experiment — not rankings.",
+        "executive": "Sample estimate of whether models mention your brand/URL in a controlled test — not ChatGPT/Gemini rankings.",
         "detail": (
             "Two experiment kinds exist: llm_mention (non-retrieval mention rates) "
             "and ai_search_visibility (retrieval-enabled API observations). "
@@ -54,6 +58,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "content_gap": {
         "term": "Content Gap",
         "short": "Evidence-backed gap vs a frozen QuerySet (content-gap-v1).",
+        "executive": "Places where content is missing or thin for questions buyers ask — evidence-backed, not a health score.",
         "detail": (
             "Deterministic gap types (missing/thin/structure/entity/schema/etc.) "
             "joined to a frozen QuerySet. Page coverage flags are explicit: "
@@ -65,6 +70,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "optimization_opportunity": {
         "term": "Optimization Opportunity",
         "short": "Prioritized recommendation or optimization brief — not a score.",
+        "executive": "Highest-leverage next fixes ranked from recommendations and gaps. Not a separate score.",
         "detail": (
             "There is no separate methodology score named Optimization Opportunity. "
             "In this UI it means a ranked recommendation (rec-catalog-v1) and/or an "
@@ -76,6 +82,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "query_coverage": {
         "term": "Query Coverage",
         "short": "Share of experiment prompts with ≥1 positive observation.",
+        "executive": "Share of test prompts where your brand/URL appeared at least once in the experiment.",
         "detail": (
             "Visibility Query Coverage: fraction of prompts with at least one "
             "mention (llm_mention) or mention/appearance/citation "
@@ -87,6 +94,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "evidence": {
         "term": "Evidence",
         "short": "Observable or derived artifacts linked to findings and recs.",
+        "executive": "Snippets and findings that explain why a recommendation or gap exists.",
         "detail": (
             "Crawl/analyzer artifacts (IDs, snippets, codes) attached to findings "
             "and recommendations. Signal classes include observable, derived, and "
@@ -97,6 +105,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "recommendation": {
         "term": "Recommendation",
         "short": "Actionable, evidence-linked fix with effort and impact.",
+        "executive": "A concrete fix with effort and expected impact, tied to evidence on the page.",
         "detail": (
             "From rec-catalog-v1: prioritized action with rationale, effort (S/M/L), "
             "impact, and evidence_ids. priority_score = impact × effort_weight "
@@ -107,6 +116,7 @@ GLOSSARY: dict[str, GlossaryEntry] = {
     "provenance": {
         "term": "Provenance",
         "short": "How a metric or content claim was produced.",
+        "executive": "Where a number or draft came from (observed, derived, estimate, generated).",
         "detail": (
             "Score metrics use labels such as derived_metric, estimate, "
             "synthetic_demo, api_observation. Content/query layers use "
@@ -130,11 +140,10 @@ GUIDE_MARKDOWN = """
 5. **Why** — evidence snippets and provenance labels.
 6. **Recommended content** — optimization briefs and drafts when the API provides them.
 
-## Before / Brief & Draft honesty
-- **Before** = observed extracted signals (title, headings, answer blocks). Raw HTML, if shown, is escaped in a code viewer only.
+## CURRENT / OBSERVED vs RECOMMENDED
+- **CURRENT (observed page signals)** = extracted title, headings, answer blocks from the API — **not a live browser render**.
+- **RECOMMENDED** = optimization brief + suggested structure/draft when the API returns one. Skeleton drafts are labeled honestly — **never** a final optimized page.
 - **Content gaps** = existing `content_gaps` rows for the page (content-gap-v1) — not health or visibility scores.
-- **Optimization brief** = what to change and why (`opt-brief-v1`).
-- **Recommended Content / Optimization Draft** = only when the backend returns a draft. Skeleton drafts are labeled as such — **not** a “final optimized page.”
 
 ## Visibility honesty
 Visibility metrics are **sample estimates** under a controlled protocol. They do **not** reproduce ChatGPT / Gemini / Perplexity consumer rankings.
@@ -154,9 +163,14 @@ def get_entry(key: str) -> GlossaryEntry:
 
 
 def info_text(key: str) -> str:
-    """Short tip for Gradio `info=` / tooltip surfaces."""
+    """Short tip for Gradio `info=` / tooltip surfaces (executive-first)."""
     entry = get_entry(key)
-    return f"{entry['term']}: {entry['short']}"
+    return f"{entry['term']}: {entry['executive']}"
+
+
+def executive_tip(key: str) -> str:
+    """Plain-English tip for KPI ⓘ affordances."""
+    return get_entry(key)["executive"]
 
 
 def detail_text(key: str) -> str:
@@ -164,8 +178,24 @@ def detail_text(key: str) -> str:
     return f"**{entry['term']}** — {entry['detail']} _(Source: {entry['source']})_"
 
 
+def executive_glossary_markdown() -> str:
+    lines = ["### Quick glossary (executive)", ""]
+    for key in (
+        "aeo_health",
+        "entity_score",
+        "ai_llm_visibility",
+        "content_gap",
+        "optimization_opportunity",
+        "recommendation",
+        "provenance",
+    ):
+        entry = GLOSSARY[key]
+        lines.append(f"- **{entry['term']}** ⓘ — {entry['executive']}")
+    return "\n".join(lines)
+
+
 def all_terms_markdown() -> str:
-    lines = ["### Glossary", ""]
+    lines = ["### Technical details & full glossary", ""]
     for key in (
         "aeo_health",
         "entity_score",
@@ -179,6 +209,8 @@ def all_terms_markdown() -> str:
     ):
         entry = GLOSSARY[key]
         lines.append(f"**{entry['term']}** ⓘ")
+        lines.append("")
+        lines.append(f"*Executive:* {entry['executive']}")
         lines.append("")
         lines.append(entry["detail"])
         lines.append("")

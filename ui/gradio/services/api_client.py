@@ -1,4 +1,9 @@
-"""Thin HTTP client for the secured AEO API. No business logic."""
+"""Thin HTTP client for the secured AEO API. No business logic.
+
+Sync and async clients share base URL, auth headers, timeout, and error parsing.
+``content_optimization_async`` uses ``httpx.AsyncClient`` — never a blocking
+``httpx.Client`` inside an ``async def``.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +22,28 @@ class AeoApiError(Exception):
         self.body = body
 
 
+def user_safe_enrichment_error(exc: BaseException) -> str:
+    """Map enrichment failures to short, user-safe copy (no stack traces)."""
+    if isinstance(exc, AeoApiError):
+        code = exc.status_code
+        if code == 404:
+            return "Optimization analysis is not available for this page (not found)."
+        if code == 409:
+            return "Optimization analysis is not ready yet for this page. Try again shortly."
+        if code in {401, 403}:
+            return "API authorization failed while loading optimization analysis."
+        if code == 429:
+            return "Too many optimization requests — please wait a moment and retry."
+        if code is not None and code >= 500:
+            return "Optimization analysis is temporarily unavailable. Page signals above remain valid."
+        return "Could not load additional optimization analysis for this page."
+    if isinstance(exc, httpx.TimeoutException):
+        return "Optimization analysis timed out. Page signals above remain valid."
+    if isinstance(exc, (httpx.TransportError, OSError)):
+        return "Could not reach the AEO API for optimization analysis."
+    return "Could not load additional optimization analysis for this page."
+
+
 @dataclass
 class JobRef:
     id: str
@@ -33,6 +60,7 @@ class AeoApiClient:
         *,
         timeout: float = 60.0,
         transport: httpx.BaseTransport | None = None,
+        async_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.base_url = (base_url or os.environ.get("AEO_API_BASE_URL") or "http://127.0.0.1:8000").rstrip(
             "/"
@@ -40,6 +68,7 @@ class AeoApiClient:
         self.api_key = api_key if api_key is not None else os.environ.get("AEO_API_KEY", "")
         self.timeout = timeout
         self._transport = transport
+        self._async_transport = async_transport
 
     def _headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}
@@ -53,6 +82,14 @@ class AeoApiClient:
             headers=self._headers(),
             timeout=self.timeout,
             transport=self._transport,
+        )
+
+    def _async_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=self.base_url,
+            headers=self._headers(),
+            timeout=self.timeout,
+            transport=self._async_transport,
         )
 
     def _raise_for_status(self, resp: httpx.Response) -> None:
@@ -113,7 +150,7 @@ class AeoApiClient:
             self._raise_for_status(resp)
             return resp.json()
 
-    def content_optimization(
+    def _content_optimization_payload(
         self,
         *,
         job_id: str,
@@ -127,8 +164,36 @@ class AeoApiClient:
         }
         if page_id:
             payload["page_id"] = page_id
+        return payload
+
+    def content_optimization(
+        self,
+        *,
+        job_id: str,
+        page_id: str | None = None,
+        content_draft: bool = False,
+    ) -> dict[str, Any]:
+        payload = self._content_optimization_payload(
+            job_id=job_id, page_id=page_id, content_draft=content_draft
+        )
         with self._client() as client:
             resp = client.post("/api/v1/content-optimization", json=payload)
+            self._raise_for_status(resp)
+            return resp.json()
+
+    async def content_optimization_async(
+        self,
+        *,
+        job_id: str,
+        page_id: str | None = None,
+        content_draft: bool = False,
+    ) -> dict[str, Any]:
+        """Non-blocking content optimization via ``httpx.AsyncClient``."""
+        payload = self._content_optimization_payload(
+            job_id=job_id, page_id=page_id, content_draft=content_draft
+        )
+        async with self._async_client() as client:
+            resp = await client.post("/api/v1/content-optimization", json=payload)
             self._raise_for_status(resp)
             return resp.json()
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from services.enrichment import EnrichmentCache
 from services.formatters import (
     format_pct_rate,
     format_provenance,
@@ -13,6 +14,10 @@ from services.formatters import (
     score_value,
 )
 from services.sanitize import escape_text, safe_markdown_paragraph, sanitize_code_block
+
+# UI request cap for multi-page crawls. Backend hard ceiling is 25 (schemas le=25).
+UI_MULTI_MAX_PAGES = 20
+BACKEND_MAX_PAGES_CEILING = 25
 
 
 @dataclass
@@ -104,15 +109,44 @@ class OverviewVM:
     health: ScoreCard
     components: list[ScoreCard]
     visibility_lines: list[str]
+    visibility_summary: str
+    gap_count: int
+    opportunity_count: int
     executive_bullets: list[str]
     caveats: list[str]
+
+
+@dataclass
+class PageHeaderVM:
+    title: str
+    url: str
+    status: str
+    depth: str
+    markdown: str
+    html: str
 
 
 def _metric(scores: dict[str, Any], key: str) -> Any:
     return scores.get(key) if isinstance(scores, dict) else None
 
 
-def adapt_overview(report: dict[str, Any], *, mode: str) -> OverviewVM:
+def _count_gaps(report: dict[str, Any]) -> int:
+    n = 0
+    for block in report.get("content_gaps") or []:
+        if not isinstance(block, dict):
+            continue
+        gaps = block.get("gaps") or []
+        if isinstance(gaps, list):
+            n += sum(1 for g in gaps if isinstance(g, dict))
+    return n
+
+
+def adapt_overview(
+    report: dict[str, Any],
+    *,
+    mode: str,
+    opportunity_count: int | None = None,
+) -> OverviewVM:
     scores = report.get("scores") or {}
     health_obj = _metric(scores, "aeo_health")
     hv = score_value(health_obj)
@@ -138,6 +172,7 @@ def adapt_overview(report: dict[str, Any], *, mode: str) -> OverviewVM:
     ]
 
     visibility_lines: list[str] = []
+    visibility_summary = "—"
     exp = report.get("experiment") or {}
     if isinstance(exp, dict) and exp:
         kind = escape_text(exp.get("experiment_kind") or "—")
@@ -146,6 +181,7 @@ def adapt_overview(report: dict[str, Any], *, mode: str) -> OverviewVM:
         visibility_lines.append(
             f"Consumer UI ranking measured: **{'yes' if exp.get('measures_consumer_ui') else 'no'}**"
         )
+        primary_rate = None
         for key, label in (
             ("llm_mention_rate", "LLM mention rate"),
             ("llm_url_mention_rate", "LLM URL mention rate"),
@@ -154,10 +190,14 @@ def adapt_overview(report: dict[str, Any], *, mode: str) -> OverviewVM:
             ("query_coverage", "Query coverage"),
         ):
             if key in exp:
+                rate = format_pct_rate(exp.get(key))
                 visibility_lines.append(
-                    f"{label}: **{format_pct_rate(exp.get(key))}** "
+                    f"{label}: **{rate}** "
                     f"(provenance `{format_provenance(exp.get(key))}`)"
                 )
+                if primary_rate is None:
+                    primary_rate = rate
+        visibility_summary = primary_rate or str(exp.get("experiment_kind") or "sample")
 
     exec_sum = report.get("executive_summary") or {}
     bullets: list[str] = []
@@ -194,6 +234,9 @@ def adapt_overview(report: dict[str, Any], *, mode: str) -> OverviewVM:
                 f"discovered={discovered}, fetched={fetched}, errors={errors}"
             )
 
+    gap_count = _count_gaps(report)
+    opp_n = int(opportunity_count) if opportunity_count is not None else 0
+
     return OverviewVM(
         job_id=str(report.get("job_id") or ""),
         base_url=str(report.get("base_url") or ""),
@@ -205,6 +248,9 @@ def adapt_overview(report: dict[str, Any], *, mode: str) -> OverviewVM:
         health=health,
         components=components,
         visibility_lines=visibility_lines,
+        visibility_summary=visibility_summary,
+        gap_count=gap_count,
+        opportunity_count=opp_n,
         executive_bullets=bullets,
         caveats=caveats,
     )
@@ -230,17 +276,67 @@ def adapt_pages(pages_payload: dict[str, Any] | None) -> list[PageRow]:
     return rows
 
 
+def truncate_url(url: str, *, max_len: int = 64) -> str:
+    """Readable truncation for dense 20-page tables (full URL remains in selector)."""
+    u = url or ""
+    if len(u) <= max_len:
+        return u
+    head = max(20, max_len // 2 - 2)
+    tail = max(12, max_len - head - 1)
+    return f"{u[:head]}…{u[-tail:]}"
+
+
 def pages_table(rows: list[PageRow]) -> list[list[str]]:
     return [
         [
-            r.title or "(untitled)",
-            r.url,
+            (r.title or "(untitled)")[:80],
+            truncate_url(r.url),
             str(r.depth),
             str(r.status_code if r.status_code is not None else "—"),
-            r.fetch_error or "",
+            (r.fetch_error or "")[:60],
         ]
         for r in rows
     ]
+
+
+def page_header(
+    report: dict[str, Any] | None,
+    pages_payload: dict[str, Any] | None,
+    page_url: str | None,
+) -> PageHeaderVM:
+    """Clear page-detail header: title, URL, status, depth."""
+    url = page_url or (str(report.get("base_url")) if report else "") or ""
+    title = ""
+    status = "—"
+    depth = "—"
+    if pages_payload:
+        for p in adapt_pages(pages_payload):
+            if _normalize_url(p.url) == _normalize_url(url):
+                title = p.title or "(untitled)"
+                status = str(p.status_code if p.status_code is not None else "—")
+                if p.fetch_error:
+                    status = f"{status} / error"
+                depth = str(p.depth)
+                break
+    if not title and report:
+        pi = _page_intelligence_for(report, page_url)
+        title = str((pi or {}).get("title") or "") or "(untitled)"
+    if not title:
+        title = "(untitled)"
+    md = (
+        f"**{escape_text(title)}** · `{escape_text(url) or '—'}` · "
+        f"status `{escape_text(status)}` · depth `{escape_text(depth)}`"
+    )
+    html = (
+        f'<div class="aeo-page-header">'
+        f'<div class="aeo-page-title">{escape_text(title)}</div>'
+        f'<div class="aeo-page-url">{escape_text(url) or "—"}</div>'
+        f'<div class="aeo-page-meta">'
+        f"<span>Status: <strong>{escape_text(status)}</strong></span>"
+        f"<span>Depth: <strong>{escape_text(depth)}</strong></span>"
+        f"</div></div>"
+    )
+    return PageHeaderVM(title=title, url=url, status=status, depth=depth, markdown=md, html=html)
 
 
 def _normalize_url(u: str | None) -> str:
@@ -290,7 +386,9 @@ def adapt_before(
     wc = int((pi or {}).get("word_count") or 0)
 
     lines = [
-        f"### Before — observed extracted content",
+        "### CURRENT — observed page signals",
+        "",
+        "_Observed page signals — not a live browser render._",
         "",
         f"**URL:** {escape_text(url)}",
         f"**Title:** {escape_text(title) or '—'}",
@@ -311,7 +409,7 @@ def adapt_before(
         lines.append("_No answer blocks extracted._")
     lines.append("")
     lines.append(
-        "_Before shows observed/derived signals from the API — not a live browser render._"
+        "_Before / CURRENT shows observed/derived signals from the API — not a live browser render._"
     )
 
     raw_code = sanitize_code_block(raw_html) if raw_html else None
@@ -373,7 +471,9 @@ def adapt_brief(report: dict[str, Any], *, page_url: str | None = None) -> Brief
         )
 
     lines = [
-        "### Optimization brief",
+        "### RECOMMENDED — optimization brief",
+        "",
+        "_Suggested structure and actions — never labeled as a final optimized page._",
         "",
         f"**Action:** `{escape_text(brief.get('action'))}`",
         f"**Page:** {escape_text(brief.get('page_url') or page_url)}",
@@ -533,7 +633,11 @@ def adapt_recommendations(report: dict[str, Any], *, page_url: str | None = None
 
 def recommendations_markdown(recs: list[RecView]) -> str:
     if not recs:
-        return "_No recommendations for this selection._"
+        return (
+            "### Recommendations\n\n"
+            "_No recommendations for this selection._\n\n"
+            "_Site-level or other-page recommendations may still appear in Biggest Opportunities._"
+        )
     parts: list[str] = ["### Recommendations", ""]
     for i, r in enumerate(recs, start=1):
         parts.append(f"#### {i}. {escape_text(r.title)}")
@@ -551,6 +655,73 @@ def recommendations_markdown(recs: list[RecView]) -> str:
             parts.extend(f"- {escape_text(s)}" for s in r.evidence_snippets)
         parts.append("")
     return "\n".join(parts)
+
+
+def comparison_markdown(report: dict[str, Any], page_url: str | None) -> str:
+    """Honest CURRENT (observed) vs RECOMMENDED (brief/draft) comparison."""
+    before = adapt_before(report, page_url=page_url)
+    brief = adapt_brief(report, page_url=page_url)
+    draft = adapt_draft(report, page_url=page_url)
+    left = [
+        "### CURRENT (observed)",
+        "",
+        "_Observed page signals — not a live browser render._",
+        "",
+        f"**Title:** {escape_text(before.title) or '—'}",
+        f"**URL:** {escape_text(before.page_url) or '—'}",
+        f"**Word count:** {before.word_count}",
+        "",
+        "**Headings (sample):**",
+    ]
+    if before.headings:
+        left.extend(f"- {escape_text(h)}" for h in before.headings[:8])
+    else:
+        left.append("_None extracted for this page._")
+
+    right = [
+        "### RECOMMENDED (suggested)",
+        "",
+        "_Brief / skeleton / generated draft — never labeled as a final optimized page._",
+        "",
+    ]
+    if brief:
+        right.append(f"**Brief action:** `{escape_text(brief.action)}`")
+        right.append(f"**Summary:** {escape_text(brief.summary) or '—'}")
+        if brief.outline:
+            right.append("")
+            right.append("**Proposed outline:**")
+            right.extend(f"- {escape_text(o)}" for o in brief.outline[:8])
+    else:
+        right.append("_No optimization brief for this page._")
+    right.append("")
+    if draft and not draft.empty:
+        right.append(f"**Draft label:** {escape_text(draft.label)}")
+        right.append(f"**Generator:** `{escape_text(draft.generator)}`")
+    else:
+        right.append("_No content draft returned for this page._")
+
+    return (
+        "## CURRENT vs RECOMMENDED\n\n"
+        + "\n".join(left)
+        + "\n\n---\n\n"
+        + "\n".join(right)
+    )
+
+
+def loading_enrichment_markdown(section: str) -> str:
+    return (
+        f"### {section}\n\n"
+        "_Additional optimization analysis loading…_\n\n"
+        "_Observed page signals stay visible in CURRENT / Before while this loads._"
+    )
+
+
+def enrichment_error_markdown(section: str, message: str) -> str:
+    return (
+        f"### {section}\n\n"
+        f"**Could not load additional analysis:** {escape_text(message)}\n\n"
+        "_Page identity and observed signals above remain valid._"
+    )
 
 
 def adapt_evidence(report: dict[str, Any], *, page_url: str | None = None) -> EvidenceView:
@@ -609,6 +780,8 @@ def adapt_evidence(report: dict[str, Any], *, page_url: str | None = None) -> Ev
         lines.extend(f"- {escape_text(c)}" for c in caveats)
     if len(lines) == 2:
         lines.append("_No evidence snippets for this selection._")
+        lines.append("")
+        lines.append("_Try another page, or check Biggest Opportunities for site-level findings._")
     return EvidenceView(
         snippets=snippets,
         finding_lines=finding_lines,
@@ -683,7 +856,11 @@ def merge_page_opt_into_report(report: dict[str, Any], opt: dict[str, Any]) -> d
 
 @dataclass
 class AnalysisState:
-    """UI session state — cleared on new analysis / failed follow-up."""
+    """UI session state — cleared on new analysis / failed follow-up.
+
+    ``enrichment_cache`` is session/job-scoped (lives on Gradio State), never
+    a process-global cross-user cache.
+    """
 
     job_id: str | None = None
     mode: str = "single"
@@ -693,6 +870,9 @@ class AnalysisState:
     error: str | None = None
     stage: str = ""
     opportunities: list[dict[str, Any]] = field(default_factory=list)
+    selection_id: int = 0
+    enrichment_cache: EnrichmentCache = field(default_factory=EnrichmentCache)
+    last_options: dict[str, Any] = field(default_factory=dict)
 
     def clear_results(self) -> None:
         self.job_id = None
@@ -702,3 +882,12 @@ class AnalysisState:
         self.error = None
         self.stage = ""
         self.opportunities = []
+        self.selection_id = next_selection_token(self.selection_id)
+        self.enrichment_cache.clear()
+        self.last_options = {}
+
+
+def next_selection_token(current: int) -> int:
+    from services.enrichment import next_selection_id
+
+    return next_selection_id(current)
