@@ -74,6 +74,20 @@ a DO key is present **and** ADR-026 allows paid retrieval (`paid_retrieval_opt_i
 Otherwise OpenAI key → LLM mention; else DemoProvider. Demo mode always stays
 deterministic. See `docs/architecture/ADR-026-paid-retrieval-opt-in.md`.
 
+## Leadership UI
+
+Optional Gradio demo for leadership walkthroughs (URL → AEO Health → gaps → recommendations → drafts). Does not change scoring or crawl security — it only calls the secured API.
+
+```bash
+pip install -e ".[ui]"
+export AEO_API_KEY=dev-local-key-change-me
+uvicorn aeo_mvp.api.app:app --host 127.0.0.1 --port 8000 &
+export AEO_API_BASE_URL=http://127.0.0.1:8000
+python ui/gradio/app.py
+```
+
+See [`ui/gradio/README.md`](ui/gradio/README.md) for modes, glossary, tests, and honesty limits.
+
 ## Docs
 
 - `docs/blueprint/BLUEPRINT.md` — product & technical blueprint
