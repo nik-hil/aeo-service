@@ -73,6 +73,7 @@ from services.opportunities import (
 )
 from services.sanitize import escape_text
 from styles.theme import CUSTOM_CSS, build_theme
+from views.analyze import build_job_options
 
 logger = logging.getLogger(__name__)
 
@@ -228,19 +229,9 @@ def run_analysis(
             yield _blank_ui(state, err, kind="err")
             return
 
-    options: dict[str, Any] = {
-        "provider": "demo" if use_demo else "auto",
-        "content_optimization": True,
-        "content_draft": bool(include_draft or use_demo),
-    }
-    if mode_key == "single":
-        options["max_pages"] = 1
-        options["max_depth"] = 0
-    else:
-        # UI request cap; backend hard ceiling is 25 — do not exceed.
-        options["max_pages"] = UI_MULTI_MAX_PAGES
-        options["max_depth"] = 2
-
+    options = build_job_options(
+        mode=mode_key, use_demo=use_demo, include_draft=include_draft
+    )
     state.last_options = dict(options)
     client = _client()
     try:
