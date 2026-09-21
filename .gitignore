@@ -6,6 +6,8 @@ __pycache__/
 .mypy_cache/
 aeo_mvp.db
 test_aeo_mvp.db
+aeo_mvp_*.db
+*.db
 .env
 dist/
 build/
