@@ -728,6 +728,7 @@ async def test_cache_lifecycle_success_error_and_no_retry(monkeypatch):
     ok = await drain(url, state)
     assert calls["n"] == 1
     assert state.enrichment_cache.get("job-demo-1", "p2").status == EnrichmentStatus.SUCCESS
+    assert state.enrichment_cache.claim("job-demo-1", "p2") == ("settled", None)
     assert "About AcmeFlow" in ok[-1][2]
     await drain(url, state)
     assert calls["n"] == 1
@@ -738,11 +739,14 @@ async def test_cache_lifecycle_success_error_and_no_retry(monkeypatch):
     bad = await drain(url, err_state)
     assert calls["n"] == 2
     assert err_state.enrichment_cache.get("job-demo-1", "p2").status == EnrichmentStatus.ERROR
+    assert err_state.enrichment_cache.claim("job-demo-1", "p2") == ("settled", None)
     assert "CURRENT" in bad[-1][2]
     assert "unavailable" in bad[-1][3].lower() or "Could not load" in bad[-1][3]
     await drain(url, err_state)
     assert calls["n"] == 2
 
+    assert state.enrichment_cache.get("job-b", "p2") is None
+    assert state.enrichment_cache.get("job-demo-1", "p2") is not None
     other = AnalysisState(job_id="job-demo-1", report=_mismatch_report(), pages=PAGES_PAYLOAD)
     assert other.enrichment_cache.get("job-demo-1", "p2") is None
     fresh = AnalysisState(job_id="job-other", report=state.report, pages=PAGES_PAYLOAD)
@@ -757,12 +761,15 @@ def test_new_analysis_does_not_reuse_prior_job_cache(monkeypatch):
         "p2",
         EnrichmentEntry(status=EnrichmentStatus.SUCCESS, payload=OPT_PAYLOAD_ABOUT),
     )
+    assert prior.enrichment_cache.get("old-job", "p2") is not None
+    assert prior.enrichment_cache.claim("old-job", "p2") == ("settled", None)
     outs = list(
         run_analysis("https://demo.example/", "Single page URL", True, True, prior)
     )
     state = outs[-1][0]
     assert state.job_id == "job-1"
     assert state.enrichment_cache.get("old-job", "p2") is None
+    assert state.enrichment_cache.get("job-1", "p2") is None
 
 
 @pytest.mark.asyncio
