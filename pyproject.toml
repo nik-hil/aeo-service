@@ -4,48 +4,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aeo-mvp"
-version = "0.1.0"
-description = "Backend-only Answer Engine Optimization (AEO) MVP service"
+version = "0.2.0"
+description = "Hashnode Markdown Answer Engine Optimization (AEO) proof of concept"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "AEO MVP" }]
 dependencies = [
-  "fastapi>=0.115.0",
-  "uvicorn[standard]>=0.30.0",
   "pydantic>=2.7.0",
   "pydantic-settings>=2.3.0",
-  "sqlalchemy>=2.0.30",
   "httpx>=0.27.0",
-  "selectolax>=0.3.21",
-  "tldextract>=5.1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.2.0",
-  "pytest-asyncio>=0.23.0",
 ]
 ui = [
   "gradio>=4.44.0,<6",
 ]
-demo-ui = [
-  "gradio>=4.44.0,<6",
-]
 
 [project.scripts]
-aeo-mvp = "aeo_mvp.main:run"
+aeo-mvp = "aeo_mvp.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-data]
-aeo_mvp = ["demo/fixtures/**/*"]
-
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests", "ui/gradio/tests"]
+testpaths = ["tests"]
 pythonpath = ["src", "ui/gradio"]
-
-[tool.uvicorn]
-factory = false

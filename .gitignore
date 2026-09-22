@@ -1,14 +1,25 @@
-.venv/
+# Byte-compiled / cache
 __pycache__/
 *.py[cod]
 *.egg-info/
-.pytest_cache/
-.mypy_cache/
-aeo_mvp.db
-test_aeo_mvp.db
-aeo_mvp_*.db
-*.db
-.env
+.eggs/
 dist/
 build/
-*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenv / env
+.venv/
+venv/
+.env
+
+# Local artifacts
+out/
+*.db
+aeo_mvp.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
