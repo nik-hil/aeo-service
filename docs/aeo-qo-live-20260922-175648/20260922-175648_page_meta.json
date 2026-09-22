@@ -1,0 +1,37 @@
+{
+  "page_id": "823867cc-f349-4a25-a19c-74ef34a92017",
+  "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+  "content_representation": "markdown",
+  "source_markdown_chars": 12095,
+  "seed_was_md_uri": true,
+  "paid_retrieval_report": false,
+  "experiment": {
+    "experiment_kind": "llm_mention",
+    "llm_mention_rate": {
+      "denominator": 33,
+      "numerator": 0,
+      "provenance": "synthetic_demo",
+      "value": 0.0
+    },
+    "llm_url_mention_rate": {
+      "denominator": 33,
+      "numerator": 0,
+      "provenance": "synthetic_demo",
+      "value": 0.0
+    },
+    "measures_consumer_ui": false,
+    "model_id": null,
+    "observations_count": 33,
+    "protocol_version": "llm-mention-v1",
+    "provider_capabilities_notes": "Non-retrieval LLM mention provider; not AI search visibility.",
+    "provider_name": "demo",
+    "query_coverage": {
+      "denominator": 11,
+      "numerator": 0,
+      "provenance": "synthetic_demo",
+      "value": 0.0
+    },
+    "retrieval_enabled": false
+  },
+  "visibility_disclaimer": null
+}

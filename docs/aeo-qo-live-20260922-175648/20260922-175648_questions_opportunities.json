@@ -1,0 +1,199 @@
+{
+  "page_url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+  "page_title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+  "questions": [
+    {
+      "question": "What is Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why",
+        "# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling?\n\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described.\n",
+      "related_query_ids": [
+        "q_3dcc722b7e31"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is Calling the model?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "}, { \"role\": \"user\", \"content\": task }, ] ``` * * * # Calling the model Every iteration sends the current conversation and tool definitions: ```python response = client.chat.completions.create( model=model, messages=messages, tools=TOOL_SCHEMAS, tool_choice=\"auto\", temperature=0.3, max_tokens=2048, ) ``` The important part here is: ```python tools=TOOL_SCHEMAS ``` We are telling the model: > These are the actions",
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is Calling the model?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is Calling the model?\n\n}, { \"role\": \"user\", \"content\": task }, ] ``` * * * # Calling the model Every iteration sends the current conversation and tool definitions: ```python response = client.chat.completions.create( model=model, messages=messages, tools=TOOL_SCHEMAS, tool_choice=\"auto\", temperature=0.3, max_tokens=2048, ) ``` The important part here is: ```python tools=TOOL_SCHEMAS ``` We are telling the model: > These are the actions.\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n",
+      "related_query_ids": [
+        "q_3be13df5adf3"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is Feeding the result back to the model?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why",
+        "# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is Feeding the result back to the model?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is Feeding the result back to the model?\n\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described.\n",
+      "related_query_ids": [
+        "q_30e9cc2816cd"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is Handling a tool call?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why",
+        "# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is Handling a tool call?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is Handling a tool call?\n\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described.\n",
+      "related_query_ids": [
+        "q_f57810c10a2d"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is Implementing execute\\_code?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Implementing execute\\_code The implementation is intentionally small: def execute_code(code: str): try: with open(\"temp.py\", \"w\") as f: f.write(code) result = subprocess.run( [\"python\", \"temp.py\"], capture_output=True, text=True, timeout=10, ) os.remove(\"temp.py\") if result.returncode == 0: return { \"output\": result.stdout.strip(), \"error\": None, } return { \"output\": None, \"error\": result.stderr.strip(), } except",
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is Implementing execute\\_code?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is Implementing execute\\_code?\n\nImplementing execute\\_code The implementation is intentionally small: def execute_code(code: str): try: with open(\"temp.py\", \"w\") as f: f.write(code) result = subprocess.run( [\"python\", \"temp.py\"], capture_output=True, text=True, timeout=10, ) os.remove(\"temp.py\") if result.returncode == 0: return { \"output\": result.stdout.strip(), \"error\": None, } return { \"output\": None, \"error\": result.stderr.strip(), } except.\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n",
+      "related_query_ids": [
+        "q_d01a2b63de56"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is Our first two tools?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why",
+        "# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is Our first two tools?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is Our first two tools?\n\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described.\n",
+      "related_query_ids": [
+        "q_8e1b509651e5"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is Running the agent?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why",
+        "# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is Running the agent?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is Running the agent?\n\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described.\n",
+      "related_query_ids": [
+        "q_06c65ee7c188"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is The agent loop?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why",
+        "# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is The agent loop?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is The agent loop?\n\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described.\n",
+      "related_query_ids": [
+        "q_69a0aa9b4977"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is The complete flow?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why",
+        "# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is The complete flow?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is The complete flow?\n\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described.\n",
+      "related_query_ids": [
+        "q_66de726666d4"
+      ],
+      "related_search_observations": []
+    },
+    {
+      "question": "What is The finish tool?",
+      "importance": "low",
+      "answerability": "strong",
+      "evidence": [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why",
+        "# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described"
+      ],
+      "evidence_location": "paragraph:1",
+      "weakness": "Answer is present but may not be packaged as a scannable Q&A unit.",
+      "recommendation": "Surface the existing answer as an explicit FAQ or answer-first block for: What is The finish tool?",
+      "grounding_status": "SAFE_TO_GENERATE",
+      "proposed_change": "**Q:** What is The finish tool?\n\nAgents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling The agent loop Our first two tools Tool schemas Implementing execute\\_code The finish tool Running the agent Calling the model Handling a tool call Feeding the result back to the model Why.\n# Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that is not really an agent. An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete. That sounds complicated when described.\n",
+      "related_query_ids": [
+        "q_4f49b382591d"
+      ],
+      "related_search_observations": []
+    }
+  ],
+  "methodology": "question-opportunity-v1+deterministic+grounded_synth;evidence WS-canonical validated against article text;no invented facts",
+  "model": null,
+  "provider": "deterministic",
+  "generated_at": "2026-09-22T17:55:02Z",
+  "analysis_version": "question-opportunity-v1",
+  "warnings": [],
+  "status": "ok",
+  "summary": {
+    "total": 10,
+    "strong": 10,
+    "need_improvement": 0,
+    "require_new_info": 0
+  }
+}
