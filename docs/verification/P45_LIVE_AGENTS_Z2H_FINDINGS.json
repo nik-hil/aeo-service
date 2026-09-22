@@ -1,24 +1,34 @@
 {
   "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+  "tip_sha_note": "post grounded_synth lock",
+  "draft_paid_default": false,
+  "grounded_synth_without_opt_in": "fail_closed_author_input_or_budget",
   "mvp_ready_ops": [
     {
       "op_kind": "rewrite_introduction",
       "target": "introduction",
       "status": "ready",
       "apply_mode": "replace_region",
-      "proposed_preview": "An AI agent is an LLM-based system that can **decide when to take actions**, use capabilities outside the model, observe their results, and continue working toward a task.\n\nSo instead of starting with"
+      "disposition": "actionable",
+      "proposed_preview": "An AI agent is an LLM-based system that can decide when to take actions, use capabilities outside the model, observe their results, and continue working toward a task.\n\nSo instead of starting with a f",
+      "claims_count": 0,
+      "llm_used": false
     },
     {
       "op_kind": "metadata_seo_description",
       "target": "meta_description",
       "status": "ready",
       "apply_mode": "metadata_only",
-      "proposed_preview": "Build an AI agent from scratch with tool calling."
+      "disposition": "actionable",
+      "proposed_preview": "Build an AI agent from scratch with tool calling.",
+      "claims_count": 0,
+      "llm_used": false
     }
   ],
   "needs_author_input": [
     {
       "op_kind": "add_faq_from_existing_qa",
+      "disposition": "author_input_required",
       "reason": "add_faq_from_existing_qa requires existing on-page question headings with answer paragraphs; author input required \u2014 never invent Q or A.",
       "related_gap_ids": [
         "gap_faq"
@@ -26,24 +36,38 @@
     },
     {
       "op_kind": "add_howto_from_existing_steps",
+      "disposition": "author_input_required",
       "reason": "add_howto_from_existing_steps requires \u22653 existing numbered steps or 'Step N:' lines; author input required \u2014 never invent steps.",
       "related_gap_ids": [
         "gap_howto"
       ]
+    },
+    {
+      "op_kind": "rewrite_section",
+      "disposition": "author_input_required",
+      "reason": "rewrite_section / add_explanation require draft_paid + API key (fail closed) or grounded budget exhausted; author input required \u2014 never invent content.",
+      "related_gap_ids": [
+        "gap_agent_loop"
+      ]
     }
   ],
   "ready_count": 2,
-  "author_input_count": 2,
+  "author_input_count": 3,
   "applied_ops": [
-    "retain:h1",
-    "expand:meta_description",
-    "rewrite:section:Agents Zero to Hero #1: Building an AI Agent from Scratch with T",
+    "op_0_retain_h1",
+    "op_2_meta",
+    "op_1_rewrite_section",
     "evidence_grounded_rewrite:introduction"
   ],
   "changed": true,
   "seo_description_transported": true,
   "intro_rewrite_applied": true,
-  "live_article_faq_status": "needs_author_input",
-  "live_article_howto_status": "needs_author_input",
-  "honest_assessment": "On the live Agents Zero-to-Hero article, the justified automatic body edit is the PR#44 evidence-grounded introduction rewrite (plus SEO metadata transport). FAQ promote=needs_author_input; HowTo promote=needs_author_input \u2014 article lacks enough existing ### \u2026? Q&A pairs / numbered Step lines, so both correctly become needs_author_input with zero invented Q/A/steps. Unit fixtures cover multi-op FAQ+HowTo when evidence exists."
+  "pr44_intro_proposal_present": true,
+  "live_article_faq_status": "author_input_required",
+  "live_article_howto_status": "author_input_required",
+  "rewrite_section_without_key": {
+    "disposition": "author_input_required",
+    "reason": "rewrite_section / add_explanation require draft_paid + API key (fail closed) or grounded budget exhausted; author input required \u2014 never invent content."
+  },
+  "honest_assessment": "On the live Agents Zero-to-Hero article (draft_paid=false default): justified automatic body edit remains the PR#44 evidence-grounded introduction rewrite (+ SEO metadata). FAQ/HowTo \u2192 needs_author_input (insufficient on-page Q&A/steps). rewrite_section/add_explanation are implemented but fail closed without draft_paid + API key \u2014 correctly surface as author_input_required rather than inventing. Unit fixtures with a mock OpenAI-compatible client prove rewrite_section emits NEW wording + claims[] with entailment. No live paid LLM call executed in this report."
 }
