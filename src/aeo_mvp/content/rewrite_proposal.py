@@ -107,6 +107,12 @@ class RewriteProposal:
     llm_used: bool = False
     paid_retrieval_used: bool = False
     warnings: list[str] = field(default_factory=list)
+    op_kind: str = "rewrite_introduction"
+    disposition: str = "actionable"
+    expected_aeo_benefit: str = (
+        "Improves answer-first extractability of the page lead for probe overlap."
+    )
+    related_query_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -117,8 +123,12 @@ class RewriteProposal:
             "evidence": list(self.evidence),
             "reason": self.reason,
             "related_gap_ids": list(self.related_gap_ids),
+            "related_query_ids": list(self.related_query_ids),
             "llm_used": self.llm_used,
             "paid_retrieval_used": self.paid_retrieval_used,
+            "op_kind": self.op_kind,
+            "disposition": self.disposition,
+            "expected_aeo_benefit": self.expected_aeo_benefit,
         }
 
 
@@ -591,6 +601,8 @@ def enrich_ops_with_rewrite_proposals(
     source_markdown: str,
     page_intelligence: dict[str, Any] | None = None,
     h1: str | None = None,
+    gaps: list[dict[str, Any]] | None = None,
+    coverage_by_query: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], RewriteProposal | None, list[str]]:
     """Content-optimization layer: generate + attach rewrite proposals onto ops.
 
@@ -598,18 +610,24 @@ def enrich_ops_with_rewrite_proposals(
     Platform Markdown generators must **consume** already-enriched ops and must
     not call this (or ``propose_introduction_rewrite``) to invent copy.
 
-    Steps: identify intro rewrite targets → build evidence-grounded ``proposed``
-    → validate → attach ``original`` / ``proposed`` / ``evidence`` /
-    ``related_gap_ids`` / ``reason`` on the edit op.
+    Steps: run substantive change-plan diagnosis (query→gap→evidence→op) →
+    build evidence-grounded ``proposed`` for intro + other safe op kinds →
+    validate → attach ``original`` / ``proposed`` / ``evidence`` /
+    ``related_gap_ids`` / ``reason`` / ``op_kind`` / ``disposition`` on ops.
 
-    Returns (enriched_ops, proposal_or_none, warnings).
+    Unsupported gaps become ``author_input_required`` (no invented ``proposed``).
+    Never forces a fixed number of edits.
+
+    Returns (enriched_ops, primary_intro_proposal_or_none, warnings).
     Ops that already carry a non-empty ``proposed`` are validated only (not
-    regenerated).
+    regenerated) for intro targets.
     """
-    warnings: list[str] = []
-    if not ops:
-        return ops, None, warnings
+    from aeo_mvp.content.substantive_ops import (
+        build_substantive_change_plan,
+        merge_plan_into_ops,
+    )
 
+    warnings: list[str] = []
     pi = page_intelligence or {}
     resolved_h1 = h1 or str(pi.get("h1") or pi.get("title") or "").strip() or None
     if not resolved_h1:
@@ -617,12 +635,12 @@ def enrich_ops_with_rewrite_proposals(
         if m:
             resolved_h1 = m.group(1).strip()
 
-    enriched: list[dict[str, Any]] = []
+    seed_ops = [dict(op) for op in (ops or []) if isinstance(op, dict)]
     proposal: RewriteProposal | None = None
 
-    for op in ops:
-        if not isinstance(op, dict):
-            continue
+    # --- Pass 1: preserve PR #44 intro enrich behavior on existing ops ---
+    enriched: list[dict[str, Any]] = []
+    for op in seed_ops:
         action = str(op.get("action") or "").strip().lower()
         target = str(
             op.get("target")
@@ -680,8 +698,15 @@ def enrich_ops_with_rewrite_proposals(
                 evidence=evidence,
                 reason=instruction,
                 related_gap_ids=related,
+                op_kind="rewrite_introduction",
+                disposition="actionable",
             )
-            enriched.append(op)
+            row = {
+                **op,
+                "op_kind": op.get("op_kind") or "rewrite_introduction",
+                "disposition": "actionable",
+            }
+            enriched.append(row)
             continue
 
         if action in {"rewrite", "expand"} and _is_intro_target(
@@ -697,7 +722,13 @@ def enrich_ops_with_rewrite_proposals(
                 )
             if proposal is None:
                 warnings.append("intro_rewrite_no_grounded_proposal")
-                enriched.append(op)
+                enriched.append(
+                    {
+                        **op,
+                        "disposition": "author_input_required",
+                        "op_kind": "author_input_required",
+                    }
+                )
                 continue
             row = {
                 **op,
@@ -708,6 +739,9 @@ def enrich_ops_with_rewrite_proposals(
                 "evidence": list(proposal.evidence),
                 "reason": proposal.reason or instruction,
                 "related_gap_ids": list(proposal.related_gap_ids or related),
+                "op_kind": "rewrite_introduction",
+                "disposition": "actionable",
+                "expected_aeo_benefit": proposal.expected_aeo_benefit,
             }
             # Keep EditOp wire keys when present.
             if op.get("target_locator") and not op.get("target"):
@@ -719,4 +753,67 @@ def enrich_ops_with_rewrite_proposals(
 
         enriched.append(op)
 
-    return enriched, proposal, warnings
+    # --- Pass 2: substantive multi-op diagnosis (gaps → evidence → ops) ---
+    plan = build_substantive_change_plan(
+        source_markdown=source_markdown,
+        gaps=gaps,
+        coverage_by_query=coverage_by_query,
+        page_intelligence=pi,
+        existing_ops=enriched or seed_ops,
+        h1=resolved_h1,
+    )
+    warnings.extend(plan.warnings)
+    merged = merge_plan_into_ops(enriched or seed_ops, plan)
+
+    # Ensure primary intro proposal is surfaced for callers/tests.
+    if proposal is None:
+        for it in plan.items:
+            if it.op_kind == "rewrite_introduction" and it.proposed_content:
+                proposal = RewriteProposal(
+                    action="rewrite",
+                    target="introduction",
+                    original=it.original or "",
+                    proposed=it.proposed_content,
+                    evidence=list(it.evidence),
+                    reason=it.reason,
+                    related_gap_ids=list(it.related_gap_ids),
+                    related_query_ids=list(it.related_query_ids),
+                    op_kind="rewrite_introduction",
+                    disposition="actionable",
+                    expected_aeo_benefit=it.expected_aeo_benefit,
+                )
+                break
+
+    # Stash plan summary on a synthetic warning-free side channel via op metadata
+    # is awkward; service layer reads plan separately. Attach plan dict onto
+    # first actionable intro op when present for transport.
+    if plan.items:
+        for op in merged:
+            if not isinstance(op, dict):
+                continue
+            if op.get("op_kind") == "rewrite_introduction" and op.get("proposed"):
+                op.setdefault("_substantive_plan_ref", True)
+                break
+        # Expose full plan for service via warnings channel key is wrong —
+        # return plan through warnings list as structured sentinel? Better:
+        # attach to module-level is bad. Service will call build_substantive
+        # again OR we encode plan in a dedicated list entry.
+        # Attach as non-applied metadata op:
+        if not any(
+            isinstance(o, dict) and o.get("op_kind") == "_substantive_change_plan"
+            for o in merged
+        ):
+            merged.append(
+                {
+                    "action": "retain",
+                    "target": "_substantive_change_plan",
+                    "op_kind": "_substantive_change_plan",
+                    "disposition": "deferred",
+                    "proposed": None,
+                    "plan": plan.to_dict(),
+                    "instruction": "Substantive change-plan metadata (not applied).",
+                    "related_gap_ids": [],
+                }
+            )
+
+    return merged, proposal, warnings

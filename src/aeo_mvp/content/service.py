@@ -158,11 +158,15 @@ def _attach_hashnode_recommended_markdown(
         source_url=source_url,
     ):
         gap_flat: list[dict[str, Any]] = []
+        coverage_by_query: list[dict[str, Any]] = []
         for block in wire.get("content_gaps") or []:
             if isinstance(block, dict):
                 for g in block.get("gaps") or []:
                     if isinstance(g, dict):
                         gap_flat.append(g)
+                for row in block.get("coverage_by_query") or []:
+                    if isinstance(row, dict):
+                        coverage_by_query.append(row)
         brief_wire = (wire.get("optimization_briefs") or [None])[0] or wire.get("brief") or {}
         if not isinstance(brief_wire, dict):
             brief_wire = {}
@@ -202,7 +206,69 @@ def _attach_hashnode_recommended_markdown(
             source_markdown=source_markdown,
             page_intelligence=intel,
             h1=str(intel.get("h1") or intel.get("title") or "").strip() or None,
+            gaps=gap_flat,
+            coverage_by_query=coverage_by_query,
         )
+        # Extract substantive change-plan metadata (not applied to MD body).
+        substantive_plan: dict[str, Any] | None = None
+        cleaned_enriched: list[dict[str, Any]] = []
+        for op in enriched_ops:
+            if not isinstance(op, dict):
+                continue
+            if str(op.get("op_kind") or "") == "_substantive_change_plan":
+                if isinstance(op.get("plan"), dict):
+                    substantive_plan = op["plan"]
+                continue
+            cleaned_enriched.append(op)
+        enriched_ops = cleaned_enriched
+
+        # Annotate gaps with disposition from plan items.
+        if substantive_plan and gap_flat:
+            from aeo_mvp.content.substantive_ops import annotate_gaps_with_disposition
+            from aeo_mvp.content.substantive_ops import SubstantiveChangePlan, SubstantiveChangeItem
+
+            # Rebuild lightweight plan object for annotation.
+            items = []
+            for raw in substantive_plan.get("items") or []:
+                if not isinstance(raw, dict):
+                    continue
+                items.append(
+                    SubstantiveChangeItem(
+                        content_gap=str(raw.get("content_gap") or ""),
+                        evidence=list(raw.get("evidence") or []),
+                        proposed_action=str(raw.get("proposed_action") or ""),
+                        proposed_content=raw.get("proposed_content"),
+                        reason=str(raw.get("reason") or ""),
+                        expected_aeo_benefit=str(raw.get("expected_aeo_benefit") or ""),
+                        op_kind=str(raw.get("op_kind") or "author_input_required"),
+                        disposition=raw.get("disposition") or "author_input_required",
+                        related_gap_ids=list(raw.get("related_gap_ids") or []),
+                        related_query_ids=list(raw.get("related_query_ids") or []),
+                        target=str(raw.get("target") or ""),
+                        action=str(raw.get("action") or "rewrite"),
+                        original=raw.get("original"),
+                        query_text=raw.get("query_text"),
+                    )
+                )
+            plan_obj = SubstantiveChangePlan(items=items)
+            gap_flat = annotate_gaps_with_disposition(gap_flat, plan_obj)
+            # Write dispositions back onto wire gap report blocks.
+            gap_blocks = list(wire.get("content_gaps") or [])
+            if gap_blocks and isinstance(gap_blocks[0], dict):
+                block0 = dict(gap_blocks[0])
+                by_id = {
+                    str(g.get("gap_id") or g.get("id") or ""): g for g in gap_flat
+                }
+                new_gaps = []
+                for g in block0.get("gaps") or []:
+                    if not isinstance(g, dict):
+                        continue
+                    gid = str(g.get("gap_id") or g.get("id") or "")
+                    new_gaps.append(by_id.get(gid) or g)
+                block0["gaps"] = new_gaps
+                gap_blocks[0] = block0
+                wire["content_gaps"] = gap_blocks
+                wire["gap_report"] = block0
         # Sync enriched payloads onto change_plan rows (same targets).
         enriched_by_target: dict[str, dict[str, Any]] = {}
         for op in enriched_ops:
@@ -234,6 +300,9 @@ def _attach_hashnode_recommended_markdown(
                 "evidence",
                 "related_gap_ids",
                 "reason",
+                "op_kind",
+                "disposition",
+                "expected_aeo_benefit",
             ):
                 if src.get(field) is not None:
                     out[field] = src[field]
@@ -247,13 +316,41 @@ def _attach_hashnode_recommended_markdown(
             _sync_proposal_fields(dict(op)) if isinstance(op, dict) else op
             for op in (enriched_ops if enriched_ops else edit_ops_in)
         ]
+        # Prefer enriched ops that carry proposals; also include new substantive ops.
         change_plan_enriched = [
             _sync_proposal_fields(dict(c)) for c in change_plan_in if isinstance(c, dict)
         ]
+        # Append actionable substantive ops not already in change_plan.
+        existing_keys = {
+            str(
+                c.get("target")
+                or c.get("target_locator")
+                or c.get("anchor_locator")
+                or ""
+            ).strip().lower()
+            for c in change_plan_enriched
+        }
+        for op in edit_ops_enriched:
+            if not isinstance(op, dict):
+                continue
+            if op.get("disposition") != "actionable" or not op.get("proposed"):
+                continue
+            key = str(
+                op.get("target")
+                or op.get("target_locator")
+                or op.get("anchor_locator")
+                or ""
+            ).strip().lower()
+            if key and key not in existing_keys:
+                change_plan_enriched.append(dict(op))
+                existing_keys.add(key)
+
         # Persist enriched ops onto brief wire so opt-layer output carries payload.
         brief_out = dict(brief_wire)
         if edit_ops_enriched:
             brief_out["edit_ops"] = edit_ops_enriched
+        if substantive_plan:
+            brief_out["substantive_change_plan"] = substantive_plan
         if enrich_warnings:
             brief_out.setdefault("warnings", [])
             if isinstance(brief_out["warnings"], list):
@@ -374,6 +471,12 @@ def _attach_hashnode_recommended_markdown(
                 wire["warnings"] = list(wire["warnings"]) + [
                     w for w in enrich_warnings if w not in wire["warnings"]
                 ]
+
+        wire["page_intelligence"] = intel
+        # Surface substantive plan at top-level wire for reports/UI.
+        if substantive_plan:
+            wire["substantive_change_plan"] = substantive_plan
+        return wire
 
     wire["page_intelligence"] = intel
     return wire

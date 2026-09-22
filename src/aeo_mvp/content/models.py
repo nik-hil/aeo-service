@@ -60,6 +60,46 @@ EditAction = Literal["retain", "rewrite", "expand", "remove", "add"]
 # Alias — Optimizer ChangeAction
 ChangeAction = EditAction
 
+# Substantive edit-op kinds (content-opt ownership). Apply only when grounded.
+OpKind = Literal[
+    "rewrite_introduction",
+    "rewrite_section",
+    "add_definition",
+    "add_answer_first",
+    "add_process_summary",
+    "clarify_relationship",
+    "expand_concept",
+    "strengthen_example",
+    "improve_conclusion",
+    "improve_terminology",
+    "author_input_required",
+]
+
+# Disposition of a gap or edit op after evidence diagnosis.
+GapDisposition = Literal["actionable", "author_input_required", "deferred"]
+
+# Op kinds with a safe Markdown apply path today.
+IMPLEMENTED_OP_KINDS: frozenset[str] = frozenset(
+    {
+        "rewrite_introduction",
+        "rewrite_section",
+        "add_definition",
+        "add_answer_first",
+        "add_process_summary",
+        "clarify_relationship",
+    }
+)
+
+# Contract-only until grounding + apply are safe.
+DEFERRED_OP_KINDS: frozenset[str] = frozenset(
+    {
+        "expand_concept",
+        "strengthen_example",
+        "improve_conclusion",
+        "improve_terminology",
+    }
+)
+
 Severity = Literal["high", "medium", "low"]
 # Compat for older callers that used critical/info (mapped at emit time)
 GapSeverity = Severity
@@ -528,6 +568,9 @@ class ContentGap:
     confidence: float = 0.0
     provenance: ContentProvenance = "derived"
     taxonomy_label: str | None = None
+    # Evidence diagnosis (filled by substantive change-plan layer).
+    disposition: GapDisposition | None = None
+    recommended_op_kind: OpKind | str | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -564,7 +607,7 @@ class ContentGap:
         self.severity = normalize_severity(str(self.severity))
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "gap_id": self.gap_id or self.id,
             "query_id": self.query_id,
             "intent": self.intent,
@@ -579,6 +622,25 @@ class ContentGap:
             "impact_class": self.impact_class,
             "related_locators": list(self.related_locators),
         }
+        if self.id and self.id != (self.gap_id or ""):
+            d["id"] = self.id
+        elif self.id:
+            d.setdefault("id", self.id)
+        if self.kind is not None:
+            d["kind"] = self.kind
+        if self.query_ids:
+            d["query_ids"] = list(self.query_ids)
+        if self.explanation and self.explanation != d.get("rationale"):
+            d["explanation"] = self.explanation
+        elif self.explanation:
+            d.setdefault("explanation", self.explanation)
+        if self.action:
+            d["action"] = self.action
+        if self.disposition:
+            d["disposition"] = self.disposition
+        if self.recommended_op_kind:
+            d["recommended_op_kind"] = self.recommended_op_kind
+        return d
 
 
 @dataclass
@@ -660,6 +722,9 @@ class EditOp:
     original: str | None = None
     proposed: str | None = None
     evidence: list[str] = field(default_factory=list)
+    op_kind: OpKind | str | None = None
+    disposition: GapDisposition | None = None
+    expected_aeo_benefit: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -678,6 +743,9 @@ class ContentChange:
     original: str | None = None
     proposed: str | None = None
     evidence: list[str] = field(default_factory=list)
+    op_kind: OpKind | str | None = None
+    disposition: GapDisposition | None = None
+    expected_aeo_benefit: str = ""
 
     def to_edit_op(self, *, idx: int = 0) -> EditOp:
         return EditOp(
@@ -694,6 +762,9 @@ class ContentChange:
             original=self.original,
             proposed=self.proposed,
             evidence=list(self.evidence),
+            op_kind=self.op_kind,
+            disposition=self.disposition,
+            expected_aeo_benefit=self.expected_aeo_benefit,
         )
 
     def to_dict(self) -> dict[str, Any]:

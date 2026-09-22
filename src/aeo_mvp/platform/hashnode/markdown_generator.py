@@ -371,6 +371,159 @@ def _apply_proposed_introduction(
     return out, out.strip() != (md or "").strip()
 
 
+def _find_section_span(
+    md: str, heading: str
+) -> tuple[int, int, int, str] | None:
+    """Return (heading_line_idx, body_start_idx, body_end_idx, heading_line).
+
+    body spans lines after the heading until the next same-or-higher-level
+    ATX heading (or EOF). Indices are into splitlines().
+    """
+    lines = (md or "").splitlines()
+    want = (heading or "").strip().lower()
+    if not want:
+        return None
+    in_fence = False
+    for i, ln in enumerate(lines):
+        if ln.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = re.match(r"^(#{1,6})\s+(.+)$", ln)
+        if not m:
+            continue
+        title = m.group(2).strip()
+        if title.lower() != want and want not in title.lower():
+            continue
+        level = len(m.group(1))
+        body_start = i + 1
+        body_end = len(lines)
+        j = body_start
+        in_fence2 = False
+        while j < len(lines):
+            if lines[j].strip().startswith("```"):
+                in_fence2 = not in_fence2
+                j += 1
+                continue
+            if not in_fence2:
+                m2 = re.match(r"^(#{1,6})\s+", lines[j])
+                if m2 and len(m2.group(1)) <= level:
+                    body_end = j
+                    break
+            j += 1
+        return i, body_start, body_end, ln
+    return None
+
+
+def _apply_proposed_section_rewrite(
+    md: str, heading: str, proposed: str
+) -> tuple[str, bool]:
+    """Replace a section body (not the heading line) with validated proposed."""
+    proposed = (proposed or "").strip()
+    if not proposed or not heading:
+        return md, False
+    span = _find_section_span(md, heading)
+    if span is None:
+        return md, False
+    _h_idx, body_start, body_end, heading_line = span
+    lines = (md or "").splitlines()
+    current = "\n".join(lines[body_start:body_end]).strip("\n")
+    if current.strip() == proposed:
+        return md, False
+    new_body_lines = proposed.splitlines()
+    out_lines = lines[:body_start] + new_body_lines
+    # Preserve a blank line before the next heading when present.
+    rest = lines[body_end:]
+    if rest and new_body_lines and new_body_lines[-1].strip():
+        if rest[0].strip():
+            out_lines.append("")
+    out_lines.extend(rest)
+    # Ensure heading line survived.
+    if heading_line not in out_lines:
+        return md, False
+    out = "\n".join(out_lines).rstrip() + "\n"
+    return out, out.strip() != (md or "").strip()
+
+
+def _apply_insert_after_heading(
+    md: str, heading: str, proposed: str
+) -> tuple[str, bool]:
+    """Insert proposed paragraph immediately after a heading (idempotent)."""
+    proposed = (proposed or "").strip()
+    if not proposed or not heading:
+        return md, False
+    if proposed in (md or ""):
+        return md, False
+    span = _find_section_span(md, heading)
+    if span is None:
+        return md, False
+    _h_idx, body_start, _body_end, _heading_line = span
+    lines = (md or "").splitlines()
+    # Skip existing blank lines after heading.
+    insert_at = body_start
+    while insert_at < len(lines) and not lines[insert_at].strip():
+        insert_at += 1
+    # If the next block already starts with proposed, skip.
+    remaining = "\n".join(lines[insert_at:]).lstrip()
+    if remaining.startswith(proposed):
+        return md, False
+    block_lines = proposed.splitlines()
+    out_lines = lines[:body_start]
+    if out_lines and out_lines[-1].strip():
+        # heading line then blank then proposed
+        out_lines.append("")
+    out_lines.extend(block_lines)
+    out_lines.append("")
+    out_lines.extend(lines[insert_at:])
+    out = "\n".join(out_lines).rstrip() + "\n"
+    return out, out.strip() != (md or "").strip()
+
+
+def _section_heading_from_target(target: str) -> str | None:
+    t = (target or "").strip()
+    if t.lower().startswith("section:"):
+        return t.split(":", 1)[1].strip() or None
+    return None
+
+
+def _is_substantive_section_op(op: dict[str, Any], *, h1: str | None) -> bool:
+    """True for non-intro section ops that carry a grounded proposed payload."""
+    if op.get("disposition") == "author_input_required":
+        return False
+    if str(op.get("op_kind") or "") in {"_substantive_change_plan", "author_input_required"}:
+        return False
+    if _is_intro_rewrite_op(op, h1=h1):
+        return False
+    proposed = op.get("proposed")
+    if not isinstance(proposed, str) or not proposed.strip():
+        return False
+    target = (op.get("target") or "").strip()
+    heading = _section_heading_from_target(target)
+    if not heading:
+        return False
+    if h1 and heading.lower() == h1.lower():
+        return False
+    action = op.get("action") or ""
+    op_kind = str(op.get("op_kind") or "")
+    if action in {"rewrite", "expand"} or op_kind in {
+        "rewrite_section",
+        "add_definition",
+        "add_answer_first",
+        "add_process_summary",
+        "clarify_relationship",
+    }:
+        return True
+    if action == "add" and op_kind in {
+        "add_definition",
+        "add_answer_first",
+        "add_process_summary",
+        "clarify_relationship",
+    }:
+        return True
+    return False
+
+
 def _existing_faq_qa_pairs(md: str) -> list[tuple[str, str]]:
     """Collect question headings that already have following answer paragraphs.
 
@@ -614,6 +767,13 @@ def generate_recommended_markdown(
         change_plan=change_plan,
         content_drafts=content_drafts,
     )
+    # Drop change-plan metadata sentinels (never applied to body).
+    ops = [
+        op
+        for op in ops
+        if str(op.get("op_kind") or "") != "_substantive_change_plan"
+        and _target_key(op.get("target") or "") != "_substantive_change_plan"
+    ]
 
     rec_codes = {
         str(r.get("code") or "")
@@ -775,6 +935,88 @@ def generate_recommended_markdown(
                     # Already matches proposed (idempotent).
                     warnings.append("intro_rewrite_idempotent_no_change")
 
+    # --- substantive section ops (apply validated proposed only) ---
+    applied_section_targets: set[str] = set()
+    for op in ops:
+        if not _is_substantive_section_op(op, h1=h1):
+            continue
+        heading = _section_heading_from_target(op.get("target") or "")
+        if not heading or heading.lower() in applied_section_targets:
+            continue
+        proposed_text = str(op.get("proposed") or "").strip()
+        original_text = str(op.get("original") or "").strip()
+        evidence = list(op.get("evidence") or [])
+        op_kind = str(op.get("op_kind") or "rewrite_section")
+        val = validate_proposed_rewrite(
+            proposed=proposed_text,
+            original=original_text or proposed_text,
+            evidence=evidence,
+            source_markdown=body,
+            h1=h1,
+        )
+        hard = [
+            w
+            for w in val
+            if w
+            in {
+                "proposed_empty",
+                "proposed_html_injection",
+                "proposed_diagnostic_leak",
+                "proposed_includes_h1",
+                "proposed_contains_heading",
+                "proposed_invented_url",
+                "proposed_invented_fact",
+            }
+            or w.startswith("proposed_ungrounded_tokens:")
+        ]
+        # Section inserts may reuse buried sentences (not reorder-only failures).
+        if op.get("action") == "add":
+            hard = [w for w in hard if w != "proposed_is_reorder_only"]
+        if hard:
+            warnings.extend(hard)
+            warnings.append(f"section_op_rejected_validation:{op_kind}")
+            continue
+
+        action = op.get("action") or ""
+        if action == "rewrite" or op_kind == "rewrite_section":
+            body, did = _apply_proposed_section_rewrite(body, heading, proposed_text)
+        else:
+            body, did = _apply_insert_after_heading(body, heading, proposed_text)
+        if did:
+            body_op_applied = True
+            applied_section_targets.add(heading.lower())
+            if op.get("op_id"):
+                applied_ops.append(str(op["op_id"]))
+            applied_ops.append(f"evidence_grounded_{op_kind}:{heading}"[:120])
+            warnings.append(f"section_op_applied:{op_kind}")
+            if rewrite_provenance is None:
+                rewrite_provenance = {
+                    "what_changed": op_kind,
+                    "why": op.get("instruction") or op.get("reason") or "",
+                    "related_gap_ids": list(op.get("related_gap_ids") or []),
+                    "original": original_text,
+                    "proposed": proposed_text,
+                    "evidence": evidence,
+                    "llm_used": False,
+                    "paid_retrieval_used": False,
+                    "action": action or "rewrite",
+                    "target": op.get("target") or f"section:{heading}",
+                    "op_kind": op_kind,
+                    "expected_aeo_benefit": op.get("expected_aeo_benefit") or "",
+                }
+        else:
+            warnings.append(f"section_op_idempotent_no_change:{op_kind}")
+
+    # Author-input-required ops: never invent; record warning only.
+    for op in ops:
+        if str(op.get("disposition") or "") == "author_input_required" or str(
+            op.get("op_kind") or ""
+        ) == "author_input_required":
+            warnings.append(
+                "author_input_required:"
+                + str(op.get("target") or op.get("op_id") or "unknown")
+            )
+
     # --- FAQ / HowTo (evidence-backed only; existing behavior) ---
     if "REC_ADD_FAQ_SECTION" in rec_codes or "REC_ADD_QUESTION_HEADINGS" in rec_codes:
         qa_pairs = _existing_faq_qa_pairs(body)
@@ -802,6 +1044,12 @@ def generate_recommended_markdown(
     # Unsupported actionable ops → warn, leave body alone for those targets.
     for op in ops:
         if _is_retain_h1_op(op) or _is_meta_op(op) or _is_intro_rewrite_op(op, h1=h1):
+            continue
+        if _is_substantive_section_op(op, h1=h1):
+            continue
+        if str(op.get("disposition") or "") == "author_input_required" or str(
+            op.get("op_kind") or ""
+        ) == "author_input_required":
             continue
         action = op.get("action") or ""
         target = (op.get("target") or "").strip()
