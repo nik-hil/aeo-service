@@ -37,6 +37,8 @@ if _bad is not None:
             if _k.startswith("gradio."):
                 del sys.modules[_k]
 
+from gradio import SelectData  # after unshadow; used by page-table select listener
+
 from components.kpi_cards import kpi_cards_html
 from glossary import GUIDE_MARKDOWN, all_terms_markdown, executive_glossary_markdown, info_text
 from services.adapters import (
@@ -55,6 +57,8 @@ from services.adapters import (
     merge_page_opt_into_report,
     overview_markdown,
     page_header,
+    page_select_choices,
+    page_url_from_choice,
     pages_table,
     recommendations_markdown,
 )
@@ -309,7 +313,7 @@ def _analysis_output(
     recommended_meta: str,
     evidence_md: str,
     compare: str,
-    page_choices: list[str],
+    page_choices: list[tuple[str, str]] | list[str],
     selected: str,
 ) -> AnalysisOutput:
     import gradio as gr
@@ -320,7 +324,7 @@ def _analysis_output(
         kpi_cards_html(vm),
         overview_markdown(vm),
         opportunities_table(opps),
-        pages_table(page_rows) if mode_key == "multi" else [],
+        pages_table(page_rows) if page_rows else [],
         header_html,
         before,
         recs_md,
@@ -412,8 +416,10 @@ def run_analysis(
 
         vm = adapt_overview(report, mode=mode_key, opportunity_count=len(opps))
         page_rows = adapt_pages(pages)
-        page_choices = [p.url for p in page_rows] or [str(report.get("base_url") or url)]
-        selected = page_choices[0]
+        page_choices = page_select_choices(
+            page_rows, fallback_url=str(report.get("base_url") or url)
+        )
+        selected = page_choices[0][1] if page_choices else str(report.get("base_url") or url)
         state.selected_page_url = selected
         state.selection_id = next_selection_id(state.selection_id)
         prefetch_selection = state.selection_id
@@ -617,6 +623,8 @@ async def on_select_page(
     job_id+page_id. A concurrent handler waits for that owner's SUCCESS/ERROR.
     """
     state = state or AnalysisState()
+    rows = adapt_pages(state.pages)
+    page_url = page_url_from_choice(page_url, rows) or page_url
     if not state.report or not page_url:
         yield _empty_detail(state)
         return
@@ -777,6 +785,43 @@ async def on_select_opportunity_choice(
         yield (out[0], page_url, *out[1:])
 
 
+async def on_page_table_select(
+    evt: SelectData, state: AnalysisState | None
+) -> AsyncGenerator[tuple[Any, ...], None]:
+    """Table row select → sync Selected page dropdown + detail (same source of truth)."""
+    state = state or AnalysisState()
+    blank = (
+        state,
+        state.selected_page_url,
+        EMPTY_HEADER,
+        EMPTY_DETAIL,
+        EMPTY_RECS,
+        EMPTY_BRIEF,
+        EMPTY_RECOMMENDED_META,
+        EMPTY_EVIDENCE,
+        EMPTY_COMPARE,
+    )
+    rows = adapt_pages(state.pages)
+    if not state.report or not rows:
+        yield blank
+        return
+    idx = getattr(evt, "index", None)
+    if isinstance(idx, (list, tuple)):
+        row_idx = idx[0] if idx else None
+    else:
+        row_idx = idx
+    try:
+        row_idx = int(row_idx) if row_idx is not None else None
+    except (TypeError, ValueError):
+        row_idx = None
+    if row_idx is None or row_idx < 0 or row_idx >= len(rows):
+        yield blank
+        return
+    page_url = rows[row_idx].url
+    async for out in on_select_page(page_url, state):
+        yield (out[0], page_url, *out[1:])
+
+
 def opportunity_choices(state: AnalysisState) -> list[str]:
     return [
         f"{i}. {o.get('title') or o.get('id') or 'opportunity'}"
@@ -872,26 +917,24 @@ def build_app():
                     info="Select an opportunity to jump to its primary page detail.",
                 )
 
-        with gr.Row():
-            with gr.Column(scale=1, elem_classes=["aeo-panel"]):
-                gr.Markdown("### Pages")
-                page_table = gr.Dataframe(
-                    headers=PAGE_HEADERS,
-                    value=[],
-                    interactive=False,
-                    wrap=True,
-                    label=f"Crawled pages (multi-page; UI requests up to {UI_MULTI_MAX_PAGES})",
-                    column_widths=["22%", "38%", "10%", "12%", "18%"],
-                )
-                page_select = gr.Dropdown(
-                    choices=[],
-                    label="Inspect page",
-                    info=(
-                        "Select a page for CURRENT / RECOMMENDED / "
-                        "CURRENT vs RECOMMENDED / Evidence / WHY THESE CHANGES."
-                    ),
-                )
-            with gr.Column(scale=2, elem_classes=["aeo-panel"]):
+        with gr.Column(elem_classes=["aeo-panel"], elem_id="aeo-page-workspace"):
+            gr.Markdown("### Pages")
+            page_table = gr.Dataframe(
+                headers=PAGE_HEADERS,
+                value=[],
+                interactive=False,
+                wrap=True,
+                label=f"Crawled pages (multi-page; UI requests up to {UI_MULTI_MAX_PAGES})",
+                column_widths=["22%", "38%", "10%", "12%", "18%"],
+                elem_id="aeo-pages-table",
+            )
+            page_select = gr.Dropdown(
+                choices=[],
+                label="Selected page",
+                info="Choose a crawled page to inspect.",
+                elem_id="aeo-selected-page",
+            )
+            with gr.Column(elem_id="aeo-page-detail"):
                 page_header_html = gr.HTML(value=EMPTY_HEADER)
                 with gr.Tabs():
                     with gr.Tab("CURRENT"):
@@ -1017,6 +1060,7 @@ def build_app():
             evidence_md,
             compare_md,
         ]
+        sync_outputs = [state, page_select, *detail_outputs[1:]]
 
         page_select.change(
             fn=on_select_page,
@@ -1024,10 +1068,16 @@ def build_app():
             outputs=detail_outputs,
         )
 
+        page_table.select(
+            fn=on_page_table_select,
+            inputs=[state],
+            outputs=sync_outputs,
+        )
+
         opp_select.change(
             fn=on_select_opportunity_choice,
             inputs=[opp_select, state],
-            outputs=[state, page_select, *detail_outputs[1:]],
+            outputs=sync_outputs,
         )
 
         gr.Markdown(

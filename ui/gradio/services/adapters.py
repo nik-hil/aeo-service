@@ -307,6 +307,48 @@ def pages_table(rows: list[PageRow]) -> list[list[str]]:
     ]
 
 
+def page_select_choices(
+    rows: list[PageRow],
+    *,
+    fallback_url: str | None = None,
+) -> list[tuple[str, str]]:
+    """Dropdown options: display title (URL fallback) → value is page URL."""
+    choices: list[tuple[str, str]] = []
+    seen_labels: dict[str, int] = {}
+    for r in rows:
+        title = (r.title or "").strip()
+        if not title or title.lower() in {"(untitled)", "untitled"}:
+            label = r.url or "(no url)"
+        else:
+            label = title
+        count = seen_labels.get(label, 0)
+        seen_labels[label] = count + 1
+        if count:
+            label = f"{label} ({truncate_url(r.url, max_len=40)})"
+        choices.append((label, r.url))
+    if not choices and fallback_url:
+        choices = [(fallback_url, fallback_url)]
+    return choices
+
+
+def page_url_from_choice(choice: str | None, rows: list[PageRow]) -> str | None:
+    """Resolve a dropdown value (URL) or legacy label back to a page URL."""
+    if not choice:
+        return None
+    raw = str(choice).strip()
+    if not raw:
+        return None
+    for r in rows:
+        if r.url == raw or r.url.rstrip("/") == raw.rstrip("/"):
+            return r.url
+    # Label match (title primary, URL fallback) when Gradio returns display text.
+    for r in rows:
+        title = (r.title or "").strip()
+        if title and title == raw:
+            return r.url
+    return raw
+
+
 def _page_row_for(
     pages_payload: dict[str, Any] | None, page_url: str | None
 ) -> PageRow | None:
@@ -349,10 +391,18 @@ def page_header(
     # Prefer real extracted title — avoid "(untitled)" when title exists upstream.
     if not title:
         title = "(untitled)"
+    safe_url = escape_text(url) if url else "—"
+    if url:
+        url_html = (
+            f'<a class="aeo-page-url-link" href="{safe_url}" '
+            f'target="_blank" rel="noopener noreferrer">{safe_url}</a>'
+        )
+    else:
+        url_html = "—"
     html = (
         f'<div class="aeo-page-header">'
         f'<div class="aeo-page-title">{escape_text(title)}</div>'
-        f'<div class="aeo-page-url">{escape_text(url) or "—"}</div>'
+        f'<div class="aeo-page-url">{url_html}</div>'
         f'<div class="aeo-page-meta">'
         f"<span>Status: <strong>{escape_text(status)}</strong></span>"
         f"<span>Depth: <strong>{escape_text(depth)}</strong></span>"

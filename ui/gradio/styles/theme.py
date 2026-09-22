@@ -263,6 +263,45 @@ html, body, .gradio-container {
   margin-top: 0.15rem;
 }
 
+.aeo-page-url-link {
+  color: var(--aeo-accent) !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.aeo-page-url-link:hover {
+  color: var(--aeo-accent-2) !important;
+}
+
+/* Full-width page workspace: table → compact selector → detail (no side column). */
+#aeo-page-workspace {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+#aeo-pages-table {
+  width: 100% !important;
+}
+
+#aeo-selected-page {
+  max-width: 28rem;
+  width: 100%;
+}
+
+#aeo-page-detail {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  #aeo-selected-page {
+    max-width: 100%;
+  }
+}
+
 .aeo-page-meta {
   display: flex;
   flex-wrap: wrap;

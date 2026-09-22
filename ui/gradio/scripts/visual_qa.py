@@ -59,8 +59,8 @@ def open_guide(page) -> None:
 
 
 def select_page_if_present(page) -> None:
-    # Try dropdown
-    combo = page.locator("label:has-text('Inspect page')").locator("..").locator("input, select").first
+    # Try Selected page dropdown
+    combo = page.locator("label:has-text('Selected page')").locator("..").locator("input, select").first
     try:
         if combo.count():
             combo.click()
