@@ -134,7 +134,7 @@ def _pi(**overrides):
     return base
 
 
-# --- A: rewrite-intro → differs from source ---
+# --- A: intro answer-first reorder → differs from source ---
 
 
 def test_a_rewrite_intro_differs_from_source():
@@ -153,6 +153,11 @@ def test_a_rewrite_intro_differs_from_source():
     first_para = result.body.split("\n\n", 2)[1]
     assert "An LLM becomes an agent" in first_para
     assert first_para.strip() != "Building an AI agent sounds deceptively simple."
+    # Constrained rewrite = reorder of existing source text (not free-form rewrite).
+    assert "constrained_rewrite:answer_first_reorder" in result.applied_ops
+    assert "intro_rewrite_applied_as_answer_first_reorder" in result.warnings
+    # Lead must already appear in the source (reorder / lead selection only).
+    assert first_para.strip() in AGENTS_SOURCE_MD
 
 
 # --- B: preserves H1 / body sections ---
@@ -234,9 +239,13 @@ def test_d_metadata_only_body_unchanged():
     assert result.seo_description
     assert "<meta" not in result.body
     assert "seo_description_for_hashnode_settings" in result.warnings
+    assert "seo_description_transported_from_brief" in result.warnings
     assert "metadata_only_no_body_change" in result.warnings
     # Meta alone must not drive intro rewrite.
     assert "meta_description_does_not_drive_intro_rewrite" in result.warnings
+    # Transported brief value — generator does not claim source-MD derivation.
+    assert result.seo_description == BRIEF["proposed_meta_description"]
+    assert "seo_description_from_source_intro_fallback" not in result.warnings
 
 
 # --- E: supported op applied → changed=true ---
@@ -248,12 +257,13 @@ def test_e_supported_intro_op_sets_changed_true():
         page_intelligence=_pi(),
         brief=BRIEF,
         change_plan=CHANGE_PLAN_INTRO,
+        edit_ops=EDIT_OPS_INTRO,
     )
     assert result.changed is True
     assert result.body.strip() != AGENTS_SOURCE_MD.strip()
-    assert any("rewrite" in op or "introduction" in op for op in result.applied_ops) or (
-        "op_1_rewrite_section" in result.applied_ops
-    )
+    assert "constrained_rewrite:answer_first_reorder" in result.applied_ops
+    assert "op_1_rewrite_section" in result.applied_ops
+    assert "intro_rewrite_applied_as_answer_first_reorder" in result.warnings
 
 
 # --- F: unsupported → preserved + warning ---
@@ -437,3 +447,23 @@ def test_meta_not_inserted_as_html_in_body():
     assert 'name="description"' not in result.body
     assert result.seo_description
     assert "Stop relying on complex frameworks" in result.seo_description
+    assert "seo_description_transported_from_brief" in result.warnings
+
+
+def test_intro_reorder_uses_only_existing_source_paragraphs():
+    """Constrained rewrite must only reorder existing source text."""
+    result = generate_recommended_markdown(
+        source_markdown=AGENTS_SOURCE_MD,
+        page_intelligence=_pi(),
+        brief=BRIEF,
+        change_plan=CHANGE_PLAN_INTRO,
+    )
+    src_intro = AGENTS_SOURCE_MD.split("##", 1)[0]
+    out_intro = result.body.split("##", 1)[0]
+    for block in out_intro.split("\n\n"):
+        b = block.strip()
+        if not b or b.startswith("#"):
+            continue
+        assert b in src_intro
+    assert "constrained_rewrite:answer_first_reorder" in result.applied_ops
+    assert "intro_rewrite_applied_as_answer_first_reorder" in result.warnings

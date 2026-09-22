@@ -5,8 +5,28 @@ Disclaimers, audit text, instructional placeholders, and HTML-only SEO never
 belong in ``body``. Insufficient evidence → skip that transform + record warning.
 
 Applies supported edit ops from the optimization change plan / brief
-(retain H1, rewrite introduction / answer-first, meta description as SEO
-metadata). Never invents facts; never calls an LLM.
+(retain H1, introduction answer-first, meta description as SEO metadata).
+Never invents facts; never calls an LLM.
+
+Intro / ``rewrite`` semantics (deterministic mode)
+-------------------------------------------------
+The change-plan edit-op contract may name the action ``rewrite`` (e.g.
+``rewrite`` + ``section:<H1>`` with an answer-first instruction). This
+generator does **not** perform a free-form content rewrite. Deterministic
+mode applies a **constrained rewrite**: evidence-backed answer-first
+**reorder / lead selection** using only text already present in the source
+Markdown (or on-page answer-block snippets that appear in the body). No new
+facts, citations, URLs, or claims are invented.
+
+Meta / SEO description provenance
+---------------------------------
+``brief.proposed_meta_description`` is owned by the upstream optimization
+brief (generation + provenance live there). This Hashnode MD generator only
+**transports** that value (or observed page-intel meta) as separate
+``seo_description`` / ``meta_description`` metadata for Hashnode SEO
+settings. It does **not** claim the text was derived from source Markdown,
+and never inserts HTML ``<meta>`` into the Markdown body. Metadata-only
+application leaves ``changed=False``.
 """
 
 from __future__ import annotations
@@ -66,7 +86,9 @@ class RecommendedMarkdown:
     changed: bool = False
     source_url: str | None = None
     generator_version: str = GENERATOR_VERSION
-    # Hashnode SEO settings — never inserted as HTML <meta> into body.
+    # Hashnode SEO settings transport only — never HTML <meta> in body.
+    # Value may come from brief.proposed_meta_description (upstream) or
+    # observed page intel; see module docstring for provenance boundary.
     seo_description: str | None = None
     meta_description: str | None = None
     applied_ops: list[str] = field(default_factory=list)
@@ -208,7 +230,12 @@ def _is_meta_op(op: dict[str, str]) -> bool:
 
 
 def _is_intro_rewrite_op(op: dict[str, str], *, h1: str | None) -> bool:
-    """True for rewrite/expand ops that target the introduction / H1 section."""
+    """True when the change-plan op targets introduction / answer-first.
+
+    Edit-op contract may use action ``rewrite``; deterministic mode implements
+    that as a constrained rewrite (answer-first reorder of existing source
+    text), not a free-form rewrite.
+    """
     action = op.get("action") or ""
     if action not in {"rewrite", "expand", "add"}:
         return False
@@ -227,7 +254,7 @@ def _is_intro_rewrite_op(op: dict[str, str], *, h1: str | None) -> bool:
     if target.lower().startswith("section:") and h1:
         section_name = target.split(":", 1)[1].strip()
         if section_name.lower() == h1.lower():
-            # Primary H1 section rewrite = introduction (brief convention).
+            # Primary H1 section → introduction (brief convention).
             return True
     return False
 
@@ -236,7 +263,7 @@ def _split_front_matter_safe(md: str) -> tuple[str, list[str], str]:
     """Return (h1_line_or_empty, intro_paragraph_blocks, remainder_including_headings).
 
     Intro = content after H1 until the first ATX heading. Code fences in the
-    intro are kept as atomic blocks so rewrites never split them.
+    intro are kept as atomic blocks so answer-first reorder never splits them.
     """
     lines = (md or "").splitlines()
     if not lines:
@@ -392,7 +419,11 @@ def _answer_first_lead_from_evidence(
 def _rewrite_introduction_answer_first(
     md: str, lead: str | None
 ) -> tuple[str, bool]:
-    """Reorder / insert answer-first lead in the intro; preserve the rest of the doc."""
+    """Constrained rewrite for intro ``rewrite`` ops: answer-first reorder only.
+
+    Selects/moves an existing lead (already present in the intro or body) to
+    the front of the introduction. Does not invent or paraphrase new content.
+    """
     if not lead or not lead.strip():
         return md, False
     lead = lead.strip()
@@ -426,15 +457,12 @@ def _rewrite_introduction_answer_first(
     if remainder.strip():
         # Avoid double blank before next heading.
         parts.append(remainder.lstrip("\n"))
-    else:
-        # Keep trailing newline consistency.
-        pass
     out = "\n".join(parts).rstrip() + "\n"
     return out, out.strip() != (md or "").strip()
 
 
 def _ensure_answer_first(md: str, lead: str | None) -> tuple[str, bool]:
-    """Backward-compatible wrapper: rewrite intro to answer-first when evidence exists."""
+    """Backward-compatible wrapper: answer-first intro reorder when evidence exists."""
     return _rewrite_introduction_answer_first(md, lead)
 
 
@@ -537,17 +565,32 @@ def _resolve_seo_description(
     brief: dict[str, Any],
     pi: dict[str, Any],
     body: str,
-) -> str | None:
-    """Build Hashnode SEO description from existing page/brief evidence only."""
+) -> tuple[str | None, str | None]:
+    """Transport Hashnode SEO description into metadata (never into MD body).
+
+    Provenance boundary:
+    - Optimization brief owns generation of ``proposed_meta_description``.
+      This function only copies it when present; it does **not** assert the
+      text was derived from source Markdown.
+    - Else observed ``page_intelligence.meta_description`` may be transported.
+    - Else, as a last resort, the first suitable intro paragraph already in
+      the Markdown body (explicitly source-derived fallback only).
+    Returns ``(seo_text, provenance_tag)`` where provenance_tag is one of
+    ``brief_proposed``, ``page_intel_observed``, ``source_intro_fallback``,
+    or ``None`` when unresolved.
+    """
+    provenance: str | None = None
     proposed = brief.get("proposed_meta_description")
     if isinstance(proposed, str) and proposed.strip():
         text = proposed.strip()
+        provenance = "brief_proposed"
     else:
         existing = str(pi.get("meta_description") or "").strip()
         if existing:
             text = existing
+            provenance = "page_intel_observed"
         else:
-            # Fall back to first intro paragraph already in the Markdown body.
+            # Last resort: first intro paragraph already in the Markdown body.
             _, intro_blocks, _ = _split_front_matter_safe(body)
             text = ""
             for block in intro_blocks:
@@ -558,7 +601,8 @@ def _resolve_seo_description(
                     text = cand
                     break
             if not text:
-                return None
+                return None, None
+            provenance = "source_intro_fallback"
     # Strip HTML; keep plain text for Hashnode SEO settings field.
     text = _HTML_TAG_RE.sub("", text).strip()
     text = re.sub(r"\s+", " ", text)
@@ -567,12 +611,12 @@ def _resolve_seo_description(
     if not text or _INVENTED_FACT_RE.search(text) and text not in body and text not in str(
         pi.get("meta_description") or ""
     ):
-        # Allow known existing meta even if it matches the pattern; block novel claims.
+        # Allow brief-proposed / observed meta even if pattern-like; block unknowns.
         if text not in str(pi.get("meta_description") or "") and text not in str(
             brief.get("proposed_meta_description") or ""
         ):
-            return None
-    return text
+            return None, None
+    return text, provenance
 
 
 def _wants_answer_first(
@@ -582,9 +626,9 @@ def _wants_answer_first(
     h1: str | None,
     pi: dict[str, Any],
 ) -> tuple[bool, bool]:
-    """Return (should_rewrite_intro, driven_by_meta_only).
+    """Return (should_apply_intro_answer_first_reorder, driven_by_meta_only).
 
-    Meta-description ops alone must NOT drive intro rewrite.
+    Meta-description ops alone must NOT drive intro answer-first reorder.
     """
     has_intro_op = any(_is_intro_rewrite_op(op, h1=h1) for op in ops)
     has_meta_op = any(_is_meta_op(op) for op in ops)
@@ -622,7 +666,11 @@ def generate_recommended_markdown(
 
     Never fabricates product facts; never puts disclaimers or instructional
     placeholders in ``body``. UI shows honesty labeling as metadata/subtitle.
-    Meta description ops are applied as ``seo_description`` metadata, not body HTML.
+
+    Intro ``rewrite`` ops are applied as a constrained rewrite: deterministic
+    answer-first **reorder** of existing source text (see module docstring).
+    Meta description ops are transported as ``seo_description`` metadata only
+    (brief owns proposed-meta provenance; never HTML ``<meta>`` in body).
     """
     pi = page_intelligence or {}
     resolved_source_url = source_url or pi.get("source_url") or pi.get("url")
@@ -691,7 +739,7 @@ def generate_recommended_markdown(
         h1 = title
         applied_ops.append("replace_placeholder_h1")
 
-    # --- meta description → SEO metadata (never HTML <meta> in body) ---
+    # --- meta description → SEO metadata transport (never HTML <meta> in body) ---
     meta_ops = [op for op in ops if _is_meta_op(op)]
     # Also honor REC_ADD_META_DESCRIPTION as a metadata-only signal.
     if "REC_ADD_META_DESCRIPTION" in rec_codes and not meta_ops:
@@ -704,15 +752,21 @@ def generate_recommended_markdown(
             }
         ]
     if meta_ops:
-        seo = _resolve_seo_description(brief=brief, pi=pi, body=body)
+        seo, seo_prov = _resolve_seo_description(brief=brief, pi=pi, body=body)
         if seo:
             seo_description = seo
             applied_ops.append(meta_ops[0]["op_id"] or "meta_description")
             warnings.append("seo_description_for_hashnode_settings")
+            if seo_prov == "brief_proposed":
+                warnings.append("seo_description_transported_from_brief")
+            elif seo_prov == "page_intel_observed":
+                warnings.append("seo_description_transported_from_page_intel")
+            elif seo_prov == "source_intro_fallback":
+                warnings.append("seo_description_from_source_intro_fallback")
         else:
             warnings.append("insufficient_evidence_meta_description")
 
-    # --- introduction / answer-first (body) ---
+    # --- introduction / answer-first (constrained rewrite = reorder) ---
     wants_intro, meta_only_drive = _wants_answer_first(
         ops=ops, rec_codes=rec_codes, h1=h1, pi=pi
     )
@@ -737,25 +791,17 @@ def generate_recommended_markdown(
                 (op for op in ops if _is_intro_rewrite_op(op, h1=h1)),
                 None,
             )
-            applied_ops.append(
-                (intro_op or {}).get("op_id")
-                or "rewrite:introduction_answer_first"
-            )
+            # Keep upstream edit-op id when present; always record deterministic mode.
+            if intro_op and intro_op.get("op_id"):
+                applied_ops.append(intro_op["op_id"])
+            applied_ops.append("constrained_rewrite:answer_first_reorder")
+            warnings.append("intro_rewrite_applied_as_answer_first_reorder")
         else:
             warnings.append("insufficient_evidence_answer_first")
 
     # --- FAQ / HowTo (evidence-backed only; existing behavior) ---
     if "REC_ADD_FAQ_SECTION" in rec_codes or "REC_ADD_QUESTION_HEADINGS" in rec_codes:
         qa_pairs = _existing_faq_qa_pairs(body)
-        if not qa_pairs:
-            for item in brief.get("outline") or []:
-                text = item.get("heading") if isinstance(item, dict) else str(item)
-                text = str(text or "").strip()
-                if "?" not in text:
-                    continue
-                if text in body:
-                    pass
-            qa_pairs = _existing_faq_qa_pairs(body)
         body, did = _ensure_faq_section(body, qa_pairs)
         if did:
             body_op_applied = True
