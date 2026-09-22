@@ -126,6 +126,27 @@ class JobOrchestrator:
         """ADR-026: paid DO web_search only when explicit opt-in ∧ ready QuerySet."""
         return bool(paid_opt_in) and bool(paid_retrieval_ready)
 
+    def _resolve_paid_retrieval_opt_in(self, options: dict[str, Any]) -> bool:
+        """Resolve ADR-026 opt-in from env (master) + job options.
+
+        ``AEO_PAID_RETRIEVAL_OPT_IN`` is the runtime master switch (fail-closed):
+        when env is false, a job request cannot enable paid retrieval.
+        When env is true, the job is opted in (API schema default ``false`` must
+        not mask the env switch). Job ``discovery_only`` / ``dry_run`` still
+        force opt-in off at the call site.
+        """
+        env_opt_in = bool(self.settings.paid_retrieval_opt_in)
+        req_opt_in = options.get("paid_retrieval_opt_in")
+        if not env_opt_in:
+            if req_opt_in:
+                logger.info(
+                    "paid retrieval hard-skipped: AEO_PAID_RETRIEVAL_OPT_IN=false "
+                    "(request paid_retrieval_opt_in ignored; ADR-026 fail-closed)"
+                )
+            return False
+        # Env true is sufficient; do not let schema-default false disable spend.
+        return True
+
     def _select_provider(
         self,
         job: Job,
@@ -383,8 +404,8 @@ class JobOrchestrator:
             p1_sections["site_understanding"] = understanding.to_dict()
 
             # P1-C / Phase 3–4 query discovery (generate→gate→select).
-            # Paid DO retrieval is NEVER auto-started here — requires explicit opt-in
-            # after a ready QuerySet (options.paid_retrieval_opt_in / settings).
+            # Paid DO retrieval is NEVER auto-started here — requires env opt-in
+            # (AEO_PAID_RETRIEVAL_OPT_IN) after a ready QuerySet (ADR-026).
             top_n = int(
                 options.get("query_top_n")
                 if options.get("query_top_n") is not None
@@ -393,11 +414,18 @@ class JobOrchestrator:
             discovery_only = bool(
                 options.get("discovery_only") or options.get("dry_run")
             )
-            paid_opt_in = bool(
-                options.get("paid_retrieval_opt_in", self.settings.paid_retrieval_opt_in)
-            )
+            paid_opt_in = self._resolve_paid_retrieval_opt_in(options)
             if discovery_only:
                 paid_opt_in = False
+            logger.info(
+                "paid_retrieval_opt_in=%s env_AEO_PAID_RETRIEVAL_OPT_IN=%s "
+                "discovery_only=%s",
+                str(paid_opt_in).lower(),
+                str(bool(self.settings.paid_retrieval_opt_in)).lower(),
+                str(discovery_only).lower(),
+            )
+            # Keep persisted options aligned with the effective gate (no secrets).
+            options["paid_retrieval_opt_in"] = paid_opt_in
             early_identity = resolve_target_site_identity(job.base_url)
             target_audit = early_identity.to_audit_dict()
             p1_sections["target_site"] = target_audit
@@ -420,13 +448,18 @@ class JobOrchestrator:
             )
             if paid_opt_in and not discovery.paid_retrieval_ready:
                 logger.info(
-                    "paid_retrieval_opt_in set but query set not ready; "
-                    "hard-skipping DigitalOcean paid retrieval (ADR-026)"
+                    "paid retrieval hard-skipped: query set not ready "
+                    "(ADR-026; paid_retrieval_opt_in=true)"
                 )
             elif not paid_opt_in:
                 logger.info(
-                    "paid_retrieval_opt_in false; "
-                    "hard-skipping DigitalOcean paid retrieval (ADR-026)"
+                    "paid retrieval hard-skipped: paid_retrieval_opt_in=false "
+                    "(ADR-026)"
+                )
+            elif allow_paid_retrieval:
+                logger.info(
+                    "paid retrieval allowed: paid_retrieval_opt_in=true and "
+                    "query set ready (ADR-026; credentials still required)"
                 )
 
             # 6. Health
