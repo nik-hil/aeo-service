@@ -448,3 +448,104 @@ def test_resolve_draft_generator_skips_stub_by_default():
         api_key="sk-x",
     )
     assert isinstance(stub, PaidLLMDraftGenerator)
+
+
+def test_intro_related_gaps_do_not_cover_cite_miss():
+    """Intro must not consume cite_miss ids via related_gap_ids / covered set."""
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_mock_chat_grounded)
+    cite_gid = "gap_cite_miss_q_agent_loop"
+    gaps = [
+        {
+            "gap_id": "gap_answer_first_1",
+            "gap_type": "evidence_gap",
+            "kind": "missing_answer",
+            "query_id": "q_what_is_agent",
+            "page_coverage": "thin",
+            "rationale": "Introduction is not answer-first",
+        },
+        {
+            "gap_id": cite_gid,
+            "gap_type": "cite_miss",
+            "kind": "missing_answer",
+            "query_id": "q_agent_loop",
+            "page_coverage": "full",
+            "rationale": "probed but not cited",
+        },
+    ]
+    coverage = [
+        {"query_id": "q_what_is_agent", "query_text": "what is an AI agent", "page_coverage": "thin"},
+        {"query_id": "q_agent_loop", "query_text": "what is the agent loop", "page_coverage": "full"},
+    ]
+    # Seed intro op that wrongly lists cite_miss in related_gap_ids (live bug shape).
+    existing = [
+        {
+            "action": "rewrite",
+            "target": "introduction",
+            "instruction": "Answer-first introduction",
+            "related_gap_ids": ["gap_answer_first_1", cite_gid],
+        }
+    ]
+    plan = build_substantive_change_plan(
+        source_markdown=SECTION_MD,
+        gaps=gaps,
+        coverage_by_query=coverage,
+        page_intelligence={
+            "h1": ARTICLE_H1,
+            "answerability_signals": {"answer_first_heuristic": False},
+            "limits": ["no_answer_first"],
+        },
+        existing_ops=existing,
+        h1=ARTICLE_H1,
+        draft_paid=True,
+        llm_api_key="mock",
+        grounded_client=client,
+    )
+    intro = next(i for i in plan.items if i.op_kind == "rewrite_introduction")
+    assert cite_gid not in (intro.related_gap_ids or [])
+    section = [
+        i
+        for i in plan.items
+        if i.op_kind in {"rewrite_section", "add_explanation"} and i.status == "ready"
+    ]
+    assert section, f"cite_miss blocked by intro cover: {[i.to_dict() for i in plan.items]}"
+    assert any(cite_gid in (i.related_gap_ids or []) for i in section)
+
+
+def test_llm_used_preserved_on_grounded_edit_ops():
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_mock_chat_grounded)
+    plan = build_substantive_change_plan(
+        source_markdown=SECTION_MD,
+        gaps=[
+            {
+                "gap_id": "gap_cite_miss_q1",
+                "gap_type": "cite_miss",
+                "kind": "missing_answer",
+                "query_id": "q_agent_loop",
+                "page_coverage": "full",
+                "rationale": "not cited",
+            }
+        ],
+        coverage_by_query=COVERAGE_SECTION,
+        page_intelligence={"h1": ARTICLE_H1},
+        h1=ARTICLE_H1,
+        draft_paid=True,
+        llm_api_key="mock",
+        grounded_client=client,
+    )
+    ready = [
+        i for i in plan.items if i.status == "ready" and i.op_kind == "rewrite_section"
+    ]
+    assert ready
+    assert ready[0].llm_used is True
+    wire = ready[0].to_edit_op_dict()
+    assert wire.get("llm_used") is True
+    from aeo_mvp.content.substantive_ops import merge_plan_into_ops
+
+    merged = merge_plan_into_ops([], plan)
+    section_ops = [
+        o
+        for o in merged
+        if str(o.get("op_kind") or "") == "rewrite_section" and o.get("status") == "ready"
+    ]
+    assert section_ops
+    assert section_ops[0].get("llm_used") is True

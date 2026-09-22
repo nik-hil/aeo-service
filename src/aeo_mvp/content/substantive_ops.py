@@ -134,11 +134,15 @@ class SubstantiveChangeItem:
             op_kind=self.op_kind,
             expected_aeo_benefit=self.expected_aeo_benefit,
             disposition=self.disposition,
+            llm_used=bool(self.llm_used),
             op_id=f"mvp_{self.op_kind}_{self.target or self.target_kind}"[:80],
         )
 
     def to_edit_op_dict(self) -> dict[str, Any]:
-        return self.to_operation().to_edit_op_dict()
+        payload = self.to_operation().to_edit_op_dict()
+        # Preserve grounded_synth flag even if operation mapping drifts.
+        payload["llm_used"] = bool(self.llm_used)
+        return payload
 
 
 @dataclass
@@ -625,9 +629,23 @@ def build_substantive_change_plan(
             or (resolved_h1 and target.lower() == f"section:{resolved_h1}".lower())
         ):
             needs_intro = True
-            intro_gap_ids.extend(str(x) for x in (op.get("related_gap_ids") or []))
+            # Never pull cite_miss gap ids onto intro (blocks grounded_synth).
+            for x in op.get("related_gap_ids") or []:
+                xid = str(x)
+                if xid.startswith("gap_cite_miss") or "cite_miss" in xid:
+                    continue
+                intro_gap_ids.append(xid)
             intro_query_ids.extend(str(x) for x in (op.get("related_query_ids") or []))
 
+    # Drop any cite_miss ids that leaked into intro_gap_ids (seed ops / aliases).
+    cite_miss_gap_ids = {
+        str(g.get("gap_id") or g.get("id") or "")
+        for g in gap_rows
+        if str(g.get("gap_type") or "").lower() == "cite_miss"
+        and (g.get("gap_id") or g.get("id"))
+    }
+    if cite_miss_gap_ids:
+        intro_gap_ids = [g for g in intro_gap_ids if g not in cite_miss_gap_ids]
     if needs_intro and (source_markdown or "").strip():
         proposal = propose_introduction_rewrite(
             source_markdown=source_markdown,
@@ -635,6 +653,11 @@ def build_substantive_change_plan(
             related_gap_ids=list(dict.fromkeys(intro_gap_ids)),
         )
         if proposal is not None:
+            intro_related = [
+                g
+                for g in list(proposal.related_gap_ids or intro_gap_ids)
+                if g and g not in cite_miss_gap_ids
+            ]
             items.append(
                 SubstantiveChangeItem(
                     content_gap="Introduction is not answer-first / weakly extractable",
@@ -646,7 +669,7 @@ def build_substantive_change_plan(
                     expected_aeo_benefit=_benefit("rewrite_introduction"),
                     op_kind="rewrite_introduction",
                     disposition="actionable",
-                    related_gap_ids=list(proposal.related_gap_ids or intro_gap_ids),
+                    related_gap_ids=intro_related,
                     related_query_ids=list(dict.fromkeys(intro_query_ids)),
                     target="introduction",
                     target_kind="introduction",
@@ -777,8 +800,18 @@ def build_substantive_change_plan(
 
     # --- 5) Grounded rewrite_section / add_explanation (≤ MAX_GROUNDED_BODY_OPS)
     # Secondary promote kinds already handled above. Prefer strong section ops.
+    # cite_miss must remain eligible even if intro/FAQ/HowTo listed the same id.
+    cite_miss_gap_ids = {
+        str(g.get("gap_id") or g.get("id") or "")
+        for g in gap_rows
+        if str(g.get("gap_type") or "").lower() == "cite_miss"
+        and (g.get("gap_id") or g.get("id"))
+    }
     covered_gap_ids = {
-        gid for it in items for gid in (it.related_gap_ids or []) if gid
+        gid
+        for it in items
+        for gid in (it.related_gap_ids or [])
+        if gid and gid not in cite_miss_gap_ids
     }
     grounded_budget = MAX_GROUNDED_BODY_OPS
     for g in gap_rows:

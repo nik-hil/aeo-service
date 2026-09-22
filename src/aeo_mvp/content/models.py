@@ -759,6 +759,8 @@ class ContentChangeOperation:
     op_id: str = ""
     # Explicit disposition (research_required vs author_input_required).
     disposition: GapDisposition | None = None
+    # True when grounded_synth chat completions produced this op.
+    llm_used: bool = False
     # Optional platform hint (never required for apply).
     platform_hint: str | None = None
 
@@ -797,6 +799,7 @@ class ContentChangeOperation:
             "op_id": self.op_id
             or f"{self.action}:{self.target_locator or self.target_kind}"[:80],
             "platform_hint": self.platform_hint,
+            "llm_used": bool(self.llm_used),
         }
 
 
