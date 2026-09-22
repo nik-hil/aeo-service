@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from aeo_mvp.content.grounded_synth import (
     GroundedClaim,
     OpenAICompatibleChat,
+    clear_rewrite_memo,
     find_ws_canonical_corpus_span,
     grounded_synth_enabled,
     novelty_violations,
@@ -18,6 +21,14 @@ from aeo_mvp.content.grounded_synth import (
 from aeo_mvp.content.models import DEFERRED_OP_KINDS, IMPLEMENTED_OP_KINDS
 from aeo_mvp.content.substantive_ops import build_substantive_change_plan
 from aeo_mvp.platform.hashnode.markdown_generator import generate_recommended_markdown
+
+
+@pytest.fixture(autouse=True)
+def _clear_grounded_rewrite_memo():
+    clear_rewrite_memo()
+    yield
+    clear_rewrite_memo()
+
 
 ARTICLE_H1 = "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling"
 
@@ -807,7 +818,8 @@ def _make_corpus_echo_chat(seen: dict):
         )
         return json.dumps(
             {
-                "proposed": f"In short: {first}\n\n{corpus.strip()}",
+                # Keep proposed ≤ body length so ratio defense stays green in tests.
+                "proposed": f"In short: {first}",
                 "claims": [{"claim": first, "evidence_quote": first}],
             }
         )
@@ -1055,3 +1067,178 @@ def test_plan_two_gaps_target_two_distinct_sections():
     assert targets == ["section:The complete flow", "section:The finish tool"], [
         i.to_dict() for i in plan.items
     ]
+
+
+def test_finalize_rejects_proposed_larger_than_actual_body_ratio():
+    """G — defense-in-depth: proposed/body ratio uses actual selected body."""
+    from aeo_mvp.content.grounded_synth import (
+        MAX_PROPOSED_TO_BODY_RATIO,
+        OpenAICompatibleChat,
+        synthesize_rewrite_section,
+        clear_rewrite_memo,
+    )
+
+    clear_rewrite_memo()
+    body = _section_of(MULTI_H1_MD, "The finish tool")
+    assert len(body) < 200
+
+    def _chat(messages, temperature=0.0):
+        user = ""
+        for m in messages:
+            if m.get("role") == "user":
+                user = m.get("content") or ""
+        if "ENTAILED or NOT_ENTAILED" in user or "Is the claim fully entailed" in user:
+            return "ENTAILED"
+        dump = ("Later section dump. " * 80) + body
+        assert len(dump) > MAX_PROPOSED_TO_BODY_RATIO * len(body)
+        first = "The second tool is even simpler."
+        return json.dumps(
+            {
+                "proposed": dump,
+                "claims": [{"claim": first, "evidence_quote": first}],
+            }
+        )
+
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_chat, model="mock-model")
+    result = synthesize_rewrite_section(
+        client=client,
+        source_markdown=MULTI_H1_MD,
+        query_text="How does the finish tool work?",
+        h1=ARTICLE_H1,
+        section_heading="The finish tool",
+        section_body=body,
+    )
+    assert result.disposition == "author_input_required"
+    assert result.proposed is None
+    assert any(w.startswith("proposed_to_body_ratio:") for w in result.warnings)
+
+
+def test_md_generator_rejects_proposed_span_ratio():
+    """G — generator refuses proposed >> actual heading span."""
+    h3_body = _section_of(MULTI_H1_MD, "The model does not execute code directly")
+    dump = ("Downstream dump. " * 40) + h3_body
+    assert len(dump) > 2 * len(h3_body)
+    op = {
+        "op_id": "op_ratio",
+        "action": "rewrite",
+        "op_kind": "rewrite_section",
+        "target": "section:The model does not execute code directly",
+        "status": "ready",
+        "disposition": "actionable",
+        "apply_mode": "replace_region",
+        "original": h3_body,
+        "proposed": dump,
+        "evidence": [h3_body[:200]],
+        "claims": [
+            {
+                "claim": "The LLM produces structured arguments.",
+                "evidence_quote": "The LLM produces structured arguments.",
+            }
+        ],
+    }
+    result = generate_recommended_markdown(
+        source_markdown=MULTI_H1_MD,
+        page_intelligence={"h1": ARTICLE_H1},
+        edit_ops=[op],
+    )
+    assert result.changed is False
+    assert "rewrite_section_proposed_span_ratio" in result.warnings
+    assert "evidence_grounded_rewrite_section" not in result.applied_ops
+
+
+def test_rewrite_section_deterministic_temperature_zero():
+    """H — rewrite path uses temperature=0; identical inputs → identical proposed."""
+    from aeo_mvp.content.grounded_synth import (
+        SYNTH_TEMPERATURE,
+        clear_rewrite_memo,
+        synthesize_rewrite_section,
+    )
+
+    clear_rewrite_memo()
+    assert SYNTH_TEMPERATURE == 0.0
+    temps: list[float] = []
+
+    def _chat(messages, temperature=0.0):
+        temps.append(temperature)
+        user = ""
+        for m in messages:
+            if m.get("role") == "user":
+                user = m.get("content") or ""
+        if "ENTAILED or NOT_ENTAILED" in user or "Is the claim fully entailed" in user:
+            return "ENTAILED"
+        marker = "Original section body (corpus — rewrite using only this):\n"
+        corpus = user.split(marker, 1)[1].split("\n\nReturn JSON", 1)[0]
+        first = next(
+            ln.strip()
+            for ln in corpus.splitlines()
+            if ln.strip() and not ln.strip().startswith(("```", "*", "#"))
+        )
+        return json.dumps(
+            {
+                # Keep proposed ≤ body length so ratio defense stays green in tests.
+                "proposed": f"In short: {first}",
+                "claims": [{"claim": first, "evidence_quote": first}],
+            }
+        )
+
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_chat, model="mock-model")
+    kwargs = dict(
+        client=client,
+        source_markdown=MULTI_H1_MD,
+        query_text="What is The complete flow?",
+        h1=ARTICLE_H1,
+    )
+    clear_rewrite_memo()
+    a = synthesize_rewrite_section(**kwargs)
+    clear_rewrite_memo()
+    b = synthesize_rewrite_section(**kwargs)
+    assert a.disposition == "actionable"
+    assert a.proposed == b.proposed
+    assert temps and all(t == 0.0 for t in temps)
+
+
+def test_rewrite_section_memoizes_by_source_heading_query_model():
+    """I — second identical call is a memo hit (no extra LLM spend)."""
+    from aeo_mvp.content.grounded_synth import clear_rewrite_memo, synthesize_rewrite_section
+
+    clear_rewrite_memo()
+    calls = {"n": 0}
+
+    def _chat(messages, temperature=0.0):
+        user = ""
+        for m in messages:
+            if m.get("role") == "user":
+                user = m.get("content") or ""
+        if "ENTAILED or NOT_ENTAILED" in user or "Is the claim fully entailed" in user:
+            return "ENTAILED"
+        calls["n"] += 1
+        marker = "Original section body (corpus — rewrite using only this):\n"
+        corpus = user.split(marker, 1)[1].split("\n\nReturn JSON", 1)[0]
+        first = next(
+            ln.strip()
+            for ln in corpus.splitlines()
+            if ln.strip() and not ln.strip().startswith(("```", "*", "#"))
+        )
+        return json.dumps(
+            {
+                # Keep proposed ≤ body length so ratio defense stays green in tests.
+                "proposed": f"In short: {first}",
+                "claims": [{"claim": first, "evidence_quote": first}],
+            }
+        )
+
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_chat, model="mock-model")
+    kwargs = dict(
+        client=client,
+        source_markdown=MULTI_H1_MD,
+        query_text="What is The complete flow?",
+        h1=ARTICLE_H1,
+    )
+    first = synthesize_rewrite_section(**kwargs)
+    n_after_first = calls["n"]
+    assert first.disposition == "actionable"
+    assert n_after_first >= 1
+    second = synthesize_rewrite_section(**kwargs)
+    assert calls["n"] == n_after_first  # no additional rewrite LLM call
+    assert second.proposed == first.proposed
+    assert "rewrite_section_memo_hit" in second.warnings

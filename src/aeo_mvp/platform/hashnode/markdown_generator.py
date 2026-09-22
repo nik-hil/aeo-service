@@ -41,6 +41,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from aeo_mvp.content.md_sections import find_section_span as _shared_find_section_span
 from aeo_mvp.content.rewrite_proposal import validate_proposed_rewrite
 
 _H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
@@ -388,44 +389,11 @@ def _find_section_span(
 ) -> tuple[int, int, int, str] | None:
     """Return (heading_line_idx, body_start_idx, body_end_idx, heading_line).
 
-    body spans lines after the heading until the next same-or-higher-level
-    ATX heading (or EOF). Indices are into splitlines().
+    Shared fence-aware H1–H6 hierarchy (same parser as grounded_synth corpus
+    selection). Body spans lines after the heading until the next
+    same-or-higher-level ATX heading (or EOF). Indices are into splitlines().
     """
-    lines = (md or "").splitlines()
-    want = (heading or "").strip().lower()
-    if not want:
-        return None
-    in_fence = False
-    for i, ln in enumerate(lines):
-        if ln.strip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        m = re.match(r"^(#{1,6})\s+(.+)$", ln)
-        if not m:
-            continue
-        title = m.group(2).strip()
-        if title.lower() != want and want not in title.lower():
-            continue
-        level = len(m.group(1))
-        body_start = i + 1
-        body_end = len(lines)
-        j = body_start
-        in_fence2 = False
-        while j < len(lines):
-            if lines[j].strip().startswith("```"):
-                in_fence2 = not in_fence2
-                j += 1
-                continue
-            if not in_fence2:
-                m2 = re.match(r"^(#{1,6})\s+", lines[j])
-                if m2 and len(m2.group(1)) <= level:
-                    body_end = j
-                    break
-            j += 1
-        return i, body_start, body_end, ln
-    return None
+    return _shared_find_section_span(md, heading)
 
 
 def _apply_proposed_section_rewrite(
@@ -1065,6 +1033,17 @@ def generate_recommended_markdown(
                 orig_norm = re.sub(r"\s+", " ", original_text).strip()
                 if span_text and len(orig_norm) > 2 * len(span_text):
                     warnings.append("rewrite_section_original_span_mismatch")
+                    warnings.append("rewrite_section_rejected_validation")
+                    continue
+            # Defense-in-depth: proposed vs *actual* heading span (not mega-body).
+            if span is not None:
+                _hi2, bs2, be2, _hl2 = span
+                actual_body = re.sub(
+                    r"\s+", " ", "\n".join(body.splitlines()[bs2:be2])
+                ).strip()
+                prop_norm = re.sub(r"\s+", " ", proposed_text).strip()
+                if actual_body and len(prop_norm) > 2 * len(actual_body):
+                    warnings.append("rewrite_section_proposed_span_ratio")
                     warnings.append("rewrite_section_rejected_validation")
                     continue
             body, did = _apply_proposed_section_rewrite(body, heading, proposed_text)

@@ -16,15 +16,18 @@ research_required (corpus insufficient).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
 
 import httpx
 
 from aeo_mvp.config import get_settings
+from aeo_mvp.content.md_sections import list_section_bodies as _shared_list_section_bodies
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +40,6 @@ _URL_RE = re.compile(r"https?://[^\s)\]>\"']+")
 _NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)?%?\b")
 _PROPER_NAME_RE = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b")
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-]{2,}")
-# All ATX heading levels. Articles (e.g. Hashnode exports) frequently use ``#``
-# for body sections; matching only H2–H6 made those sections invisible and let
-# a single ``###`` swallow the rest of the article as its "body".
-_HEADING_LINE_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 
 # Query tokens that carry no topical signal for section selection.
 _QUERY_STOPWORDS = frozenset(
@@ -57,6 +56,8 @@ _SYNTH_SYSTEM = (
     "corpus evidence. Never invent URLs, numbers, product names, citations, "
     "or facts absent from the corpus. Respond with a single JSON object only."
 )
+# Bump when system/user prompt contract for rewrite_section changes.
+SYNTH_PROMPT_VERSION = "grounded_rewrite_section_v1"
 
 _ENTAIL_SYSTEM = (
     "You are an entailment judge. Given a claim and evidence quotes from a "
@@ -71,6 +72,9 @@ MIN_TOKEN_OVERLAP_RATIO = 0.35
 # than this (chars). Oversized spans mean the section boundary is wrong or the
 # section is really a whole article — never summarise that under one heading.
 MAX_REWRITE_SECTION_CORPUS_CHARS = 4000
+# Defense-in-depth: proposed must stay within this multiple of the *actual*
+# selected section body (not a mis-bounded mega-corpus).
+MAX_PROPOSED_TO_BODY_RATIO = 2.0
 # Size band that earns a small selection bonus (readable, locally rewritable).
 PREFERRED_SECTION_MIN_CHARS = 40
 PREFERRED_SECTION_MAX_CHARS = 2500
@@ -137,6 +141,34 @@ class SynthResult:
             "related_query_ids": list(self.related_query_ids),
             "query_text": self.query_text,
         }
+
+
+# Process-local memo: hash(source, heading, query)+model+prompt_version → result.
+_REWRITE_MEMO: dict[str, "SynthResult"] = {}
+
+
+def clear_rewrite_memo() -> None:
+    """Test helper: drop process-local rewrite_section memo entries."""
+    _REWRITE_MEMO.clear()
+
+
+def _rewrite_memo_key(
+    *,
+    source_markdown: str,
+    heading: str,
+    query_text: str,
+    model: str | None,
+) -> str:
+    payload = "\0".join(
+        [
+            SYNTH_PROMPT_VERSION,
+            (model or "").strip(),
+            (heading or "").strip().lower(),
+            (query_text or "").strip(),
+            source_markdown or "",
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def grounded_synth_enabled(
@@ -547,34 +579,11 @@ def _claims_from_payload(data: dict[str, Any]) -> list[GroundedClaim]:
 def list_section_bodies(source_markdown: str) -> list[tuple[str, str, str]]:
     """Return [(heading, body, level_marker), ...] for every ATX section (H1–H6).
 
-    Section body = lines after the heading up to the next heading whose level
-    is the same or higher (fewer ``#``), or EOF. Headings inside fenced code
-    blocks are ignored. This is the same boundary rule the Hashnode Markdown
-    generator uses to *replace* a section, so the corpus the LLM rewrites is
-    exactly the span that will be swapped in.
+    Delegates to the shared fence-aware parser also used by the Hashnode
+    Markdown generator's ``_find_section_span``, so the corpus the LLM rewrites
+    is exactly the span that will be swapped in.
     """
-    lines = (source_markdown or "").splitlines()
-    heads: list[tuple[int, int, str]] = []  # (line_idx, level, heading)
-    in_fence = False
-    for i, ln in enumerate(lines):
-        if ln.strip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        m = _HEADING_LINE_RE.match(ln)
-        if m:
-            heads.append((i, len(m.group(1)), m.group(2).strip()))
-    sections: list[tuple[str, str, str]] = []
-    for k, (idx, level, heading) in enumerate(heads):
-        end = len(lines)
-        for j, lvl2, _h in heads[k + 1 :]:
-            if lvl2 <= level:
-                end = j
-                break
-        body = "\n".join(lines[idx + 1 : end]).strip("\n")
-        sections.append((heading, body, "#" * level))
-    return sections
+    return _shared_list_section_bodies(source_markdown)
 
 
 def _query_tokens(query: str) -> set[str]:
@@ -731,6 +740,35 @@ def _finalize_grounded(
             reason=(
                 "Proposed text failed token-overlap prefilter against on-page "
                 "corpus; evidence exists but rewrite blocked."
+            ),
+            original=original,
+            evidence=evidence,
+            target=target,
+            warnings=warnings,
+            related_gap_ids=related_gap_ids,
+            related_query_ids=related_query_ids,
+            query_text=query_text,
+            llm_used=True,
+        )
+
+    # Defense-in-depth size guard vs the *actual* selected section body.
+    body_chars = len((original or "").strip())
+    prop_chars = len(proposed.strip())
+    if (
+        op_kind == "rewrite_section"
+        and body_chars > 0
+        and prop_chars > MAX_PROPOSED_TO_BODY_RATIO * body_chars
+    ):
+        warnings.append(
+            f"proposed_to_body_ratio:{prop_chars}:{body_chars}"
+        )
+        return _reject(
+            op_kind=op_kind,
+            disposition="author_input_required",
+            reason=(
+                f"Proposed rewrite is {prop_chars} chars vs actual section body "
+                f"{body_chars} chars (>{MAX_PROPOSED_TO_BODY_RATIO}x); refuse — "
+                "likely mega-corpus dump into a local heading."
             ),
             original=original,
             evidence=evidence,
@@ -937,6 +975,23 @@ def synthesize_rewrite_section(
             llm_used=False,
         )
 
+    memo_key = _rewrite_memo_key(
+        source_markdown=source_markdown,
+        heading=heading,
+        query_text=q,
+        model=getattr(client, "model", None),
+    )
+    cached = _REWRITE_MEMO.get(memo_key)
+    if cached is not None:
+        hit = deepcopy(cached)
+        hit.related_gap_ids = gap_ids
+        hit.related_query_ids = qids
+        hit.query_text = q or None
+        hit.target = target
+        if "rewrite_section_memo_hit" not in hit.warnings:
+            hit.warnings = list(hit.warnings) + ["rewrite_section_memo_hit"]
+        return hit
+
     user = (
         f"Query the section should answer better:\n{q}\n\n"
         f"Section heading:\n{heading}\n\n"
@@ -989,7 +1044,7 @@ def synthesize_rewrite_section(
 
     proposed = str(data.get("proposed") or "").strip()
     claims = _claims_from_payload(data)
-    return _finalize_grounded(
+    result = _finalize_grounded(
         client=client,
         op_kind="rewrite_section",
         proposed=proposed,
@@ -1007,6 +1062,10 @@ def synthesize_rewrite_section(
         related_query_ids=qids,
         query_text=q or None,
     )
+    # Memoize only validated actionable proposals (deterministic reuse).
+    if result.disposition == "actionable" and result.proposed:
+        _REWRITE_MEMO[memo_key] = deepcopy(result)
+    return result
 
 
 def synthesize_add_explanation(
