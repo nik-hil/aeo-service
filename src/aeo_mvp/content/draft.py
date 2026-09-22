@@ -372,6 +372,11 @@ def build_optimized_draft(
             action=e.action,
             target=e.target_locator or e.anchor_locator or e.op_id,
             reason=e.instruction,
+            related_gap_ids=list(e.related_gap_ids),
+            related_query_ids=list(e.related_query_ids),
+            original=e.original,
+            proposed=e.proposed,
+            evidence=list(e.evidence),
         )
         for e in raw_ops
         if isinstance(e, EditOp)

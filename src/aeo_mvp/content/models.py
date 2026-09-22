@@ -654,6 +654,12 @@ class EditOp:
     proposed_outline: list[str] = field(default_factory=list)
     related_gap_ids: list[str] = field(default_factory=list)
     related_query_ids: list[str] = field(default_factory=list)
+    # Evidence-grounded rewrite payload (optimization layer → MD applicator).
+    # When action=rewrite and proposed is set, the Hashnode MD generator applies
+    # the validated replacement; it does not invent the copy itself.
+    original: str | None = None
+    proposed: str | None = None
+    evidence: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -668,6 +674,10 @@ class ContentChange:
     reason: str
     related_query_ids: list[str] = field(default_factory=list)
     related_gap_ids: list[str] = field(default_factory=list)
+    # Optional evidence-grounded rewrite fields (same contract as EditOp).
+    original: str | None = None
+    proposed: str | None = None
+    evidence: list[str] = field(default_factory=list)
 
     def to_edit_op(self, *, idx: int = 0) -> EditOp:
         return EditOp(
@@ -681,6 +691,9 @@ class ContentChange:
             proposed_outline=[],
             related_gap_ids=list(self.related_gap_ids),
             related_query_ids=list(self.related_query_ids),
+            original=self.original,
+            proposed=self.proposed,
+            evidence=list(self.evidence),
         )
 
     def to_dict(self) -> dict[str, Any]:

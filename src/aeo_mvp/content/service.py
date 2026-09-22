@@ -213,13 +213,62 @@ def _attach_hashnode_recommended_markdown(
             "llm_used": False,
             "paid": False,
             "paid_llm": False,
+            "paid_retrieval_used": False,
         }
         if recommended.seo_description:
             draft_entry["seo_description"] = recommended.seo_description
             draft_entry["meta_description"] = recommended.seo_description
         draft_list = list(wire.get("content_drafts") or [])
+        existing0 = draft_list[0] if draft_list and isinstance(draft_list[0], dict) else {}
+        if recommended.rewrite_provenance:
+            draft_entry["rewrite_provenance"] = dict(recommended.rewrite_provenance)
+            # Surface onto change_plan for UI/report (what/why/gap/evidence).
+            prov = recommended.rewrite_provenance
+            plan = [
+                c
+                for c in (existing0.get("change_plan") or change_plan_in or [])
+                if isinstance(c, dict)
+            ]
+            if not plan:
+                plan = [
+                    {
+                        "action": "rewrite",
+                        "target": "introduction",
+                        "reason": prov.get("why") or "",
+                        "original": prov.get("original") or "",
+                        "proposed": prov.get("proposed") or "",
+                        "evidence": list(prov.get("evidence") or []),
+                        "related_gap_ids": list(prov.get("related_gap_ids") or []),
+                    }
+                ]
+            else:
+                updated_plan = []
+                for item in plan:
+                    row = dict(item)
+                    target = str(
+                        row.get("target") or row.get("target_locator") or ""
+                    ).lower()
+                    reason = str(
+                        row.get("reason") or row.get("instruction") or ""
+                    ).lower()
+                    if row.get("action") == "rewrite" and (
+                        "intro" in target
+                        or target.startswith("section:")
+                        or "answer-first" in reason
+                        or target in {"introduction", "intro", "opening"}
+                    ):
+                        row["original"] = prov.get("original") or row.get("original")
+                        row["proposed"] = prov.get("proposed")
+                        row["evidence"] = list(prov.get("evidence") or [])
+                        if prov.get("related_gap_ids") and not row.get(
+                            "related_gap_ids"
+                        ):
+                            row["related_gap_ids"] = list(prov.get("related_gap_ids") or [])
+                    updated_plan.append(row)
+                plan = updated_plan or plan
+            draft_entry["change_plan"] = plan
         if draft_list:
-            draft_list[0] = {**draft_list[0], **draft_entry}
+            draft_list[0] = {**existing0, **draft_entry}
         else:
             draft_list = [draft_entry]
         wire["content_drafts"] = draft_list
