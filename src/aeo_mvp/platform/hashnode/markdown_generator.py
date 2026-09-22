@@ -593,8 +593,14 @@ def _existing_faq_qa_pairs(md: str) -> list[tuple[str, str]]:
 
 
 def _ensure_faq_section(md: str, qa_pairs: list[tuple[str, str]]) -> tuple[str, bool]:
-    """Add an FAQ section only when evidence-backed Q&A pairs exist."""
-    if not qa_pairs:
+    """Add an FAQ section only when ≥FAQ_MIN existing evidence-backed Q&A pairs.
+
+    Kept as a helper; ``generate_recommended_markdown`` must not call this from
+    legacy REC codes — only ready ``add_faq_from_existing_qa`` ops apply FAQ.
+    """
+    from aeo_mvp.content.models import FAQ_MIN_EXISTING_QA_PAIRS
+
+    if len(qa_pairs) < FAQ_MIN_EXISTING_QA_PAIRS:
         return md, False
     lower = (md or "").lower()
     if "faq" in lower or "frequently asked" in lower:
@@ -620,14 +626,19 @@ def _extract_numbered_steps(md: str) -> list[str]:
 
 
 def _ensure_howto_steps(md: str, steps: list[str]) -> tuple[str, bool]:
-    """Promote evidence-backed numbered steps; never invent placeholder steps."""
-    if len(steps) < 3:
+    """Promote evidence-backed numbered steps; never invent placeholder steps.
+
+    Requires ≥HOWTO_MIN_EXISTING_STEPS. Not invoked from legacy REC paths.
+    """
+    from aeo_mvp.content.models import HOWTO_MIN_EXISTING_STEPS
+
+    if len(steps) < HOWTO_MIN_EXISTING_STEPS:
         return md, False
     lower = (md or "").lower()
     if "step-by-step" in lower or re.search(r"^##\s+steps\b", md or "", re.I | re.M):
         return md, False
     # Already has a full numbered list in-body — leave unchanged.
-    if len(_extract_numbered_steps(md)) >= 3:
+    if len(_extract_numbered_steps(md)) >= HOWTO_MIN_EXISTING_STEPS:
         return md, False
     parts = [md.rstrip(), "", "## Steps", ""]
     for i, step in enumerate(steps[:8], start=1):
@@ -966,6 +977,8 @@ def generate_recommended_markdown(
                     warnings.append("intro_rewrite_idempotent_no_change")
 
     # --- MVP ready FAQ / HowTo promote ops (proposed assembled upstream only) ---
+    from aeo_mvp.content.models import FAQ_MIN_EXISTING_QA_PAIRS, HOWTO_MIN_EXISTING_STEPS
+
     for op in ops:
         if not _is_ready_mvp_body_op(op, h1=h1):
             continue
@@ -974,8 +987,8 @@ def generate_recommended_markdown(
         if not proposed_text:
             continue
         if op_kind == "add_faq_from_existing_qa":
-            # Defensive: never apply if fewer than min existing pairs remain.
-            if len(_existing_faq_qa_pairs(body)) < 2 and "## FAQ" not in proposed_text:
+            # Defensive: never apply below MVP min existing pairs.
+            if len(_existing_faq_qa_pairs(body)) < FAQ_MIN_EXISTING_QA_PAIRS:
                 warnings.append("faq_op_rejected_insufficient_existing_qa")
                 continue
             body, did = _apply_append_block(body, proposed_text)
@@ -989,12 +1002,12 @@ def generate_recommended_markdown(
                 warnings.append("faq_op_idempotent_no_change")
         elif op_kind == "add_howto_from_existing_steps":
             steps = _extract_numbered_steps(body)
-            if len(steps) < 3:
+            if len(steps) < HOWTO_MIN_EXISTING_STEPS:
                 for m in re.finditer(
                     r"^Step\s+\d+\s*[:.\-]\s*(.+)$", body or "", re.I | re.M
                 ):
                     steps.append(m.group(1).strip())
-            if len(steps) < 3:
+            if len(steps) < HOWTO_MIN_EXISTING_STEPS:
                 warnings.append("howto_op_rejected_insufficient_existing_steps")
                 continue
             body, did = _apply_append_block(body, proposed_text)
@@ -1023,38 +1036,34 @@ def generate_recommended_markdown(
                 + str(op.get("target") or op.get("op_id") or "unknown")
             )
 
-    # --- FAQ / HowTo legacy evidence path (rec_codes) — still never invents ---
-    # Prefer ready ops above; this path only runs when no ready FAQ/HowTo op applied. ---
-    faq_applied = any("faq" in a for a in applied_ops)
-    howto_applied = any("howto" in a for a in applied_ops)
-
+    # FAQ / HowTo body changes: ready ContentChangeOperation only.
+    # Legacy REC_ADD_FAQ_SECTION / REC_ADD_HOWTO_OR_STEPS promote paths are
+    # removed (Architect FAIL @ b60f9e7) — they could apply with ≥1 Q&A while
+    # MVP lock requires ≥2, and could override needs_author_input ops.
+    faq_ready_applied = any(
+        "faq" in a.lower() for a in applied_ops
+    )
+    howto_ready_applied = any(
+        "howto" in a.lower() or "steps" in a.lower() for a in applied_ops
+    )
+    has_faq_op_any_status = any(
+        str(op.get("op_kind") or "") == "add_faq_from_existing_qa" for op in ops
+    )
+    has_howto_op_any_status = any(
+        str(op.get("op_kind") or "") == "add_howto_from_existing_steps" for op in ops
+    )
     if (
-        not faq_applied
-        and (
-            "REC_ADD_FAQ_SECTION" in rec_codes or "REC_ADD_QUESTION_HEADINGS" in rec_codes
-        )
+        ("REC_ADD_FAQ_SECTION" in rec_codes or "REC_ADD_QUESTION_HEADINGS" in rec_codes)
+        and not faq_ready_applied
     ):
-        qa_pairs = _existing_faq_qa_pairs(body)
-        body, did = _ensure_faq_section(body, qa_pairs)
-        if did:
-            body_op_applied = True
-            applied_ops.append("add:faq_section")
-        else:
-            warnings.append("insufficient_evidence_faq")
-
-    if not howto_applied and "REC_ADD_HOWTO_OR_STEPS" in rec_codes:
-        steps = _extract_numbered_steps(body)
-        if len(steps) < 3:
-            for m in re.finditer(
-                r"^Step\s+\d+\s*[:.\-]\s*(.+)$", body or "", re.I | re.M
-            ):
-                steps.append(m.group(1).strip())
-        body, did = _ensure_howto_steps(body, steps)
-        if did:
-            body_op_applied = True
-            applied_ops.append("add:howto_steps")
-        else:
-            warnings.append("insufficient_evidence_howto")
+        # Signal: recommendation alone does not promote; need ready op.
+        if has_faq_op_any_status:
+            warnings.append("legacy_rec_faq_ignored_substantive_op_present")
+        warnings.append("insufficient_evidence_faq")
+    if "REC_ADD_HOWTO_OR_STEPS" in rec_codes and not howto_ready_applied:
+        if has_howto_op_any_status:
+            warnings.append("legacy_rec_howto_ignored_substantive_op_present")
+        warnings.append("insufficient_evidence_howto")
 
     # Unsupported actionable ops → warn, leave body alone for those targets.
     for op in ops:

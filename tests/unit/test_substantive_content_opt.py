@@ -564,3 +564,107 @@ Body stays.
     )
     assert result.body.strip() == source.strip()
     assert result.changed is False
+
+
+# --- Architect FAIL @ b60f9e7: legacy REC must not override needs_author_input ---
+
+
+SINGLE_QA_MD = f"""# {ARTICLE_H1}
+
+An LLM becomes an agent when it can decide to take actions.
+
+### What is an AI agent?
+
+An AI agent is a system that can call tools.
+
+## Body
+
+No second question heading here.
+"""
+
+
+def test_needs_author_input_faq_howto_generator_does_not_promote():
+    """(a) needs_author_input FAQ/HowTo ⇒ generator does not invent/promote."""
+    faq = propose_faq_from_existing_qa(source_markdown=AGENTS_SOURCE_MD)
+    howto = propose_howto_from_existing_steps(source_markdown=AGENTS_SOURCE_MD)
+    assert faq.status == "needs_author_input"
+    assert howto.status == "needs_author_input"
+    ops = [faq.to_edit_op_dict(), howto.to_edit_op_dict()]
+    result = generate_recommended_markdown(
+        source_markdown=AGENTS_SOURCE_MD,
+        page_intelligence=_pi(),
+        edit_ops=ops,
+        recommendations=[
+            {"code": "REC_ADD_FAQ_SECTION"},
+            {"code": "REC_ADD_HOWTO_OR_STEPS"},
+        ],
+    )
+    assert "## FAQ" not in result.body
+    assert "## Steps" not in result.body
+    assert result.body.strip() == AGENTS_SOURCE_MD.strip()
+    assert result.changed is False
+    assert any(w.startswith("author_input_required:") for w in result.warnings)
+    assert "legacy_rec_faq_ignored_substantive_op_present" in result.warnings
+    assert "legacy_rec_howto_ignored_substantive_op_present" in result.warnings
+    assert "add:faq_section" not in result.applied_ops
+    assert "add:howto_steps" not in result.applied_ops
+
+
+def test_single_qa_pair_no_faq_apply():
+    """(b) single Q&A pair ⇒ no FAQ apply (MVP min ≥2)."""
+    faq = propose_faq_from_existing_qa(source_markdown=SINGLE_QA_MD)
+    assert faq.status == "needs_author_input"
+    assert faq.proposed_content is None
+    # Even a forged ready-looking op must be rejected by generator min check.
+    forged = {
+        "action": "add",
+        "target": "section:FAQ",
+        "op_kind": "add_faq_from_existing_qa",
+        "status": "ready",
+        "disposition": "actionable",
+        "apply_mode": "insert_after",
+        "proposed": "## FAQ\n\n### What is an AI agent?\n\nAn AI agent is a system that can call tools.\n",
+        "evidence": ["Q"],
+    }
+    result = generate_recommended_markdown(
+        source_markdown=SINGLE_QA_MD,
+        edit_ops=[faq.to_edit_op_dict(), forged],
+        recommendations=[{"code": "REC_ADD_FAQ_SECTION"}],
+    )
+    assert "## FAQ" not in result.body
+    assert "faq_op_rejected_insufficient_existing_qa" in result.warnings or result.changed is False
+    assert "add:faq_section" not in result.applied_ops
+    assert "evidence_grounded_add_faq_from_existing_qa" not in result.applied_ops
+
+
+def test_ready_faq_howto_ops_still_apply():
+    """(c) ready FAQ/HowTo ContentChangeOperations still apply."""
+    plan = build_substantive_change_plan(
+        source_markdown=MULTI_OP_MD,
+        gaps=GAPS_MULTI,
+        coverage_by_query=COVERAGE,
+        page_intelligence=_pi(),
+        existing_ops=EDIT_OPS_INTRO,
+        h1=ARTICLE_H1,
+        brief={"proposed_meta_description": "Build an AI agent from scratch."},
+    )
+    ready = [i for i in plan.items if i.status == "ready"]
+    kinds = {i.op_kind for i in ready}
+    assert "add_faq_from_existing_qa" in kinds
+    assert "add_howto_from_existing_steps" in kinds
+    ops = [i.to_edit_op_dict() for i in ready]
+    result = generate_recommended_markdown(
+        source_markdown=MULTI_OP_MD,
+        page_intelligence=_pi(),
+        brief={"edit_ops": ops, "proposed_meta_description": "Build an AI agent."},
+        edit_ops=ops,
+        recommendations=[
+            {"code": "REC_ADD_FAQ_SECTION"},
+            {"code": "REC_ADD_HOWTO_OR_STEPS"},
+        ],
+    )
+    assert result.changed is True
+    assert "## FAQ" in result.body
+    assert "## Steps" in result.body
+    assert "evidence_grounded_add_faq_from_existing_qa" in result.applied_ops
+    assert "evidence_grounded_add_howto_from_existing_steps" in result.applied_ops

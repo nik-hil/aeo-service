@@ -191,9 +191,16 @@ def test_recommended_markdown_does_not_fabricate_faq_or_howto():
 
 
 def test_recommended_markdown_evidence_backed_faq_can_improve():
+    """Ready add_faq_from_existing_qa op applies; REC codes alone do not."""
+    from aeo_mvp.content.substantive_ops import propose_faq_from_existing_qa
+
+    faq_item = propose_faq_from_existing_qa(source_markdown=SAMPLE_WITH_QA)
+    assert faq_item.status == "ready"
+    ready_op = faq_item.to_edit_op_dict()
     result = generate_recommended_markdown(
         source_markdown=SAMPLE_WITH_QA,
         recommendations=[{"code": "REC_ADD_FAQ_SECTION"}],
+        edit_ops=[ready_op],
     )
     assert result.ok
     assert result.changed is True
@@ -202,6 +209,19 @@ def test_recommended_markdown_evidence_backed_faq_can_improve():
     assert "An AI agent is software" in result.body
     assert "_Add a concise" not in result.body
     assert "RECOMMENDED MARKDOWN" not in result.body
+    assert "evidence_grounded_add_faq_from_existing_qa" in result.applied_ops
+
+
+def test_rec_faq_alone_does_not_promote_even_with_qa():
+    """Architect FAIL fix: REC_ADD_FAQ_SECTION must not body-promote without ready op."""
+    result = generate_recommended_markdown(
+        source_markdown=SAMPLE_WITH_QA,
+        recommendations=[{"code": "REC_ADD_FAQ_SECTION"}],
+    )
+    assert "## FAQ" not in result.body
+    assert result.changed is False
+    assert "insufficient_evidence_faq" in result.warnings
+    assert result.body.strip() == SAMPLE_WITH_QA.strip()
 
 
 def test_page_scoped_filter_only_affects_hashnode_md_recs():
