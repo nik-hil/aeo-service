@@ -206,6 +206,7 @@ def get_pages(job_id: str) -> PagesResponse:
                     final_url=p.final_url,
                     source_url=getattr(p, "source_url", None),
                     content_representation=getattr(p, "content_representation", None),
+                    canonical_url=getattr(p, "canonical_url", None),
                     depth=p.depth,
                     status_code=p.status_code,
                     primary_status_code=getattr(p, "primary_status_code", None),
@@ -213,6 +214,7 @@ def get_pages(job_id: str) -> PagesResponse:
                     alternate_fetch_status=getattr(p, "alternate_fetch_status", None),
                     title=p.title,
                     fetch_error=p.fetch_error,
+                    source_markdown=getattr(p, "source_markdown", None),
                 )
                 for p in pages
             ],
@@ -238,7 +240,7 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
     session = factory()
     try:
         try:
-            html, url, title_hint = resolve_page_html(
+            html, url, title_hint, page_extras = resolve_page_html(
                 session,
                 job_id=body.job_id,
                 page_id=body.page_id,
@@ -293,7 +295,9 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
         cfg["draft_paid"] = draft_paid
 
         try:
-            return run_from_resolved(
+            from aeo_mvp.content.service import _attach_hashnode_recommended_markdown
+
+            wire = run_from_resolved(
                 html=html,
                 url=url,
                 title_hint=title_hint,
@@ -304,6 +308,16 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
                 draft_paid=draft_paid,
                 llm_api_key=api_key,
                 allow_empty_html=bool(body.allow_empty_html),
+            )
+            return _attach_hashnode_recommended_markdown(
+                wire,
+                page_url=url,
+                page_id=page_extras.get("page_id"),
+                title=title_hint,
+                source_markdown=page_extras.get("source_markdown"),
+                content_representation=page_extras.get("content_representation"),
+                source_url=page_extras.get("source_url"),
+                canonical_url=page_extras.get("canonical_url"),
             )
         except OptimizationRequestError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

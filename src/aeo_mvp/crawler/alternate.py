@@ -135,3 +135,50 @@ def get_supported_alternate_url(url: str) -> AlternateRepresentation | None:
     already-``.md`` URLs, and non-article paths return None (no request invented).
     """
     return _hashnode_article_alternate(url)
+
+
+def is_hashnode_publication_url(url: str) -> bool:
+    """True when ``url`` is on a ``*.hashnode.dev`` publication host (not apex)."""
+    parsed = urlparse((url or "").strip())
+    if parsed.scheme not in ("http", "https"):
+        return False
+    return _is_hashnode_publication_host(parsed.netloc)
+
+
+def is_direct_markdown_url(url: str) -> bool:
+    """True when the URL path ends with a single ``.md`` suffix (case-insensitive)."""
+    path = (urlparse((url or "").strip()).path or "").lower()
+    return path.endswith(".md")
+
+
+def strip_one_md_suffix(url: str) -> str:
+    """Remove exactly one trailing ``.md`` from the path (preserve host/query)."""
+    parsed = urlparse((url or "").strip())
+    path = parsed.path or ""
+    if path.lower().endswith(".md"):
+        path = path[:-3]
+    return urlunparse(
+        (parsed.scheme, parsed.netloc, path, parsed.params, parsed.query, parsed.fragment)
+    )
+
+
+def looks_like_markdown_payload(
+    *,
+    url: str,
+    content_type: str | None,
+    text: str | None,
+) -> bool:
+    """Detect Markdown representation from Content-Type and/or a ``.md`` URL body.
+
+    Used so a 200 ``text/markdown`` (or Hashnode ``.md``) response is not treated
+    as HTML merely because the status is success.
+    """
+    if not (text and str(text).strip()):
+        return False
+    ct = (content_type or "").lower()
+    if "markdown" in ct or ct.startswith("text/x-markdown"):
+        return True
+    if is_direct_markdown_url(url):
+        # Direct .md twin URLs (Hashnode and similar): body is the article Markdown.
+        return True
+    return False

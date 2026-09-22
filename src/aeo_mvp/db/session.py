@@ -73,6 +73,7 @@ def migrate_schema(database_url: str | None = None) -> None:
         ("pages", "primary_status_code", "INTEGER"),
         ("pages", "primary_fetch_status", "VARCHAR(32)"),
         ("pages", "alternate_fetch_status", "VARCHAR(32)"),
+        ("pages", "source_markdown", "TEXT"),
     ):
         try:
             _sqlite_add_column_if_missing(engine, table, column, coltype)

@@ -52,6 +52,19 @@ def test_custom_css_no_decorative_motion_or_blur():
     assert "translateY(-" not in CUSTOM_CSS
 
 
+def test_custom_css_light_code_and_compare_panes():
+    """Inline code / pre must stay white/light with dark ink — no dark pills."""
+    assert ".aeo-panel code" in CUSTOM_CSS
+    assert ".aeo-panel pre" in CUSTOM_CSS
+    assert "background: #ffffff !important" in CUSTOM_CSS
+    assert "aeo-md-compare" in CUSTOM_CSS
+    assert "aeo-md-scroll" in CUSTOM_CSS
+    assert "overflow-y: auto !important" in CUSTOM_CSS
+    # Guard against near-black code chrome sneaking back in.
+    assert "#0b0f19" not in CUSTOM_CSS
+    assert "#111827" not in CUSTOM_CSS
+
+
 def test_build_theme_mirrors_light_into_dark_tokens():
     theme = build_theme()
     assert theme._get_computed_value("body_text_color") == AEO_INK

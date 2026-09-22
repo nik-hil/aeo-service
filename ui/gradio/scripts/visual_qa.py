@@ -59,8 +59,8 @@ def open_guide(page) -> None:
 
 
 def select_page_if_present(page) -> None:
-    # Try dropdown
-    combo = page.locator("label:has-text('Inspect page')").locator("..").locator("input, select").first
+    # Try Selected page dropdown
+    combo = page.locator("label:has-text('Selected page')").locator("..").locator("input, select").first
     try:
         if combo.count():
             combo.click()
@@ -127,18 +127,18 @@ def run() -> int:
             shoot(page, f"demo-multi-after-select-{tag}")
             # Click detail tabs
             try:
-                page.get_by_role("tab", name="Recommendations").click()
+                page.get_by_role("tab", name="RECOMMENDED").click()
                 time.sleep(0.4)
-                shoot(page, f"demo-multi-recs-{tag}")
-                page.get_by_role("tab", name="Brief & Draft").click()
-                time.sleep(0.4)
-                shoot(page, f"demo-multi-brief-draft-{tag}")
+                shoot(page, f"demo-multi-recommended-{tag}")
                 page.get_by_role("tab", name="CURRENT vs RECOMMENDED").click()
                 time.sleep(0.4)
                 shoot(page, f"demo-multi-compare-{tag}")
                 page.get_by_role("tab", name="Evidence").click()
                 time.sleep(0.4)
                 shoot(page, f"demo-multi-evidence-{tag}")
+                page.get_by_role("tab", name="WHY THESE CHANGES").click()
+                time.sleep(0.4)
+                shoot(page, f"demo-multi-why-{tag}")
             except Exception as exc:  # noqa: BLE001
                 notes.append(f"{tag} tab navigation: {exc}")
 
@@ -170,7 +170,7 @@ def run() -> int:
                 "- Guide accordion open",
                 "- One-click demo — multi-page (same-host crawl seed)",
                 "- Secondary page select (async enrichment loading → loaded when applicable)",
-                "- Detail tabs: Recommendations / Brief & Draft / CURRENT vs RECOMMENDED / Evidence",
+                "- Detail tabs: CURRENT / RECOMMENDED / CURRENT vs RECOMMENDED / Evidence / WHY THESE CHANGES",
                 "",
                 "## Observations",
                 "- Brand (AEO Leadership Demo) is hero-level in the first viewport.",

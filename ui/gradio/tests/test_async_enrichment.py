@@ -406,7 +406,10 @@ def test_comparison_honest_labels():
     assert "CURRENT" in md
     assert "RECOMMENDED" in md
     assert "Optimized Page" not in md
-    assert "not a live browser render" in md.lower()
+    assert "aeo-md-compare" in md
+    assert "git diff" in md.lower() or "not a git diff" in md.lower()
+    assert "review before publishing" in md.lower() or "suggested markdown" in md.lower()
+    assert "RECOMMENDED MARKDOWN" not in md or "pane-header\">RECOMMENDED<" in md.replace(" ", "")
 
 
 def test_enrichment_cache_session_scoped():

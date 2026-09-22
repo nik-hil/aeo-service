@@ -263,6 +263,45 @@ html, body, .gradio-container {
   margin-top: 0.15rem;
 }
 
+.aeo-page-url-link {
+  color: var(--aeo-accent) !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.aeo-page-url-link:hover {
+  color: var(--aeo-accent-2) !important;
+}
+
+/* Full-width page workspace: table → compact selector → detail (no side column). */
+#aeo-page-workspace {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+#aeo-pages-table {
+  width: 100% !important;
+}
+
+#aeo-selected-page {
+  max-width: 28rem;
+  width: 100%;
+}
+
+#aeo-page-detail {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  #aeo-selected-page {
+    max-width: 100%;
+  }
+}
+
 .aeo-page-meta {
   display: flex;
   flex-wrap: wrap;
@@ -275,6 +314,130 @@ html, body, .gradio-container {
 .aeo-status-ok { color: var(--aeo-ok) !important; font-weight: 600; }
 .aeo-status-err { color: var(--aeo-danger) !important; font-weight: 600; }
 .aeo-status-busy { color: var(--aeo-warn) !important; font-weight: 600; }
+
+/*
+ * Inline code / pre / language labels inside AEO UI.
+ * Gradio Soft dark tokens paint code pills near-black; force light surfaces + dark ink.
+ * Article Markdown content stays readable; metadata must not become dark pills.
+ */
+.aeo-panel code,
+.aeo-panel kbd,
+.aeo-panel samp,
+.gradio-container .md code,
+.gradio-container .prose code,
+.gradio-container .markdown code,
+.gradio-container [data-testid="markdown"] code,
+.gradio-container .code_wrap,
+.gradio-container .codeblock,
+.gradio-container span.language,
+.gradio-container .md span[class*="language"],
+.gradio-container .prose span[class*="language"],
+html.dark .aeo-panel code,
+html.dark .gradio-container .md code,
+.dark .aeo-panel code,
+.dark .gradio-container .md code {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+  border: 1px solid #e5e5e5 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+.aeo-panel pre,
+.aeo-panel pre code,
+.gradio-container .md pre,
+.gradio-container .md pre code,
+.gradio-container .prose pre,
+.gradio-container .prose pre code,
+.gradio-container .markdown pre,
+.gradio-container .markdown pre code,
+.gradio-container [data-testid="markdown"] pre,
+.gradio-container [data-testid="markdown"] pre code,
+html.dark .aeo-panel pre,
+html.dark .aeo-panel pre code,
+.dark .gradio-container .md pre,
+.dark .gradio-container .md pre code {
+  background: #fafafa !important;
+  background-color: #fafafa !important;
+  color: #1a1a1a !important;
+  border: 1px solid #e5e5e5 !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+
+/* Side-by-side CURRENT vs RECOMMENDED Markdown panes (independent scroll). */
+.aeo-md-compare {
+  color: #1a1a1a !important;
+  background: #ffffff !important;
+}
+.aeo-compare-summary,
+.aeo-compare-note {
+  color: #5c5c5c !important;
+  font-size: 0.9rem;
+  margin: 0.35rem 0 0.75rem 0;
+}
+.aeo-md-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+@media (max-width: 900px) {
+  .aeo-md-compare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.aeo-md-pane {
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.aeo-md-pane-header {
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid #e5e5e5;
+  background: #f5f5f5;
+  color: #1a1a1a !important;
+}
+.aeo-md-scroll {
+  margin: 0 !important;
+  padding: 0.75rem !important;
+  max-height: 28rem;
+  height: 28rem;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace !important;
+  font-size: 0.82rem !important;
+  line-height: 1.45 !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+/* Recommended Markdown Code editor — light surface + copy affordance nearby. */
+#aeo-recommended-markdown-code,
+#aeo-recommended-markdown-code textarea,
+#aeo-recommended-markdown-code .cm-editor,
+#aeo-recommended-markdown-code .cm-content {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+  border-color: #e5e5e5 !important;
+}
+#aeo-copy-recommended-md button {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+  border: 1px solid #e5e5e5 !important;
+}
 
 /*
  * Dataframe / opportunities / pages tables.

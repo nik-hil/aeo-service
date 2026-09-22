@@ -97,6 +97,8 @@ class Page(Base):
     content_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     fetched_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     html: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Exact fetched Markdown when content_representation=markdown; never reconstructed.
+    source_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     robots_meta: Mapped[str | None] = mapped_column(Text, nullable=True)
     canonical_url: Mapped[str | None] = mapped_column(Text, nullable=True)

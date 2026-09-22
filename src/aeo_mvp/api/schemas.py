@@ -92,6 +92,7 @@ class PageItem(BaseModel):
     final_url: str | None = None
     source_url: str | None = None
     content_representation: str | None = None
+    canonical_url: str | None = None
     depth: int
     status_code: int | None = None
     primary_status_code: int | None = None
@@ -99,6 +100,8 @@ class PageItem(BaseModel):
     alternate_fetch_status: str | None = None
     title: str | None = None
     fetch_error: str | None = None
+    # Exact fetched Markdown when representation=markdown (may be large).
+    source_markdown: str | None = None
 
 
 class PagesResponse(BaseModel):

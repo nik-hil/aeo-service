@@ -115,6 +115,99 @@ def queryset_from_discovery(discovery: Any) -> Any:
     return {"members": [], "query_set_version": "query-set-v3"}
 
 
+def _attach_hashnode_recommended_markdown(
+    wire: dict[str, Any],
+    *,
+    page_url: str,
+    page_id: str | None = None,
+    title: str | None = None,
+    source_markdown: str | None = None,
+    content_representation: str | None = None,
+    source_url: str | None = None,
+    canonical_url: str | None = None,
+) -> dict[str, Any]:
+    """Attach Hashnode recommended Markdown + provenance onto an opt wire dict."""
+    from aeo_mvp.platform.hashnode.applicability import is_hashnode_markdown_context
+    from aeo_mvp.platform.hashnode.markdown_generator import generate_recommended_markdown
+
+    intel = dict(wire.get("page_intelligence") or {})
+    if page_id:
+        intel["page_id"] = page_id
+    if source_url is not None:
+        intel["source_url"] = source_url
+    if content_representation is not None:
+        intel["content_representation"] = content_representation
+    if canonical_url is not None:
+        intel["canonical_url"] = canonical_url
+    elif page_url:
+        intel.setdefault("canonical_url", page_url)
+    if source_markdown:
+        intel["source_markdown"] = source_markdown
+
+    if source_markdown and is_hashnode_markdown_context(
+        url=page_url,
+        content_representation=content_representation,
+        source_url=source_url,
+    ):
+        gap_flat: list[dict[str, Any]] = []
+        for block in wire.get("content_gaps") or []:
+            if isinstance(block, dict):
+                for g in block.get("gaps") or []:
+                    if isinstance(g, dict):
+                        gap_flat.append(g)
+        brief_wire = (wire.get("optimization_briefs") or [None])[0] or wire.get("brief") or {}
+        rec_hints: list[dict[str, Any]] = []
+        for d in wire.get("content_drafts") or []:
+            if isinstance(d, dict) and isinstance(d.get("recommendations"), list):
+                rec_hints.extend(
+                    r for r in d["recommendations"] if isinstance(r, dict)
+                )
+        # Soft signals from brief work_queue / action codes when present on wire.
+        for key in ("recommendations", "selected_recommendations"):
+            for r in wire.get(key) or []:
+                if isinstance(r, dict):
+                    rec_hints.append(r)
+        recommended = generate_recommended_markdown(
+            source_markdown=source_markdown,
+            page_intelligence=intel,
+            brief=brief_wire if isinstance(brief_wire, dict) else {},
+            gaps=gap_flat,
+            recommendations=rec_hints or None,
+            title_hint=title,
+            source_url=source_url,
+        )
+        from aeo_mvp.platform.hashnode.markdown_generator import (
+            SUGGESTED_MARKDOWN_SUBTITLE,
+        )
+
+        draft_entry = {
+            "page_url": page_url,
+            "page_id": page_id,
+            "status": "generated" if recommended.ok else "skipped_no_meaningful_draft",
+            "generator": recommended.generator_version,
+            "writer": recommended.generator_version,
+            "generator_version": recommended.generator_version,
+            "content_provenance": "recommended_from_source_markdown",
+            "body_markdown": recommended.body,
+            "disclaimer": SUGGESTED_MARKDOWN_SUBTITLE,
+            "warnings": list(recommended.warnings),
+            "changed": recommended.changed,
+            "source_url": recommended.source_url,
+            "title": recommended.title,
+        }
+        draft_list = list(wire.get("content_drafts") or [])
+        if draft_list:
+            draft_list[0] = {**draft_list[0], **draft_entry}
+        else:
+            draft_list = [draft_entry]
+        wire["content_drafts"] = draft_list
+        wire["draft"] = draft_list[0]
+        intel["recommended_markdown"] = recommended.body
+
+    wire["page_intelligence"] = intel
+    return wire
+
+
 def optimize_job_pages(
     pages: list[Page],
     *,
@@ -208,8 +301,18 @@ def optimize_job_pages(
             visibility_observations=visibility_observations,
         )
         wire = result.to_dict()
-        intel = dict(wire["page_intelligence"])
-        intel["page_id"] = page.id
+        wire = _attach_hashnode_recommended_markdown(
+            wire,
+            page_url=page.url or "",
+            page_id=page.id,
+            title=page.title,
+            source_markdown=getattr(page, "source_markdown", None),
+            content_representation=getattr(page, "content_representation", None),
+            source_url=getattr(page, "source_url", None),
+            canonical_url=getattr(page, "canonical_url", None) or page.url,
+        )
+        intel = dict(wire.get("page_intelligence") or {})
+
         if idx == 0:
             primary_intel = intel
         content_gaps.extend(wire.get("content_gaps") or [])
@@ -275,7 +378,9 @@ def resolve_page_html(
     html: str | None,
     url_hint: str | None,
     allow_empty_html: bool = False,
-) -> tuple[str | None, str, str | None]:
+) -> tuple[str | None, str, str | None, dict[str, Any]]:
+    """Resolve page HTML + provenance extras (source_markdown, representation)."""
+    extras: dict[str, Any] = {}
     if html is not None and source_url:
         raise OptimizationRequestError(
             "Provide either html (offline) or source_url (live), not both"
@@ -310,19 +415,26 @@ def resolve_page_html(
                 + (f" (fetch_error={fetch_err})" if fetch_err else "")
                 + "; pass allow_empty_html=true to analyze empty content"
             )
-        return page_html, page.url, page.title
+        extras = {
+            "page_id": page.id,
+            "source_markdown": getattr(page, "source_markdown", None),
+            "content_representation": getattr(page, "content_representation", None),
+            "source_url": getattr(page, "source_url", None),
+            "canonical_url": getattr(page, "canonical_url", None) or page.url,
+        }
+        return page_html, page.url, page.title, extras
 
     if source_url:
         if is_obviously_unsafe_url(source_url):
             raise SSRFError(f"Unsafe URL rejected by SSRF policy: {source_url!r}")
-        return None, source_url, None
+        return None, source_url, None, extras
 
     if html is not None:
         if not str(html).strip() and not allow_empty_html:
             raise OptimizationRequestError(
                 "html is empty; pass allow_empty_html=true to analyze empty content"
             )
-        return html, url_hint or "", None
+        return html, url_hint or "", None, extras
 
     raise OptimizationRequestError(
         "Provide job_id (+ optional page_id), or source_url, or html (+ optional url)"

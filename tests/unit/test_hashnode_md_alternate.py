@@ -314,6 +314,11 @@ async def test_crawl_403_md_success_eligible_and_provenance(db_session: Session,
     assert p.status_code == 200
     assert p.fetch_error is None
     assert p.html and "AI Agent Guide" in p.html
+    assert p.source_markdown == ARTICLE_MD
+    assert p.title == "AI Agent Guide"
+    assert p.canonical_url == HASHNODE_ARTICLE or (
+        p.canonical_url and p.canonical_url.rstrip("/") == HASHNODE_ARTICLE.rstrip("/")
+    )
 
 
 @pytest.mark.asyncio
@@ -409,3 +414,91 @@ def test_markdown_normalize_structure():
     assert n.title == "AI Agent Guide"
     assert "<h1>" in n.html and "<h2>" in n.html
     assert "<p>" in n.html
+
+
+# ---------------------------------------------------------------------------
+# Direct .md URL (first-class Markdown representation)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_direct_md_url_is_markdown_not_html(monkeypatch):
+    """Regression: .md URL with text/markdown 200 must not be treated as HTML."""
+    md_url = "https://example.hashnode.dev/my-article.md"
+    body = "# My Article\n\nHello from Hashnode Markdown.\n"
+    calls: list[str] = []
+
+    async def fake_fetch(client, url, *, timeout_s=5.0):  # noqa: ANN001
+        calls.append(url)
+        return FetchResult(
+            url=url,
+            final_url=url,
+            status_code=200,
+            content_type="text/markdown",
+            text=body,
+            error=None,
+        )
+
+    monkeypatch.setattr("aeo_mvp.crawler.page_fetch.fetch_url", fake_fetch)
+    out = await fetch_page_with_alternate(MagicMock(), md_url)
+    assert calls == [md_url]
+    assert out.representation == "markdown"
+    assert out.title == "My Article"
+    assert out.source_url == md_url
+    assert out.canonical_url == "https://example.hashnode.dev/my-article"
+    assert out.source_markdown == body
+    assert out.html and "<h1>" in out.html
+    assert out.html_discovery_ok is False
+    # Never invent a .md.md twin request.
+    assert not any(u.endswith(".md.md") for u in calls)
+
+
+@pytest.mark.asyncio
+async def test_direct_md_never_requests_md_md(monkeypatch):
+    from aeo_mvp.crawler.alternate import get_supported_alternate_url, strip_one_md_suffix
+
+    md_url = HASHNODE_MD
+    assert get_supported_alternate_url(md_url) is None
+    assert strip_one_md_suffix(md_url) == HASHNODE_ARTICLE
+    assert strip_one_md_suffix(md_url + ".md").endswith(".md")  # only one strip
+
+    async def fake_fetch(client, url, *, timeout_s=5.0):  # noqa: ANN001
+        assert not url.endswith(".md.md")
+        return FetchResult(
+            url=url,
+            final_url=url,
+            status_code=200,
+            content_type="text/markdown",
+            text=ARTICLE_MD,
+            error=None,
+        )
+
+    monkeypatch.setattr("aeo_mvp.crawler.page_fetch.fetch_url", fake_fetch)
+    out = await fetch_page_with_alternate(MagicMock(), md_url)
+    assert out.canonical_url == HASHNODE_ARTICLE
+    assert out.source_markdown == ARTICLE_MD
+
+
+@pytest.mark.asyncio
+async def test_html_success_source_markdown_is_none(monkeypatch):
+    async def fake_fetch(client, url, *, timeout_s=5.0):  # noqa: ANN001
+        return FetchResult(
+            url=url,
+            final_url=url,
+            status_code=200,
+            content_type="text/html",
+            text=ARTICLE_HTML,
+            error=None,
+        )
+
+    monkeypatch.setattr("aeo_mvp.crawler.page_fetch.fetch_url", fake_fetch)
+    out = await fetch_page_with_alternate(MagicMock(), HASHNODE_ARTICLE)
+    assert out.representation == "html"
+    assert out.source_markdown is None
+
+
+def test_markdown_path_does_not_fabricate_jsonld_meta_robots():
+    n = markdown_to_analyzable_html(ARTICLE_MD)
+    assert "application/ld+json" not in n.html
+    assert 'name="robots"' not in n.html
+    assert 'rel="canonical"' not in n.html

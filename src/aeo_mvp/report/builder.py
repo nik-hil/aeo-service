@@ -295,6 +295,16 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
             }
         )
 
+    # Hashnode Markdown applicability: filter/remap ONLY recommendations
+    # associated with Hashnode Markdown pages. Non-Hashnode / HTML pages keep
+    # generic recommendation behavior (no global filter just because one MD page exists).
+    from aeo_mvp.platform.hashnode.applicability import (
+        filter_recommendations_page_scoped,
+    )
+
+    job_pages = session.query(Page).filter(Page.job_id == job.id).all()
+    rec_payloads = filter_recommendations_page_scoped(rec_payloads, job_pages)
+
     page_findings = _page_findings(session, job.id, evidence)
     executive_summary = _build_executive_summary(
         scores_block,

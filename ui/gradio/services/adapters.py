@@ -95,6 +95,10 @@ class PageRow:
     depth: int
     status_code: int | None
     fetch_error: str | None
+    source_url: str | None = None
+    content_representation: str | None = None
+    canonical_url: str | None = None
+    source_markdown: str | None = None
 
 
 @dataclass
@@ -177,7 +181,7 @@ def adapt_overview(
     if isinstance(exp, dict) and exp:
         kind = escape_text(exp.get("experiment_kind") or "—")
         provider = escape_text(exp.get("provider_name") or "—")
-        visibility_lines.append(f"Experiment: **{kind}** via `{provider}`")
+        visibility_lines.append(f"Experiment: **{kind}** via {provider}")
         visibility_lines.append(
             f"Consumer UI ranking measured: **{'yes' if exp.get('measures_consumer_ui') else 'no'}**"
         )
@@ -193,7 +197,7 @@ def adapt_overview(
                 rate = format_pct_rate(exp.get(key))
                 visibility_lines.append(
                     f"{label}: **{rate}** "
-                    f"(provenance `{format_provenance(exp.get(key))}`)"
+                    f"(provenance {format_provenance(exp.get(key))})"
                 )
                 if primary_rate is None:
                     primary_rate = rate
@@ -271,6 +275,10 @@ def adapt_pages(pages_payload: dict[str, Any] | None) -> list[PageRow]:
                 depth=int(p.get("depth") or 0),
                 status_code=p.get("status_code"),
                 fetch_error=p.get("fetch_error"),
+                source_url=p.get("source_url"),
+                content_representation=p.get("content_representation"),
+                canonical_url=p.get("canonical_url"),
+                source_markdown=p.get("source_markdown"),
             )
         )
     return rows
@@ -299,6 +307,66 @@ def pages_table(rows: list[PageRow]) -> list[list[str]]:
     ]
 
 
+def page_select_choices(
+    rows: list[PageRow],
+    *,
+    fallback_url: str | None = None,
+) -> list[tuple[str, str]]:
+    """Dropdown options: display title (URL fallback) → value is page URL."""
+    choices: list[tuple[str, str]] = []
+    seen_labels: dict[str, int] = {}
+    for r in rows:
+        title = (r.title or "").strip()
+        if not title or title.lower() in {"(untitled)", "untitled"}:
+            label = r.url or "(no url)"
+        else:
+            label = title
+        count = seen_labels.get(label, 0)
+        seen_labels[label] = count + 1
+        if count:
+            label = f"{label} ({truncate_url(r.url, max_len=40)})"
+        choices.append((label, r.url))
+    if not choices and fallback_url:
+        choices = [(fallback_url, fallback_url)]
+    return choices
+
+
+def page_url_from_choice(choice: str | None, rows: list[PageRow]) -> str | None:
+    """Resolve a dropdown value (URL) or legacy label back to a page URL."""
+    if not choice:
+        return None
+    raw = str(choice).strip()
+    if not raw:
+        return None
+    for r in rows:
+        if r.url == raw or r.url.rstrip("/") == raw.rstrip("/"):
+            return r.url
+    # Label match (title primary, URL fallback) when Gradio returns display text.
+    for r in rows:
+        title = (r.title or "").strip()
+        if title and title == raw:
+            return r.url
+    return raw
+
+
+def _page_row_for(
+    pages_payload: dict[str, Any] | None, page_url: str | None
+) -> PageRow | None:
+    if not pages_payload or not page_url:
+        return None
+    target = _normalize_url(page_url)
+    for p in adapt_pages(pages_payload):
+        candidates = [
+            p.url,
+            p.source_url,
+            p.canonical_url,
+            (p.source_url or "").removesuffix(".md") if p.source_url else None,
+        ]
+        if any(_normalize_url(c) == target for c in candidates if c):
+            return p
+    return None
+
+
 def page_header(
     report: dict[str, Any] | None,
     pages_payload: dict[str, Any] | None,
@@ -309,32 +377,40 @@ def page_header(
     title = ""
     status = "—"
     depth = "—"
-    if pages_payload:
-        for p in adapt_pages(pages_payload):
-            if _normalize_url(p.url) == _normalize_url(url):
-                title = p.title or "(untitled)"
-                status = str(p.status_code if p.status_code is not None else "—")
-                if p.fetch_error:
-                    status = f"{status} / error"
-                depth = str(p.depth)
-                break
+    row = _page_row_for(pages_payload, page_url or url)
+    if row:
+        title = (row.title or "").strip()
+        status = str(row.status_code if row.status_code is not None else "—")
+        if row.fetch_error:
+            status = f"{status} / error"
+        depth = str(row.depth)
+        url = row.url or url
     if not title and report:
         pi = _page_intelligence_for(report, page_url)
-        title = str((pi or {}).get("title") or "") or "(untitled)"
+        title = str((pi or {}).get("title") or "").strip()
+    # Prefer real extracted title — avoid "(untitled)" when title exists upstream.
     if not title:
         title = "(untitled)"
-    md = (
-        f"**{escape_text(title)}** · `{escape_text(url) or '—'}` · "
-        f"status `{escape_text(status)}` · depth `{escape_text(depth)}`"
-    )
+    safe_url = escape_text(url) if url else "—"
+    if url:
+        url_html = (
+            f'<a class="aeo-page-url-link" href="{safe_url}" '
+            f'target="_blank" rel="noopener noreferrer">{safe_url}</a>'
+        )
+    else:
+        url_html = "—"
     html = (
         f'<div class="aeo-page-header">'
         f'<div class="aeo-page-title">{escape_text(title)}</div>'
-        f'<div class="aeo-page-url">{escape_text(url) or "—"}</div>'
+        f'<div class="aeo-page-url">{url_html}</div>'
         f'<div class="aeo-page-meta">'
         f"<span>Status: <strong>{escape_text(status)}</strong></span>"
         f"<span>Depth: <strong>{escape_text(depth)}</strong></span>"
         f"</div></div>"
+    )
+    md = (
+        f"**{escape_text(title)}** · {escape_text(url) or '—'} · "
+        f"status {escape_text(status)} · depth {escape_text(depth)}"
     )
     return PageHeaderVM(title=title, url=url, status=status, depth=depth, markdown=md, html=html)
 
@@ -354,16 +430,33 @@ def _page_intelligence_for(report: dict[str, Any], page_url: str | None) -> dict
     return pi if isinstance(pi, dict) else {}
 
 
+def _source_markdown_for(
+    report: dict[str, Any],
+    page_url: str | None,
+    pages_payload: dict[str, Any] | None = None,
+) -> str | None:
+    pi = _page_intelligence_for(report, page_url)
+    sm = pi.get("source_markdown") if isinstance(pi, dict) else None
+    if isinstance(sm, str) and sm.strip():
+        return sm
+    row = _page_row_for(pages_payload, page_url)
+    if row and row.source_markdown and str(row.source_markdown).strip():
+        return str(row.source_markdown)
+    return None
+
+
 def adapt_before(
     report: dict[str, Any],
     *,
     page_url: str | None = None,
     page_intel_override: dict[str, Any] | None = None,
     raw_html: str | None = None,
+    pages_payload: dict[str, Any] | None = None,
 ) -> BeforeView:
     pi = page_intel_override if page_intel_override is not None else _page_intelligence_for(report, page_url)
-    url = str((pi.get("url") if pi else None) or page_url or report.get("base_url") or "")
-    title = str((pi or {}).get("title") or "")
+    row = _page_row_for(pages_payload, page_url)
+    url = str((pi.get("url") if pi else None) or (row.url if row else None) or page_url or report.get("base_url") or "")
+    title = str((pi or {}).get("title") or (row.title if row else "") or "").strip()
     meta = str((pi or {}).get("meta_description") or "")
     headings = [str(h) for h in ((pi or {}).get("heading_outline") or [])][:20]
     if not headings:
@@ -385,32 +478,71 @@ def adapt_before(
     answer_blocks = answer_blocks[:12]
     wc = int((pi or {}).get("word_count") or 0)
 
-    lines = [
-        "### CURRENT — observed page signals",
-        "",
-        "_Observed page signals — not a live browser render._",
-        "",
-        f"**URL:** {escape_text(url)}",
-        f"**Title:** {escape_text(title) or '—'}",
-        f"**Meta description:** {escape_text(meta) or '—'}",
-        f"**Word count (derived):** {wc}",
-        "",
-        "#### Heading outline",
-    ]
-    if headings:
-        lines.extend(f"- {escape_text(h)}" for h in headings)
-    else:
-        lines.append("_No heading outline in page intelligence for this page._")
-    lines.append("")
-    lines.append("#### Answer blocks")
-    if answer_blocks:
-        lines.extend(f"- {escape_text(b)}" for b in answer_blocks)
-    else:
-        lines.append("_No answer blocks extracted._")
-    lines.append("")
-    lines.append(
-        "_Before / CURRENT shows observed/derived signals from the API — not a live browser render._"
+    representation = str(
+        (pi or {}).get("content_representation")
+        or (row.content_representation if row else None)
+        or "html"
+    ).lower()
+    source_url = str(
+        (pi or {}).get("source_url") or (row.source_url if row else None) or ""
     )
+    canonical_url = str(
+        (pi or {}).get("canonical_url")
+        or (row.canonical_url if row else None)
+        or url
+    )
+    source_md = _source_markdown_for(report, page_url, pages_payload)
+    if source_md and not wc:
+        wc = len(source_md.split())
+
+    if representation == "markdown" or source_md:
+        status = str(row.status_code if row and row.status_code is not None else "—")
+        lines = [
+            "### CURRENT — Hashnode Markdown",
+            "",
+            "_Fetched Markdown representation — not a live browser render._",
+            "",
+            f"**Source URL:** {escape_text(source_url or url)}",
+            f"**Canonical / logical article URL:** {escape_text(canonical_url)}",
+            f"**Representation:** Markdown",
+            f"**HTTP status:** {escape_text(status)}",
+            f"**Title:** {escape_text(title) or '—'}",
+            f"**Word count:** {wc}",
+            "",
+            "#### Current Markdown",
+            "",
+        ]
+        if source_md:
+            lines.append(sanitize_code_block(source_md, language="markdown"))
+        else:
+            lines.append("_Source Markdown was not preserved for this page._")
+    else:
+        lines = [
+            "### CURRENT — observed page signals",
+            "",
+            "_Observed page signals — not a live browser render._",
+            "",
+            f"**URL:** {escape_text(url)}",
+            f"**Title:** {escape_text(title) or '—'}",
+            f"**Meta description:** {escape_text(meta) or '—'}",
+            f"**Word count (derived):** {wc}",
+            "",
+            "#### Heading outline",
+        ]
+        if headings:
+            lines.extend(f"- {escape_text(h)}" for h in headings)
+        else:
+            lines.append("_No heading outline in page intelligence for this page._")
+        lines.append("")
+        lines.append("#### Answer blocks")
+        if answer_blocks:
+            lines.extend(f"- {escape_text(b)}" for b in answer_blocks)
+        else:
+            lines.append("_No answer blocks extracted._")
+        lines.append("")
+        lines.append(
+            "_Before / CURRENT shows observed/derived signals from the API — not a live browser render._"
+        )
 
     raw_code = sanitize_code_block(raw_html) if raw_html else None
     return BeforeView(
@@ -475,7 +607,7 @@ def adapt_brief(report: dict[str, Any], *, page_url: str | None = None) -> Brief
         "",
         "_Suggested structure and actions — never labeled as a final optimized page._",
         "",
-        f"**Action:** `{escape_text(brief.get('action'))}`",
+        f"**Action:** {escape_text(brief.get('action'))}",
         f"**Page:** {escape_text(brief.get('page_url') or page_url)}",
         f"**Proposed title:** {escape_text(brief.get('proposed_title') or '—')}",
         "",
@@ -538,13 +670,15 @@ def adapt_gaps(report: dict[str, Any], *, page_url: str | None = None) -> str:
         sev = escape_text(gap.get("severity") or "—")
         rationale = escape_text(gap.get("rationale") or gap.get("explanation") or "")
         gid = escape_text(gap.get("gap_id") or "")
-        lines.append(f"- **{gtype}** (severity: `{sev}`) {f'`{gid}` ' if gid else ''}— {rationale}")
+        lines.append(f"- **{gtype}** (severity: {sev}) {f'{gid} ' if gid else ''}— {rationale}")
     return "\n".join(lines)
 
 
 def draft_ui_label(draft: dict[str, Any]) -> str:
     status = str(draft.get("status") or "")
     generator = str(draft.get("generator") or draft.get("writer") or "")
+    if "hashnode_recommended" in generator.lower() or draft.get("content_provenance") == "recommended_from_source_markdown":
+        return "RECOMMENDED"
     if status == "skipped_paid_false" or not (draft.get("body_markdown") or "").strip():
         return "No draft generated"
     if "skeleton" in generator.lower():
@@ -556,7 +690,49 @@ def draft_ui_label(draft: dict[str, Any]) -> str:
     return "Suggested Structure"
 
 
+def _raw_recommended_body(
+    report: dict[str, Any], *, page_url: str | None = None
+) -> str:
+    """Extract paste-ready recommended Markdown body (no UI chrome / disclaimer)."""
+    from aeo_mvp.platform.hashnode.markdown_generator import (
+        strip_legacy_recommended_chrome,
+    )
+
+    raw = ""
+    for d in report.get("content_drafts") or []:
+        if not isinstance(d, dict):
+            continue
+        if page_url and _normalize_url(d.get("page_url")) != _normalize_url(page_url):
+            continue
+        raw = str(d.get("body_markdown") or "")
+        break
+    if not raw and isinstance(report.get("draft"), dict):
+        raw = str(report["draft"].get("body_markdown") or "")
+    if not raw:
+        pi = _page_intelligence_for(report, page_url)
+        raw = str((pi or {}).get("recommended_markdown") or "")
+    return strip_legacy_recommended_chrome(raw)
+
+
+def _recommended_warnings(
+    report: dict[str, Any], *, page_url: str | None = None
+) -> list[str]:
+    for d in report.get("content_drafts") or []:
+        if not isinstance(d, dict):
+            continue
+        if page_url and _normalize_url(d.get("page_url")) != _normalize_url(page_url):
+            continue
+        return [str(w) for w in (d.get("warnings") or []) if w]
+    if isinstance(report.get("draft"), dict):
+        return [str(w) for w in (report["draft"].get("warnings") or []) if w]
+    return []
+
+
 def adapt_draft(report: dict[str, Any], *, page_url: str | None = None) -> DraftView | None:
+    from aeo_mvp.platform.hashnode.markdown_generator import (
+        SUGGESTED_MARKDOWN_SUBTITLE,
+    )
+
     drafts = [d for d in (report.get("content_drafts") or []) if isinstance(d, dict)]
     draft = None
     if page_url:
@@ -568,28 +744,43 @@ def adapt_draft(report: dict[str, Any], *, page_url: str | None = None) -> Draft
         draft = drafts[0]
     if draft is None and isinstance(report.get("draft"), dict):
         draft = report["draft"]
+    # Fall back to page_intelligence.recommended_markdown when drafts empty.
+    if draft is None:
+        pi = _page_intelligence_for(report, page_url)
+        rec_md = pi.get("recommended_markdown") if isinstance(pi, dict) else None
+        if isinstance(rec_md, str) and rec_md.strip():
+            draft = {
+                "page_url": page_url or pi.get("url"),
+                "status": "generated",
+                "generator": "hashnode_recommended_markdown_v1",
+                "content_provenance": "recommended_from_source_markdown",
+                "body_markdown": rec_md,
+                "disclaimer": SUGGESTED_MARKDOWN_SUBTITLE,
+            }
     if draft is None:
         return None
 
-    body = str(draft.get("body_markdown") or "")
+    body = _raw_recommended_body(report, page_url=page_url) or str(
+        draft.get("body_markdown") or ""
+    )
     label = draft_ui_label(draft)
     empty = not body.strip()
-    disclaimer = str(
-        draft.get("disclaimer")
-        or "Draft suggestion only — not published; not a guarantee of AI citation."
-    )
+    disclaimer = str(draft.get("disclaimer") or SUGGESTED_MARKDOWN_SUBTITLE)
+    # Metadata header for non-Code consumers only — body_markdown stays paste-ready.
     header = (
         f"### {escape_text(label)}\n\n"
-        f"**Status:** `{escape_text(draft.get('status'))}` · "
-        f"**Generator:** `{escape_text(draft.get('generator') or draft.get('writer'))}` · "
-        f"**Provenance:** `{escape_text(draft.get('content_provenance') or 'generated')}`\n\n"
+        f"**Status:** {escape_text(draft.get('status'))} · "
+        f"**Generator:** {escape_text(draft.get('generator') or draft.get('writer'))} · "
+        f"**Provenance:** {escape_text(draft.get('content_provenance') or 'generated')}\n\n"
         f"_{escape_text(disclaimer)}_\n\n"
         "---\n\n"
     )
     if empty:
-        md = header + "_Draft not generated for this page (null/skipped)._"
+        md = header + (
+            "_No meaningful recommended Markdown could be generated for this page "
+            "without fabricating content._"
+        )
     else:
-        # Sanitize + fence; never inject raw HTML into Gradio Markdown unsafely.
         md = header + sanitize_code_block(body, language="markdown")
 
     return DraftView(
@@ -602,6 +793,34 @@ def adapt_draft(report: dict[str, Any], *, page_url: str | None = None) -> Draft
         body_markdown=md,
         empty=empty,
     )
+
+
+def adapt_recommended_markdown(
+    report: dict[str, Any],
+    *,
+    page_url: str | None = None,
+) -> str:
+    """Paste-ready RECOMMENDED body only — no disclaimer / heading chrome."""
+    raw = _raw_recommended_body(report, page_url=page_url)
+    if not raw.strip():
+        return ""
+    return raw.strip() + "\n"
+
+
+def adapt_recommended_warnings_markdown(
+    report: dict[str, Any],
+    *,
+    page_url: str | None = None,
+) -> str:
+    """Separate warnings metadata for the RECOMMENDED tab (never in body)."""
+    warnings = _recommended_warnings(report, page_url=page_url)
+    if not warnings:
+        return ""
+    lines = ["_Warnings:_"]
+    for w in warnings:
+        label = escape_text(w.replace("_", " "))
+        lines.append(f"- {label}")
+    return "\n".join(lines)
 
 
 def adapt_recommendations(report: dict[str, Any], *, page_url: str | None = None) -> list[RecView]:
@@ -634,77 +853,129 @@ def adapt_recommendations(report: dict[str, Any], *, page_url: str | None = None
 def recommendations_markdown(recs: list[RecView]) -> str:
     if not recs:
         return (
-            "### Recommendations\n\n"
-            "_No recommendations for this selection._\n\n"
+            "### WHY THESE CHANGES\n\n"
+            "_No recommendation detail for this selection._\n\n"
             "_Site-level or other-page recommendations may still appear in Biggest Opportunities._"
         )
-    parts: list[str] = ["### Recommendations", ""]
+    parts: list[str] = [
+        "### WHY THESE CHANGES",
+        "",
+        "_Audit / explanation of recommendation detail — secondary to the Markdown draft._",
+        "",
+    ]
     for i, r in enumerate(recs, start=1):
-        parts.append(f"#### {i}. {escape_text(r.title)}")
+        title = escape_text(r.title) if r.title else f"Recommendation {i}"
+        parts.append(f"#### {i}. {title}")
         parts.append("")
-        if r.problem:
+        if r.problem and str(r.problem).strip() not in {"", "None", "null"}:
             parts.append(f"**Problem:** {escape_text(r.problem)}")
-        if r.why:
-            parts.append(f"**Why it matters:** {escape_text(r.why)}")
-        if r.action:
-            parts.append(f"**Recommended action:** {escape_text(r.action)}")
-        parts.append(f"**Effort:** {escape_text(r.effort)} · **Impact:** {escape_text(r.impact)}")
-        if r.evidence_snippets:
             parts.append("")
-            parts.append("Evidence:")
-            parts.extend(f"- {escape_text(s)}" for s in r.evidence_snippets)
-        parts.append("")
-    return "\n".join(parts)
+        if r.why and str(r.why).strip() not in {"", "None", "null"}:
+            parts.append(f"**Why it matters:** {escape_text(r.why)}")
+            parts.append("")
+        if r.action and str(r.action).strip() not in {"", "None", "null"}:
+            parts.append(f"**Recommended action:** {escape_text(r.action)}")
+            parts.append("")
+        meta_bits: list[str] = []
+        if r.effort and str(r.effort).strip() not in {"", "—", "None", "null"}:
+            meta_bits.append(f"**Effort:** {escape_text(r.effort)}")
+        if r.impact is not None and str(r.impact).strip() not in {"", "None", "null"}:
+            meta_bits.append(f"**Impact:** {escape_text(r.impact)}")
+        if meta_bits:
+            parts.append(" · ".join(meta_bits))
+            parts.append("")
+        urls = [u for u in (r.affected_urls or []) if u and str(u).strip() not in {"None", "null"}]
+        if urls:
+            parts.append("**Affected page:**")
+            for u in urls[:5]:
+                safe = escape_text(u)
+                parts.append(f"- [{safe}]({safe})")
+            parts.append("")
+        snippets = [
+            s
+            for s in (r.evidence_snippets or [])
+            if s is not None and str(s).strip() not in {"", "None", "null"}
+        ]
+        if snippets:
+            parts.append("**Evidence:**")
+            parts.extend(f"- {escape_text(s)}" for s in snippets)
+            parts.append("")
+        # Never dump raw dict/JSON — fields above are the only formatted view.
+    return "\n".join(parts).rstrip() + "\n"
 
 
-def comparison_markdown(report: dict[str, Any], page_url: str | None) -> str:
-    """Honest CURRENT (observed) vs RECOMMENDED (brief/draft) comparison."""
-    before = adapt_before(report, page_url=page_url)
-    brief = adapt_brief(report, page_url=page_url)
-    draft = adapt_draft(report, page_url=page_url)
-    left = [
-        "### CURRENT (observed)",
-        "",
-        "_Observed page signals — not a live browser render._",
-        "",
-        f"**Title:** {escape_text(before.title) or '—'}",
-        f"**URL:** {escape_text(before.page_url) or '—'}",
-        f"**Word count:** {before.word_count}",
-        "",
-        "**Headings (sample):**",
-    ]
-    if before.headings:
-        left.extend(f"- {escape_text(h)}" for h in before.headings[:8])
-    else:
-        left.append("_None extracted for this page._")
+def _count_md_stats(text: str) -> tuple[int, int]:
+    lines = (text or "").splitlines()
+    headings = sum(1 for ln in lines if ln.lstrip().startswith("#"))
+    sections = max(0, headings)
+    return sections, headings
 
-    right = [
-        "### RECOMMENDED (suggested)",
-        "",
-        "_Brief / skeleton / generated draft — never labeled as a final optimized page._",
-        "",
-    ]
-    if brief:
-        right.append(f"**Brief action:** `{escape_text(brief.action)}`")
-        right.append(f"**Summary:** {escape_text(brief.summary) or '—'}")
-        if brief.outline:
-            right.append("")
-            right.append("**Proposed outline:**")
-            right.extend(f"- {escape_text(o)}" for o in brief.outline[:8])
-    else:
-        right.append("_No optimization brief for this page._")
-    right.append("")
-    if draft and not draft.empty:
-        right.append(f"**Draft label:** {escape_text(draft.label)}")
-        right.append(f"**Generator:** `{escape_text(draft.generator)}`")
-    else:
-        right.append("_No content draft returned for this page._")
+
+def comparison_markdown(
+    report: dict[str, Any],
+    page_url: str | None,
+    *,
+    pages_payload: dict[str, Any] | None = None,
+) -> str:
+    """Side-by-side CURRENT vs RECOMMENDED Markdown panes (HTML, not Git diff)."""
+    return comparison_html(report, page_url, pages_payload=pages_payload)
+
+
+def comparison_html(
+    report: dict[str, Any],
+    page_url: str | None,
+    *,
+    pages_payload: dict[str, Any] | None = None,
+) -> str:
+    """Diffchecker-like layout: two independent scroll panes (no Git unified diff)."""
+    from aeo_mvp.platform.hashnode.markdown_generator import (
+        SUGGESTED_MARKDOWN_SUBTITLE,
+    )
+
+    current = _source_markdown_for(report, page_url, pages_payload) or ""
+    recommended = _raw_recommended_body(report, page_url=page_url)
+
+    if not current and not recommended:
+        before = adapt_before(report, page_url=page_url, pages_payload=pages_payload)
+        # Non-Markdown pages: keep an honest signal summary (still no Git diff).
+        left_text = (
+            f"Title: {before.title or '—'}\n"
+            f"URL: {before.page_url or '—'}\n"
+            f"Word count: {before.word_count}\n\n"
+            + "\n".join(f"# {h}" for h in before.headings[:12])
+        )
+        current = left_text
+        recommended = (
+            "(No recommended Markdown draft — HTML page path uses brief/signals only.)"
+        )
+
+    cur_sec, cur_h = _count_md_stats(current)
+    rec_sec, rec_h = _count_md_stats(recommended)
+    summary = (
+        f'<p class="aeo-compare-summary">'
+        f"CURRENT: {cur_sec} sections / {cur_h} headings · "
+        f"RECOMMENDED: {rec_sec} sections / {rec_h} headings"
+        f"</p>"
+    )
 
     return (
-        "## CURRENT vs RECOMMENDED\n\n"
-        + "\n".join(left)
-        + "\n\n---\n\n"
-        + "\n".join(right)
+        '<div class="aeo-md-compare">'
+        f"{summary}"
+        '<div class="aeo-md-compare-grid">'
+        '<div class="aeo-md-pane">'
+        '<div class="aeo-md-pane-header">CURRENT</div>'
+        f'<pre class="aeo-md-scroll">{escape_text(current) or "—"}</pre>'
+        "</div>"
+        '<div class="aeo-md-pane">'
+        '<div class="aeo-md-pane-header">RECOMMENDED</div>'
+        f'<pre class="aeo-md-scroll">{escape_text(recommended) or "—"}</pre>'
+        "</div>"
+        "</div>"
+        f'<p class="aeo-compare-note">'
+        f"Independent scroll panes — not a Git diff or patch view. "
+        f"{escape_text(SUGGESTED_MARKDOWN_SUBTITLE)}"
+        f"</p>"
+        "</div>"
     )
 
 
@@ -762,7 +1033,50 @@ def adapt_evidence(report: dict[str, Any], *, page_url: str | None = None) -> Ev
             provenance_notes.append(str(n))
 
     caveats = [str(c) for c in (report.get("caveats") or [])][:10]
-    lines = ["### Evidence & provenance", ""]
+    lines = [
+        "### Evidence",
+        "",
+        "_Factual observations driving content changes "
+        "(gaps, headings, query alignment, visibility, terminology) — "
+        "not a generic SEO checklist._",
+        "",
+    ]
+
+    # Content gaps first — primary drivers for Markdown recommendations.
+    gap_lines: list[str] = []
+    for block in report.get("content_gaps") or []:
+        if not isinstance(block, dict):
+            continue
+        block_url = block.get("page_url")
+        if page_url and block_url and _normalize_url(block_url) != _normalize_url(page_url):
+            continue
+        for gap in block.get("gaps") or []:
+            if not isinstance(gap, dict):
+                continue
+            gtype = escape_text(gap.get("gap_type") or "gap")
+            rationale = escape_text(gap.get("rationale") or gap.get("explanation") or "")
+            gap_lines.append(f"- **{gtype}** — {rationale}")
+    if gap_lines:
+        lines.append("#### Content gaps")
+        lines.extend(gap_lines[:20])
+        lines.append("")
+
+    pi = _page_intelligence_for(report, page_url)
+    if pi:
+        headings = [str(h) for h in (pi.get("heading_outline") or [])][:12]
+        if not headings:
+            for h in pi.get("headings") or []:
+                if isinstance(h, dict) and h.get("text"):
+                    headings.append(str(h["text"]))
+        if headings:
+            lines.append("#### Heading outline")
+            lines.extend(f"- {escape_text(h)}" for h in headings)
+            lines.append("")
+        wc = pi.get("word_count")
+        if wc:
+            lines.append(f"**Word count (derived):** {escape_text(wc)}")
+            lines.append("")
+
     if snippets:
         lines.append("#### Evidence snippets")
         lines.extend(f"- {escape_text(s)}" for s in snippets)
@@ -778,8 +1092,8 @@ def adapt_evidence(report: dict[str, Any], *, page_url: str | None = None) -> Ev
     if caveats:
         lines.append("#### Report caveats")
         lines.extend(f"- {escape_text(c)}" for c in caveats)
-    if len(lines) == 2:
-        lines.append("_No evidence snippets for this selection._")
+    if len(lines) <= 5:
+        lines.append("_No content evidence for this selection._")
         lines.append("")
         lines.append("_Try another page, or check Biggest Opportunities for site-level findings._")
     return EvidenceView(
@@ -804,10 +1118,10 @@ def overview_markdown(vm: OverviewVM) -> str:
             if vm.demo_mode
             else ""
         ),
-        f"**Job:** `{escape_text(vm.job_id)}`",
+        f"**Job:** {escape_text(vm.job_id)}",
         "",
         f"### {escape_text(vm.health.label)}: **{escape_text(vm.health.value)}**",
-        f"Provenance: `{escape_text(vm.health.provenance)}`",
+        f"Provenance: {escape_text(vm.health.provenance)}",
         "",
         "### Component scores",
         "",
@@ -815,7 +1129,7 @@ def overview_markdown(vm: OverviewVM) -> str:
         "| --- | ---: | --- |",
     ]
     for c in vm.components:
-        lines.append(f"| {escape_text(c.label)} | {escape_text(c.value)} | `{escape_text(c.provenance)}` |")
+        lines.append(f"| {escape_text(c.label)} | {escape_text(c.value)} | {escape_text(c.provenance)} |")
     if vm.visibility_lines:
         lines.append("")
         lines.append("### AI / LLM visibility ⓘ")
