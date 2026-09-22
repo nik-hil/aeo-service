@@ -1,0 +1,70 @@
+{
+  "tip_sha": "02d986d750858ec7ff90422b68fe4c53ad82e4fb",
+  "pr": 45,
+  "branch": "cursor/substantive-content-opt-e95e",
+  "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
+  "source": "tests/fixtures/phase6/article_agent1_baseline.html \u2192 MD (live .md CF-403 in this env; fixture is the live Agents Z2H HTML capture)",
+  "source_chars": 11791,
+  "AEO_PAID_RETRIEVAL_OPT_IN": "false",
+  "web_search": "OFF",
+  "live_paid_llm": false,
+  "credentials_key_present": false,
+  "paid_llm_requested": true,
+  "stub": false,
+  "section_selection": {
+    "What is The complete flow?": {
+      "heading": "The complete flow",
+      "body_chars": 501
+    },
+    "How does the finish tool work?": {
+      "heading": "The finish tool",
+      "body_chars": 465
+    },
+    "Why does message history matter?": {
+      "heading": "Why the message history matters",
+      "body_chars": 536
+    },
+    "What is the agent loop?": {
+      "heading": "The agent loop",
+      "body_chars": 884
+    },
+    "Is there a security problem?": {
+      "heading": "There is already a security problem",
+      "body_chars": 685
+    }
+  },
+  "distinct_headings": [
+    "The agent loop",
+    "The complete flow",
+    "The finish tool",
+    "There is already a security problem",
+    "Why the message history matters"
+  ],
+  "wrong_h3_for_complete_flow": false,
+  "mega_corpus_gone": true,
+  "structural_mock_proof": {
+    "ready_targets": [
+      "section:The complete flow",
+      "section:The finish tool"
+    ],
+    "llm_used_flags": [
+      true,
+      true
+    ],
+    "applied_ops": [
+      "mvp_rewrite_section_section:The complete flow",
+      "evidence_grounded_rewrite_section",
+      "mvp_rewrite_section_section:The finish tool"
+    ],
+    "changed_sections": [
+      "The finish tool",
+      "The complete flow"
+    ],
+    "later_section_dumping": false,
+    "current_ne_recommended": true,
+    "diff_bytes": 1320
+  },
+  "VERDICT_SELECTION": "PASS",
+  "VERDICT_LIVE_PAID_LLM": "FAIL_credentials_missing",
+  "VERDICT": "PARTIAL \u2014 selection+apply PASS on real article shape; live paid LLM blocked (no DO/OpenAI key; secrets requested)"
+}

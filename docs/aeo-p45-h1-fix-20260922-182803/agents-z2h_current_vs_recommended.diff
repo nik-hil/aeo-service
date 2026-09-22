@@ -1,0 +1,92 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -253,37 +253,7 @@
+ ---
+ 
+ # The finish tool
+-
+-The second tool is even simpler:
+-
+-```
+-def finish(answer: str):
+-    return {
+-        "final_answer": answer
+-    }
+-```
+-
+-Why make finishing a tool instead of simply accepting a normal assistant response?
+-
+-Because it gives the harness an explicit completion signal.
+-
+-The model can say:
+-
+-```
+-I am done.
+-```
+-
+-by calling:
+-
+-```
+-finish(...)
+-```
+-
+-The harness then knows it can terminate the loop.
+-
+-This becomes very useful as the agent starts performing multi-step work.
+-
+----
++In short: The second tool is even simpler:
+ 
+ # Running the agent
+ 
+@@ -483,49 +453,7 @@
+ ---
+ 
+ # The complete flow
+-
+-Imagine the user asks:
+-
+-```
+-Write and execute a Python function for FizzBuzz up to 15.
+-Return the output.
+-```
+-
+-The agent might perform something like:
+-
+-```
+-USER
+-  │
+-  ▼
+-LLM
+-  │
+-  │ execute_code(...)
+-  ▼
+-execute_code
+-  │
+-  │ stdout
+-  ▼
+-LLM
+-  │
+-  │ finish(...)
+-  ▼
+-finish
+-  │
+-  ▼
+-FINAL ANSWER
+-```
+-
+-The important observation is that the LLM is not itself the agent.
+-
+-The combination is:
+-
+-```
+-LLM + tool definitions + execution engine + state + control loop
+-```
+-
+-That is the beginning of the harness.
+-
+----
++In short: Imagine the user asks:
+ 
+ # There is already a security problem
+ 
