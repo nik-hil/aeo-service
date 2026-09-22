@@ -385,6 +385,21 @@ html.dark .aeo-panel pre code,
   border-radius: 0 !important;
 }
 
+/* Recommended Markdown Code editor — light surface + copy affordance nearby. */
+#aeo-recommended-markdown-code,
+#aeo-recommended-markdown-code textarea,
+#aeo-recommended-markdown-code .cm-editor,
+#aeo-recommended-markdown-code .cm-content {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+  border-color: #e5e5e5 !important;
+}
+#aeo-copy-recommended-md button {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+  border: 1px solid #e5e5e5 !important;
+}
+
 /*
  * Dataframe / opportunities / pages tables.
  * Gradio thead uses --table-even-background-fill; Soft dark defaults paint it

@@ -712,18 +712,58 @@ def adapt_recommended_markdown(
     *,
     page_url: str | None = None,
 ) -> str:
-    """Primary RECOMMENDED MARKDOWN tab body."""
+    """Primary RECOMMENDED MARKDOWN tab body — unfenced, copy-ready Markdown.
+
+    Includes honesty labeling; raw draft body is not wrapped in fences so a
+    Gradio Code/Textbox copy control can place the article on the clipboard.
+    """
     draft = adapt_draft(report, page_url=page_url)
-    if draft and not draft.empty:
-        return draft.body_markdown
-    if draft:
-        return draft.body_markdown
-    return (
-        "### RECOMMENDED MARKDOWN\n\n"
-        "_No recommended Markdown draft for this page. "
-        "When Hashnode Markdown is available, a complete suggested draft appears here — "
-        "never labeled as a final or guaranteed AEO article._"
+    raw = ""
+    for d in report.get("content_drafts") or []:
+        if not isinstance(d, dict):
+            continue
+        if page_url and _normalize_url(d.get("page_url")) != _normalize_url(page_url):
+            continue
+        raw = str(d.get("body_markdown") or "")
+        break
+    if not raw and isinstance(report.get("draft"), dict):
+        raw = str(report["draft"].get("body_markdown") or "")
+    if not raw:
+        pi = _page_intelligence_for(report, page_url)
+        raw = str((pi or {}).get("recommended_markdown") or "")
+
+    if draft is None and not raw.strip():
+        return (
+            "# RECOMMENDED MARKDOWN\n\n"
+            "No recommended Markdown draft for this page. "
+            "When Hashnode Markdown is available, a complete suggested draft appears here — "
+            "never labeled as a final or guaranteed AEO article.\n"
+        )
+
+    label = draft.label if draft else "RECOMMENDED MARKDOWN"
+    disclaimer = (
+        draft.disclaimer
+        if draft
+        else (
+            "RECOMMENDED MARKDOWN — suggested draft for Hashnode editor / "
+            "GitHub publish / bulk import. Not a final or guaranteed AEO article."
+        )
     )
+    status = draft.status if draft else "—"
+    generator = draft.generator if draft else "—"
+    provenance = draft.content_provenance if draft else "—"
+    header = (
+        f"# {label}\n\n"
+        f"Status: {status} · Generator: {generator} · Provenance: {provenance}\n\n"
+        f"_{disclaimer}_\n\n"
+        "---\n\n"
+    )
+    if not raw.strip():
+        return header + (
+            "No meaningful recommended Markdown could be generated for this page "
+            "without fabricating content.\n"
+        )
+    return header + raw.strip() + "\n"
 
 
 def adapt_recommendations(report: dict[str, Any], *, page_url: str | None = None) -> list[RecView]:

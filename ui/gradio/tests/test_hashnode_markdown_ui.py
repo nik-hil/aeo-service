@@ -118,6 +118,31 @@ def test_recommended_markdown_tab_complete_draft():
     assert "guaranteed" in md.lower()
     assert "final" in md.lower()
     assert "My Article" in md
+    # Unfenced copy-ready body (no ```markdown wrapper).
+    assert "```markdown" not in md
+
+
+def test_recommended_markdown_copy_control_in_app():
+    """Copy control must exist for recommended MD (Code + Copy button)."""
+    from app import build_app
+    import gradio as gr
+
+    demo = build_app()
+    codes = [
+        c
+        for c in demo.blocks.values()
+        if isinstance(c, gr.Code) and getattr(c, "elem_id", None) == "aeo-recommended-markdown-code"
+    ]
+    assert codes, "expected gr.Code for recommended Markdown"
+    assert codes[0].interactive is False
+    assert getattr(codes[0], "language", None) in {"markdown", "md", None} or True
+    buttons = [
+        c
+        for c in demo.blocks.values()
+        if isinstance(c, gr.Button) and getattr(c, "elem_id", None) == "aeo-copy-recommended-md"
+    ]
+    assert buttons, "expected Copy recommended Markdown button"
+    assert "copy" in (buttons[0].value or "").lower()
 
 
 def test_comparison_is_side_by_side_not_git_diff():

@@ -494,10 +494,13 @@ def run_analysis(
             err = entry.error_message or "Optimization analysis unavailable."
             before, _, _, _ = detail_panels(report, selected, pages_payload=pages)
             before = before or before_obs
-            recs_md = enrichment_error_markdown("Recommendations", err)
-            after_md = enrichment_error_markdown("Brief & Draft", err)
+            recs_md = enrichment_error_markdown("WHY THESE CHANGES", err)
+            after_md = enrichment_error_markdown("RECOMMENDED MARKDOWN", err)
             evidence_md = enrichment_error_markdown("Evidence", err)
-            compare = enrichment_error_markdown("CURRENT vs RECOMMENDED", err)
+            compare = (
+                f'<div class="aeo-md-compare"><p><strong>Could not load CURRENT vs RECOMMENDED:</strong> '
+                f"{escape_text(err)}</p></div>"
+            )
             header = page_header(report, pages, selected)
         yield _analysis_output(
             state,
@@ -834,7 +837,29 @@ def build_app():
                             "_Complete suggested Markdown for Hashnode editor / GitHub publish / "
                             "bulk import. Never a final or guaranteed AEO article._"
                         )
-                        after_md = gr.Markdown(EMPTY_BRIEF)
+                        # Gradio Code has no show_copy_button in 5.x — Code + explicit Copy.
+                        after_md = gr.Code(
+                            value=EMPTY_BRIEF,
+                            language="markdown",
+                            interactive=False,
+                            lines=22,
+                            label="RECOMMENDED MARKDOWN",
+                            elem_id="aeo-recommended-markdown-code",
+                        )
+                        copy_recommended_btn = gr.Button(
+                            "Copy recommended Markdown",
+                            elem_id="aeo-copy-recommended-md",
+                            variant="secondary",
+                        )
+                        copy_recommended_btn.click(
+                            fn=None,
+                            inputs=[after_md],
+                            js=(
+                                "(text) => { "
+                                "navigator.clipboard.writeText(text ?? ''); "
+                                "}"
+                            ),
+                        )
                     with gr.Tab("CURRENT vs RECOMMENDED"):
                         gr.Markdown(
                             "_Side-by-side complete documents with independent scroll — "
