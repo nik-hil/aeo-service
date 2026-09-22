@@ -5,18 +5,24 @@ Disclaimers, audit text, instructional placeholders, and HTML-only SEO never
 belong in ``body``. Insufficient evidence → skip that transform + record warning.
 
 Applies supported edit ops from the optimization change plan / brief
-(retain H1, introduction answer-first, meta description as SEO metadata).
-Never invents facts; never calls an LLM.
+(retain H1, introduction rewrite via validated ``proposed``, meta description
+as SEO metadata). Never invents facts; never calls an LLM.
 
 Intro / ``rewrite`` semantics (deterministic mode)
 -------------------------------------------------
 The change-plan edit-op contract may name the action ``rewrite`` (e.g.
-``rewrite`` + ``section:<H1>`` with an answer-first instruction). This
-generator does **not** perform a free-form content rewrite. Deterministic
-mode applies a **constrained rewrite**: evidence-backed answer-first
-**reorder / lead selection** using only text already present in the source
-Markdown (or on-page answer-block snippets that appear in the body). No new
-facts, citations, URLs, or claims are invented.
+``rewrite`` + ``section:<H1>`` / ``introduction`` with an answer-first
+instruction). This generator does **not** invent rewrite copy and must
+**not** call ``propose_introduction_rewrite`` /
+``enrich_ops_with_rewrite_proposals``. The content optimization layer
+produces a validated ``proposed`` replacement (with ``original`` /
+``evidence`` / ``reason`` / ``related_gap_ids``) before handoff. This
+generator defensively re-validates, then **applies** that proposal to the
+correct Markdown region — or skips and leaves the original unchanged when
+``proposed`` is absent/invalid.
+
+A bare paragraph move / reorder without ``proposed`` is **not** treated as a
+successful content rewrite. No proposal ⇒ no rewrite.
 
 Meta / SEO description provenance
 ---------------------------------
@@ -34,6 +40,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import Any
+
+from aeo_mvp.content.rewrite_proposal import validate_proposed_rewrite
 
 _H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
@@ -92,6 +100,8 @@ class RecommendedMarkdown:
     seo_description: str | None = None
     meta_description: str | None = None
     applied_ops: list[str] = field(default_factory=list)
+    # Explicit rewrite provenance for UI / report (never injected into body).
+    rewrite_provenance: dict[str, Any] | None = None
 
     @property
     def ok(self) -> bool:
@@ -139,7 +149,7 @@ def _extract_title(md: str, fallback: str | None = None) -> str | None:
     return fallback
 
 
-def _normalize_op(raw: Any) -> dict[str, str] | None:
+def _normalize_op(raw: Any) -> dict[str, Any] | None:
     """Normalize EditOp / ContentChange / recommendation-ish dicts to a common shape."""
     if not isinstance(raw, dict):
         return None
@@ -160,11 +170,25 @@ def _normalize_op(raw: Any) -> dict[str, str] | None:
         return None
     if not action and not target:
         return None
+    evidence_raw = raw.get("evidence") or raw.get("must_cite_locators") or []
+    evidence: list[str] = []
+    if isinstance(evidence_raw, list):
+        evidence = [str(e).strip() for e in evidence_raw if str(e).strip()]
+    related = raw.get("related_gap_ids") or []
+    related_gap_ids = (
+        [str(g) for g in related if str(g).strip()] if isinstance(related, list) else []
+    )
+    original = raw.get("original")
+    proposed = raw.get("proposed")
     return {
         "action": action,
         "target": target,
         "instruction": instruction,
         "op_id": op_id or f"{action}:{target}"[:80],
+        "original": str(original).strip() if isinstance(original, str) else "",
+        "proposed": str(proposed).strip() if isinstance(proposed, str) else "",
+        "evidence": evidence,
+        "related_gap_ids": related_gap_ids,
     }
 
 
@@ -174,7 +198,7 @@ def _collect_edit_ops(
     edit_ops: list[dict[str, Any]] | None,
     change_plan: list[dict[str, Any]] | None,
     content_drafts: list[dict[str, Any]] | None,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Gather edit ops from explicit args, brief, work_queue, and draft change_plan."""
     raw_items: list[Any] = []
     if edit_ops:
@@ -192,13 +216,16 @@ def _collect_edit_ops(
         for item in draft.get("edit_ops") or []:
             raw_items.append(item)
 
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for raw in raw_items:
         op = _normalize_op(raw)
         if not op:
             continue
-        key = f"{op['action']}|{op['target']}|{op['instruction'][:60]}"
+        key = (
+            f"{op['action']}|{op['target']}|{op['instruction'][:60]}|"
+            f"{(op.get('proposed') or '')[:40]}"
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -219,23 +246,18 @@ def _target_key(target: str) -> str:
     return t
 
 
-def _is_retain_h1_op(op: dict[str, str]) -> bool:
+def _is_retain_h1_op(op: dict[str, Any]) -> bool:
     return op.get("action") == "retain" and _target_key(op.get("target") or "") == "h1"
 
 
-def _is_meta_op(op: dict[str, str]) -> bool:
+def _is_meta_op(op: dict[str, Any]) -> bool:
     return _target_key(op.get("target") or "") == "meta_description" and op.get(
         "action"
     ) in {"add", "expand", "rewrite"}
 
 
-def _is_intro_rewrite_op(op: dict[str, str], *, h1: str | None) -> bool:
-    """True when the change-plan op targets introduction / answer-first.
-
-    Edit-op contract may use action ``rewrite``; deterministic mode implements
-    that as a constrained rewrite (answer-first reorder of existing source
-    text), not a free-form rewrite.
-    """
+def _is_intro_rewrite_op(op: dict[str, Any], *, h1: str | None) -> bool:
+    """True when the change-plan op targets introduction / answer-first."""
     action = op.get("action") or ""
     if action not in {"rewrite", "expand", "add"}:
         return False
@@ -263,7 +285,7 @@ def _split_front_matter_safe(md: str) -> tuple[str, list[str], str]:
     """Return (h1_line_or_empty, intro_paragraph_blocks, remainder_including_headings).
 
     Intro = content after H1 until the first ATX heading. Code fences in the
-    intro are kept as atomic blocks so answer-first reorder never splits them.
+    intro are kept as atomic blocks so rewrites never split them.
     """
     lines = (md or "").splitlines()
     if not lines:
@@ -323,147 +345,30 @@ def _split_front_matter_safe(md: str) -> tuple[str, list[str], str]:
     return h1_line, blocks, remainder
 
 
-def _score_answer_first_block(text: str) -> float:
-    """Higher = better answer-first lead. Only scores existing text."""
-    t = (text or "").strip()
-    if not t or t.startswith("```") or t.startswith("![") or t.startswith("|"):
-        return -1.0
-    if t.startswith(">") and len(t) < 40:
-        return 0.5
-    score = 0.0
-    if _DEF_SENTENCE_RE.search(t):
-        score += 3.0
-    if re.search(r"\b(?:when|because|so that|in order to)\b", t, re.I):
-        score += 1.5
-    if t.endswith("."):
-        score += 0.5
-    # Prefer concise declarative leads over long narrative.
-    words = len(t.split())
-    if 12 <= words <= 60:
-        score += 2.0
-    elif 8 <= words < 12 or 60 < words <= 90:
-        score += 1.0
-    elif words < 6:
-        score -= 1.0
-    # Soft-penalize rhetorical / teaser openers.
-    if re.search(
-        r"\b(?:sounds?|seems?|appears?)\b.*\b(?:simple|easy|hard|complicated)\b",
-        t,
-        re.I,
-    ):
-        score -= 2.0
-    if t.endswith("?") and words < 20:
-        score -= 1.5
-    return score
-
-
-def _answer_first_lead_from_evidence(
-    intro_blocks: list[str],
-    *,
-    body: str,
-    pi: dict[str, Any],
-    brief: dict[str, Any],
-) -> str | None:
-    """Pick an answer-first lead using only text already present on the page.
-
-    Does **not** invent facts. Does **not** use diagnostic executive_summary.
-    Does **not** use meta_description alone (decoupled from meta ops).
-    """
-    candidates: list[tuple[float, str]] = []
-
-    for block in intro_blocks:
-        if block.startswith("```"):
-            continue
-        # Prefer whole paragraphs; also consider individual sentences.
-        score = _score_answer_first_block(block)
-        if score >= 0:
-            candidates.append((score, block.strip()))
-        for sent in re.split(r"(?<=[.!?])\s+", block.strip()):
-            sent = sent.strip()
-            if len(sent.split()) < 8:
-                continue
-            s_score = _score_answer_first_block(sent)
-            if s_score > score:
-                candidates.append((s_score, sent))
-
-    # Page-intelligence answer blocks — only if the snippet already appears in body.
-    for block in pi.get("answer_blocks") or []:
-        if not isinstance(block, dict):
-            continue
-        snippet = str(block.get("snippet") or block.get("text") or "").strip()
-        if not snippet or len(snippet) < 24:
-            continue
-        if snippet not in (body or "") and snippet not in "\n".join(intro_blocks):
-            continue
-        candidates.append((_score_answer_first_block(snippet) + 0.5, snippet))
-
-    # Meta description only when its text is already grounded in the article body
-    # (not merely missing-meta). Used as answerability evidence, not meta op.
-    meta = str(pi.get("meta_description") or brief.get("proposed_meta_description") or "").strip()
-    if meta and meta in (body or ""):
-        candidates.append((_score_answer_first_block(meta) + 0.25, meta))
-
-    if not candidates:
-        return None
-    candidates.sort(key=lambda x: (-x[0], len(x[1])))
-    best_score, best = candidates[0]
-    if best_score < 1.0:
-        return None
-    if _INVENTED_FACT_RE.search(best) and best not in (body or "") and best not in "\n".join(
-        intro_blocks
-    ):
-        return None
-    return best.strip()
-
-
-def _rewrite_introduction_answer_first(
-    md: str, lead: str | None
+def _apply_proposed_introduction(
+    md: str, proposed: str
 ) -> tuple[str, bool]:
-    """Constrained rewrite for intro ``rewrite`` ops: answer-first reorder only.
+    """Replace intro region (after H1, before next heading) with validated proposed.
 
-    Selects/moves an existing lead (already present in the intro or body) to
-    the front of the introduction. Does not invent or paraphrase new content.
+    Preserves H1 and all post-intro headings / body. Does not invent content.
     """
-    if not lead or not lead.strip():
+    proposed = (proposed or "").strip()
+    if not proposed:
         return md, False
-    lead = lead.strip()
     h1_line, intro_blocks, remainder = _split_front_matter_safe(md)
     if not h1_line:
         return md, False
 
-    # Idempotent: already answer-first with this lead.
-    if intro_blocks and intro_blocks[0].strip() == lead:
+    current_intro = "\n\n".join(intro_blocks).strip()
+    # Idempotent: proposed already applied.
+    if current_intro == proposed:
         return md, False
 
-    # Remove lead from later intro blocks if it was moved from within intro.
-    remaining: list[str] = []
-    for block in intro_blocks:
-        if block.strip() == lead:
-            continue
-        # If lead is a sentence carved from a paragraph, drop that exact sentence.
-        if lead in block and not block.startswith("```"):
-            trimmed = block.replace(lead, "", 1).strip()
-            trimmed = re.sub(r"\s{2,}", " ", trimmed).strip()
-            if trimmed:
-                remaining.append(trimmed)
-            continue
-        remaining.append(block)
-
-    new_intro = [lead] + remaining
-    parts = [h1_line, ""]
-    for block in new_intro:
-        parts.append(block)
-        parts.append("")
+    parts = [h1_line, "", proposed, ""]
     if remainder.strip():
-        # Avoid double blank before next heading.
         parts.append(remainder.lstrip("\n"))
     out = "\n".join(parts).rstrip() + "\n"
     return out, out.strip() != (md or "").strip()
-
-
-def _ensure_answer_first(md: str, lead: str | None) -> tuple[str, bool]:
-    """Backward-compatible wrapper: answer-first intro reorder when evidence exists."""
-    return _rewrite_introduction_answer_first(md, lead)
 
 
 def _existing_faq_qa_pairs(md: str) -> list[tuple[str, str]]:
@@ -548,18 +453,6 @@ def _ensure_howto_steps(md: str, steps: list[str]) -> tuple[str, bool]:
     return "\n".join(parts), True
 
 
-def _lead_from_brief_or_pi(
-    brief: dict[str, Any], pi: dict[str, Any]
-) -> str | None:
-    """Legacy helper — answerability evidence only (not meta-only, not exec summary)."""
-    blocks = pi.get("answer_blocks") or []
-    if blocks and isinstance(blocks[0], dict):
-        lead = blocks[0].get("text") or blocks[0].get("snippet")
-        if lead and str(lead).strip():
-            return str(lead).strip()
-    return None
-
-
 def _resolve_seo_description(
     *,
     brief: dict[str, Any],
@@ -619,16 +512,16 @@ def _resolve_seo_description(
     return text, provenance
 
 
-def _wants_answer_first(
+def _wants_intro_rewrite(
     *,
-    ops: list[dict[str, str]],
+    ops: list[dict[str, Any]],
     rec_codes: set[str],
     h1: str | None,
     pi: dict[str, Any],
 ) -> tuple[bool, bool]:
-    """Return (should_apply_intro_answer_first_reorder, driven_by_meta_only).
+    """Return (should_apply_intro_rewrite, driven_by_meta_only).
 
-    Meta-description ops alone must NOT drive intro answer-first reorder.
+    Meta-description ops alone must NOT drive intro rewrite.
     """
     has_intro_op = any(_is_intro_rewrite_op(op, h1=h1) for op in ops)
     has_meta_op = any(_is_meta_op(op) for op in ops)
@@ -649,6 +542,30 @@ def _wants_answer_first(
     return False, False
 
 
+def _headings_outside_intro(md: str) -> list[str]:
+    """Collect ATX heading lines after the first H1 (structure identity)."""
+    lines = (md or "").splitlines()
+    seen_h1 = False
+    out: list[str] = []
+    in_fence = False
+    for ln in lines:
+        if ln.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if ln.startswith("# ") and not seen_h1:
+            seen_h1 = True
+            continue
+        if seen_h1 and re.match(r"^#{1,6}\s+", ln):
+            out.append(ln.strip())
+    return out
+
+
+def _extract_fences(md: str) -> list[str]:
+    return [m.group(1) for m in _CODE_FENCE_RE.finditer(md or "")]
+
+
 def generate_recommended_markdown(
     *,
     source_markdown: str | None,
@@ -667,10 +584,11 @@ def generate_recommended_markdown(
     Never fabricates product facts; never puts disclaimers or instructional
     placeholders in ``body``. UI shows honesty labeling as metadata/subtitle.
 
-    Intro ``rewrite`` ops are applied as a constrained rewrite: deterministic
-    answer-first **reorder** of existing source text (see module docstring).
-    Meta description ops are transported as ``seo_description`` metadata only
-    (brief owns proposed-meta provenance; never HTML ``<meta>`` in body).
+    Intro ``rewrite`` ops are applied only when a validated ``proposed``
+    replacement is already present on the edit op (content optimization
+    layer owns generation). Meta description ops are transported as
+    ``seo_description`` metadata only (brief owns proposed-meta provenance;
+    never HTML ``<meta>`` in body).
     """
     pi = page_intelligence or {}
     resolved_source_url = source_url or pi.get("source_url") or pi.get("url")
@@ -688,6 +606,7 @@ def generate_recommended_markdown(
     warnings: list[str] = []
     applied_ops: list[str] = []
     seo_description: str | None = None
+    rewrite_provenance: dict[str, Any] | None = None
 
     ops = _collect_edit_ops(
         brief=brief,
@@ -719,6 +638,10 @@ def generate_recommended_markdown(
         body, title_hint or pi.get("title") or brief.get("proposed_title")
     )
     h1 = title or (str(pi.get("h1")).strip() if pi.get("h1") else None)
+
+    # Snapshot structure for preservation asserts.
+    source_headings = _headings_outside_intro(body)
+    source_fences = _extract_fences(body)
 
     # --- retain H1 (explicit no-op on body; records application) ---
     retain_ops = [op for op in ops if _is_retain_h1_op(op)]
@@ -755,7 +678,7 @@ def generate_recommended_markdown(
         seo, seo_prov = _resolve_seo_description(brief=brief, pi=pi, body=body)
         if seo:
             seo_description = seo
-            applied_ops.append(meta_ops[0]["op_id"] or "meta_description")
+            applied_ops.append(meta_ops[0].get("op_id") or "meta_description")
             warnings.append("seo_description_for_hashnode_settings")
             if seo_prov == "brief_proposed":
                 warnings.append("seo_description_transported_from_brief")
@@ -766,8 +689,8 @@ def generate_recommended_markdown(
         else:
             warnings.append("insufficient_evidence_meta_description")
 
-    # --- introduction / answer-first (constrained rewrite = reorder) ---
-    wants_intro, meta_only_drive = _wants_answer_first(
+    # --- introduction rewrite via validated proposed ---
+    wants_intro, meta_only_drive = _wants_intro_rewrite(
         ops=ops, rec_codes=rec_codes, h1=h1, pi=pi
     )
     if meta_only_drive:
@@ -775,29 +698,82 @@ def generate_recommended_markdown(
 
     body_op_applied = False
     if wants_intro:
-        _, intro_blocks, _ = _split_front_matter_safe(body)
-        lead = _answer_first_lead_from_evidence(
-            intro_blocks, body=body, pi=pi, brief=brief
+        intro_op = next(
+            (op for op in ops if _is_intro_rewrite_op(op, h1=h1)),
+            None,
         )
-        if not lead:
-            # Fallback: legacy answer-block lead only if already in body.
-            legacy = _lead_from_brief_or_pi(brief, pi)
-            if legacy and legacy in body:
-                lead = legacy
-        body, did = _rewrite_introduction_answer_first(body, lead)
-        if did:
-            body_op_applied = True
-            intro_op = next(
-                (op for op in ops if _is_intro_rewrite_op(op, h1=h1)),
-                None,
-            )
-            # Keep upstream edit-op id when present; always record deterministic mode.
-            if intro_op and intro_op.get("op_id"):
-                applied_ops.append(intro_op["op_id"])
-            applied_ops.append("constrained_rewrite:answer_first_reorder")
-            warnings.append("intro_rewrite_applied_as_answer_first_reorder")
+        proposed_text = ""
+        if intro_op and isinstance(intro_op.get("proposed"), str):
+            proposed_text = intro_op["proposed"].strip()
+
+        if not proposed_text:
+            # No grounded proposal from content opt layer — do NOT invent,
+            # reorder, or synthesize. No proposal ⇒ no rewrite.
+            warnings.append("intro_rewrite_skipped_no_proposed")
+            if intro_op and intro_op.get("target"):
+                warnings.append(
+                    f"unsupported_edit_op:{intro_op.get('action')}:introduction_without_proposed"
+                )
         else:
-            warnings.append("insufficient_evidence_answer_first")
+            original_text = ""
+            if intro_op:
+                original_text = str(intro_op.get("original") or "").strip()
+            evidence = []
+            if intro_op:
+                evidence = list(intro_op.get("evidence") or [])
+
+            val = validate_proposed_rewrite(
+                proposed=proposed_text,
+                original=original_text or proposed_text,
+                evidence=evidence,
+                source_markdown=body,
+                h1=h1,
+            )
+            hard = [
+                w
+                for w in val
+                if w
+                in {
+                    "proposed_empty",
+                    "proposed_html_injection",
+                    "proposed_diagnostic_leak",
+                    "proposed_includes_h1",
+                    "proposed_contains_heading",
+                    "proposed_invented_url",
+                    "proposed_invented_fact",
+                    "proposed_is_reorder_only",
+                }
+                or w.startswith("proposed_ungrounded_tokens:")
+            ]
+            if hard:
+                warnings.extend(hard)
+                warnings.append("intro_rewrite_rejected_validation")
+            else:
+                body, did = _apply_proposed_introduction(body, proposed_text)
+                if did:
+                    body_op_applied = True
+                    if intro_op and intro_op.get("op_id"):
+                        applied_ops.append(str(intro_op["op_id"]))
+                    applied_ops.append("evidence_grounded_rewrite:introduction")
+                    warnings.append("intro_rewrite_applied_from_proposed")
+                    rewrite_provenance = {
+                        "what_changed": "introduction",
+                        "why": (intro_op or {}).get("instruction")
+                        or "Answer-first introduction grounded in page evidence.",
+                        "related_gap_ids": list(
+                            (intro_op or {}).get("related_gap_ids") or []
+                        ),
+                        "original": original_text,
+                        "proposed": proposed_text,
+                        "evidence": evidence,
+                        "llm_used": False,
+                        "paid_retrieval_used": False,
+                        "action": "rewrite",
+                        "target": "introduction",
+                    }
+                else:
+                    # Already matches proposed (idempotent).
+                    warnings.append("intro_rewrite_idempotent_no_change")
 
     # --- FAQ / HowTo (evidence-backed only; existing behavior) ---
     if "REC_ADD_FAQ_SECTION" in rec_codes or "REC_ADD_QUESTION_HEADINGS" in rec_codes:
@@ -843,6 +819,17 @@ def generate_recommended_markdown(
                 f"unsupported_edit_op:{action}:{key if key != 'section' else t_lower}"
             )
 
+    # Preserve invariants: headings / fences not targeted must survive.
+    if source_fences:
+        for fence in source_fences:
+            if fence not in body:
+                warnings.append("invariant_code_fence_corrupted")
+                break
+    if source_headings:
+        after_headings = _headings_outside_intro(body)
+        if after_headings != source_headings:
+            warnings.append("invariant_headings_altered")
+
     body = body.strip() + "\n"
     cleaned_source = (_strip_html_only(raw)).strip() + "\n"
     cleaned_source = _strip_instructional_placeholders(cleaned_source).strip() + "\n"
@@ -880,4 +867,5 @@ def generate_recommended_markdown(
         seo_description=seo_description,
         meta_description=seo_description,
         applied_ops=applied_ops,
+        rewrite_provenance=rewrite_provenance,
     )

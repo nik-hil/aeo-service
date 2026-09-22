@@ -126,7 +126,15 @@ def _attach_hashnode_recommended_markdown(
     source_url: str | None = None,
     canonical_url: str | None = None,
 ) -> dict[str, Any]:
-    """Attach Hashnode recommended Markdown + provenance onto an opt wire dict."""
+    """Attach Hashnode recommended Markdown + provenance onto an opt wire dict.
+
+    Content-optimization ownership: when source Markdown is available in a
+    Hashnode context, rewrite **proposals** are generated here (via
+    ``enrich_ops_with_rewrite_proposals``) and attached onto edit ops /
+    change-plan items before the Markdown generator runs. The generator only
+    validates and applies; it does not invent rewrite copy.
+    """
+    from aeo_mvp.content.rewrite_proposal import enrich_ops_with_rewrite_proposals
     from aeo_mvp.platform.hashnode.applicability import is_hashnode_markdown_context
     from aeo_mvp.platform.hashnode.markdown_generator import generate_recommended_markdown
 
@@ -179,14 +187,88 @@ def _attach_hashnode_recommended_markdown(
                 change_plan_in.extend(
                     c for c in (d.get("change_plan") or []) if isinstance(c, dict)
                 )
+
+        # --- Content optimization layer: generate rewrite proposals ---
+        # Prefer edit_ops; fall back to change_plan / work_queue when needed.
+        ops_seed: list[dict[str, Any]] = list(edit_ops_in)
+        if not ops_seed:
+            ops_seed = list(change_plan_in)
+        if not ops_seed:
+            for item in brief_wire.get("work_queue") or []:
+                if isinstance(item, dict):
+                    ops_seed.append(item)
+        enriched_ops, _proposal, enrich_warnings = enrich_ops_with_rewrite_proposals(
+            ops_seed,
+            source_markdown=source_markdown,
+            page_intelligence=intel,
+            h1=str(intel.get("h1") or intel.get("title") or "").strip() or None,
+        )
+        # Sync enriched payloads onto change_plan rows (same targets).
+        enriched_by_target: dict[str, dict[str, Any]] = {}
+        for op in enriched_ops:
+            if not isinstance(op, dict):
+                continue
+            key = str(
+                op.get("target")
+                or op.get("target_locator")
+                or op.get("anchor_locator")
+                or ""
+            ).strip().lower()
+            if key and op.get("proposed"):
+                enriched_by_target[key] = op
+
+        def _sync_proposal_fields(row: dict[str, Any]) -> dict[str, Any]:
+            key = str(
+                row.get("target")
+                or row.get("target_locator")
+                or row.get("anchor_locator")
+                or ""
+            ).strip().lower()
+            src = enriched_by_target.get(key)
+            if not src:
+                return row
+            out = dict(row)
+            for field in (
+                "original",
+                "proposed",
+                "evidence",
+                "related_gap_ids",
+                "reason",
+            ):
+                if src.get(field) is not None:
+                    out[field] = src[field]
+            if src.get("instruction") and not out.get("instruction"):
+                out["instruction"] = src["instruction"]
+            if src.get("reason") and not out.get("reason"):
+                out["reason"] = src["reason"]
+            return out
+
+        edit_ops_enriched = [
+            _sync_proposal_fields(dict(op)) if isinstance(op, dict) else op
+            for op in (enriched_ops if enriched_ops else edit_ops_in)
+        ]
+        change_plan_enriched = [
+            _sync_proposal_fields(dict(c)) for c in change_plan_in if isinstance(c, dict)
+        ]
+        # Persist enriched ops onto brief wire so opt-layer output carries payload.
+        brief_out = dict(brief_wire)
+        if edit_ops_enriched:
+            brief_out["edit_ops"] = edit_ops_enriched
+        if enrich_warnings:
+            brief_out.setdefault("warnings", [])
+            if isinstance(brief_out["warnings"], list):
+                brief_out["warnings"] = list(brief_out["warnings"]) + list(
+                    enrich_warnings
+                )
+
         recommended = generate_recommended_markdown(
             source_markdown=source_markdown,
             page_intelligence=intel,
-            brief=brief_wire,
+            brief=brief_out,
             gaps=gap_flat,
             recommendations=rec_hints or None,
-            edit_ops=edit_ops_in or None,
-            change_plan=change_plan_in or None,
+            edit_ops=edit_ops_enriched or None,
+            change_plan=change_plan_enriched or None,
             content_drafts=[d for d in draft_list_in if isinstance(d, dict)] or None,
             title_hint=title,
             source_url=source_url,
@@ -213,18 +295,85 @@ def _attach_hashnode_recommended_markdown(
             "llm_used": False,
             "paid": False,
             "paid_llm": False,
+            "paid_retrieval_used": False,
         }
         if recommended.seo_description:
             draft_entry["seo_description"] = recommended.seo_description
             draft_entry["meta_description"] = recommended.seo_description
         draft_list = list(wire.get("content_drafts") or [])
+        existing0 = draft_list[0] if draft_list and isinstance(draft_list[0], dict) else {}
+        if recommended.rewrite_provenance:
+            draft_entry["rewrite_provenance"] = dict(recommended.rewrite_provenance)
+            # Surface onto change_plan for UI/report (what/why/gap/evidence).
+            prov = recommended.rewrite_provenance
+            plan = [
+                c
+                for c in (
+                    existing0.get("change_plan")
+                    or change_plan_enriched
+                    or change_plan_in
+                    or []
+                )
+                if isinstance(c, dict)
+            ]
+            if not plan:
+                plan = [
+                    {
+                        "action": "rewrite",
+                        "target": "introduction",
+                        "reason": prov.get("why") or "",
+                        "original": prov.get("original") or "",
+                        "proposed": prov.get("proposed") or "",
+                        "evidence": list(prov.get("evidence") or []),
+                        "related_gap_ids": list(prov.get("related_gap_ids") or []),
+                    }
+                ]
+            else:
+                updated_plan = []
+                for item in plan:
+                    row = dict(item)
+                    target = str(
+                        row.get("target") or row.get("target_locator") or ""
+                    ).lower()
+                    reason = str(
+                        row.get("reason") or row.get("instruction") or ""
+                    ).lower()
+                    if row.get("action") == "rewrite" and (
+                        "intro" in target
+                        or target.startswith("section:")
+                        or "answer-first" in reason
+                        or target in {"introduction", "intro", "opening"}
+                    ):
+                        row["original"] = prov.get("original") or row.get("original")
+                        row["proposed"] = prov.get("proposed")
+                        row["evidence"] = list(prov.get("evidence") or [])
+                        if prov.get("related_gap_ids") and not row.get(
+                            "related_gap_ids"
+                        ):
+                            row["related_gap_ids"] = list(prov.get("related_gap_ids") or [])
+                    updated_plan.append(row)
+                plan = updated_plan or plan
+            draft_entry["change_plan"] = plan
         if draft_list:
-            draft_list[0] = {**draft_list[0], **draft_entry}
+            draft_list[0] = {**existing0, **draft_entry}
         else:
             draft_list = [draft_entry]
         wire["content_drafts"] = draft_list
         wire["draft"] = draft_list[0]
         intel["recommended_markdown"] = recommended.body
+        # Persist opt-layer enriched brief (proposals attached before apply).
+        if wire.get("optimization_briefs"):
+            briefs = list(wire["optimization_briefs"])
+            if briefs and isinstance(briefs[0], dict):
+                briefs[0] = {**briefs[0], **brief_out}
+                wire["optimization_briefs"] = briefs
+        wire["brief"] = brief_out
+        if enrich_warnings:
+            wire.setdefault("warnings", [])
+            if isinstance(wire["warnings"], list):
+                wire["warnings"] = list(wire["warnings"]) + [
+                    w for w in enrich_warnings if w not in wire["warnings"]
+                ]
 
     wire["page_intelligence"] = intel
     return wire
