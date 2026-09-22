@@ -180,6 +180,9 @@ def _normalize_op(raw: Any) -> dict[str, Any] | None:
     )
     original = raw.get("original")
     proposed = raw.get("proposed")
+    op_kind = str(raw.get("op_kind") or "").strip() or None
+    disposition = str(raw.get("disposition") or "").strip() or None
+    expected_aeo_benefit = str(raw.get("expected_aeo_benefit") or "").strip()
     return {
         "action": action,
         "target": target,
@@ -189,6 +192,9 @@ def _normalize_op(raw: Any) -> dict[str, Any] | None:
         "proposed": str(proposed).strip() if isinstance(proposed, str) else "",
         "evidence": evidence,
         "related_gap_ids": related_gap_ids,
+        "op_kind": op_kind,
+        "disposition": disposition,
+        "expected_aeo_benefit": expected_aeo_benefit,
     }
 
 
@@ -453,20 +459,23 @@ def _apply_insert_after_heading(
     proposed = (proposed or "").strip()
     if not proposed or not heading:
         return md, False
-    if proposed in (md or ""):
-        return md, False
     span = _find_section_span(md, heading)
     if span is None:
         return md, False
-    _h_idx, body_start, _body_end, _heading_line = span
+    _h_idx, body_start, body_end, _heading_line = span
     lines = (md or "").splitlines()
     # Skip existing blank lines after heading.
     insert_at = body_start
     while insert_at < len(lines) and not lines[insert_at].strip():
         insert_at += 1
-    # If the next block already starts with proposed, skip.
-    remaining = "\n".join(lines[insert_at:]).lstrip()
-    if remaining.startswith(proposed):
+    # Idempotent only when the section *lead* already starts with proposed.
+    # Buried later occurrences (e.g. a blockquote mid-section) still warrant
+    # promotion to the answer-first lead position.
+    section_lead = "\n".join(lines[insert_at:body_end]).lstrip()
+    if section_lead.startswith(proposed):
+        return md, False
+    # Also treat blockquote-prefixed lead as already present.
+    if section_lead.lstrip("> ").startswith(proposed):
         return md, False
     block_lines = proposed.splitlines()
     out_lines = lines[:body_start]
@@ -514,12 +523,16 @@ def _is_substantive_section_op(op: dict[str, Any], *, h1: str | None) -> bool:
         "clarify_relationship",
     }:
         return True
-    if action == "add" and op_kind in {
-        "add_definition",
-        "add_answer_first",
-        "add_process_summary",
-        "clarify_relationship",
-    }:
+    if action == "add" and (
+        op_kind
+        in {
+            "add_definition",
+            "add_answer_first",
+            "add_process_summary",
+            "clarify_relationship",
+        }
+        or (isinstance(op.get("proposed"), str) and op.get("proposed").strip())
+    ):
         return True
     return False
 
