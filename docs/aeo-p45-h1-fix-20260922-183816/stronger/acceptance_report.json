@@ -1,0 +1,264 @@
+{
+  "tip_sha": "a556c0044277b2afc40b2f60befd70a2a802ad8b",
+  "pr": 45,
+  "branch": "cursor/substantive-content-opt-e95e",
+  "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
+  "label": "stronger",
+  "model": "openai-gpt-4o",
+  "job_id": "6f715889-2679-476e-a352-8df25e202500",
+  "status": "completed",
+  "error_message": null,
+  "elapsed_sec": 100.76,
+  "page_urls": [
+    "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling"
+  ],
+  "credentials": {
+    "do_key_present": true,
+    "openai_key_present": true,
+    "openai_base_url": "https://inference.do-ai.run/v1",
+    "paid_retrieval_opt_in": true
+  },
+  "resolved_openai_model": "openai-gpt-4o",
+  "resolved_do_inference_model": "openai-gpt-4o",
+  "options": {
+    "paid_retrieval_opt_in": true,
+    "content_optimization": true,
+    "content_draft": true,
+    "generate_draft": true,
+    "draft_paid": true,
+    "paid_llm_opt_in": true,
+    "content_draft_provider": "openai_compatible",
+    "provider": "digitalocean_web_search",
+    "selection_seed": 42,
+    "query_top_n": 20,
+    "max_pages": 4,
+    "max_depth": 1,
+    "runs_per_prompt": 1
+  },
+  "AEO_PAID_RETRIEVAL_OPT_IN": true,
+  "web_search": "ON (digitalocean_web_search)",
+  "crawl_source": "fixture_due_to_cloudflare_403",
+  "fixture_path": "docs/aeo-p45-h1-fix-20260922-182803/agents-z2h_current.md",
+  "live_http_status": 403,
+  "content_optimization_status": "completed",
+  "report_paid_llm": true,
+  "report_paid_retrieval": false,
+  "llm_used": true,
+  "paid_llm": true,
+  "stub": false,
+  "method": null,
+  "section_ops": [
+    {
+      "op_kind": "metadata_seo_description",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": null,
+      "llm_used": false,
+      "reason_preview": "Transport SEO description as Hashnode metadata only (body unchanged).",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_introduction",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd",
+        "gap_cite_miss_e3383a8142"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The complete flow",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence.",
+      "related_gap_ids": [
+        "gap_cite_miss_e3383a8142"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "metadata_seo_description",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "meta_description",
+      "llm_used": false,
+      "reason_preview": "Transport SEO description as Hashnode metadata only (body unchanged).",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The complete flow",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence.",
+      "related_gap_ids": [
+        "gap_cite_miss_e3383a8142"
+      ],
+      "query_text": "What is The complete flow?"
+    },
+    {
+      "op_kind": "rewrite_introduction",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "introduction",
+      "llm_used": false,
+      "reason_preview": "No grounded introduction rewrite from on-page evidence; author input required \u2014 never invent or reorder-only.",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": null,
+      "disposition": null,
+      "target": "section:The complete flow",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": null,
+      "query_text": null
+    },
+    {
+      "op_kind": "metadata_seo_description",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": null,
+      "llm_used": false,
+      "reason_preview": "Transport SEO description as Hashnode metadata only (body unchanged).",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_introduction",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd",
+        "gap_cite_miss_e3383a8142"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The complete flow",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence.",
+      "related_gap_ids": [
+        "gap_cite_miss_e3383a8142"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "metadata_seo_description",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "meta_description",
+      "llm_used": false,
+      "reason_preview": "Transport SEO description as Hashnode metadata only (body unchanged).",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The complete flow",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence.",
+      "related_gap_ids": [
+        "gap_cite_miss_e3383a8142"
+      ],
+      "query_text": "What is The complete flow?"
+    },
+    {
+      "op_kind": "rewrite_introduction",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "introduction",
+      "llm_used": false,
+      "reason_preview": "No grounded introduction rewrite from on-page evidence; author input required \u2014 never invent or reorder-only.",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": null,
+      "disposition": null,
+      "target": "section:The complete flow",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": null,
+      "query_text": null
+    }
+  ],
+  "rewrite_section_targets": [
+    "section:The complete flow",
+    "section:The complete flow",
+    "section:The complete flow",
+    "section:The complete flow"
+  ],
+  "distinct_section_targets": [
+    "section:The complete flow"
+  ],
+  "mega_section_selected": false,
+  "repeated_section_target": true,
+  "applied_ops": [],
+  "current_chars": 11791,
+  "recommended_chars": 11806,
+  "current_ne_recommended": true,
+  "later_section_dumping": false,
+  "dumping_hits": [],
+  "ratio_blowups": [],
+  "dumping_gone": true,
+  "VERDICT": "PASS",
+  "diff_bytes": 777,
+  "paid_do_web_search_evidence": {
+    "visibility_provider": {
+      "provider_name": "digitalocean_web_search",
+      "model_id": "openai-gpt-4o",
+      "retrieval_enabled": 1,
+      "experiment_kind": "ai_search_visibility"
+    },
+    "visibility_observation_count": 11,
+    "visibility_retrieval_enabled_count": 11,
+    "visibility_search_queries_sample": [
+      [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling"
+      ],
+      [
+        "Feeding the result back to the model site:https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md"
+      ],
+      [
+        "agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
+        "Building an AI Agent from Scratch with Tool Calling site:hashnode.com"
+      ]
+    ],
+    "note": "Top-level report.paid_retrieval/content_optimization.paid_retrieval may be false even when digitalocean_web_search visibility ran with retrieval_enabled=1; trust experiment + visibility_observations for paid DO web search evidence."
+  },
+  "paid_do_web_search_ran": true,
+  "verdict_notes": "PASS requires completed+paid_llm+non-stub+rewrite_ready+current_ne_recommended+non-mega+dumping_gone. paid_do_web_search_ran recorded separately from report_paid_retrieval flag."
+}

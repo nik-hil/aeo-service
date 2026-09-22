@@ -1,0 +1,53 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -58,6 +58,10 @@
+ ---
+ 
+ # The agent loop
++
++The agent loop is a fundamental concept in building an AI agent, where the model continuously interacts with tools based on its decisions until a task is completed. It operates in a cycle, where the model generates responses, decides on actions, and invokes tools to achieve its goals. The loop continues until the model determines that it has finished the task, at which point it calls a specific tool to signal completion.
++
++In essence, the agent loop consists of a series of interactions between the user, the language model (LLM), and the tools available to the agent. The LLM decides what actions to take, while the harness manages how those actions are executed, ensuring a structured and controlled workflow throughout the process.
+ 
+ The most important concept in the entire project is the agent loop.
+ 
+@@ -253,8 +257,7 @@
+ ---
+ 
+ # The finish tool
+-
+-The second tool is even simpler:
++The finish tool is a simple function that provides an explicit completion signal for the harness. It is defined as follows:
+ 
+ ```
+ def finish(answer: str):
+@@ -263,27 +266,13 @@
+     }
+ ```
+ 
+-Why make finishing a tool instead of simply accepting a normal assistant response?
+-
+-Because it gives the harness an explicit completion signal.
+-
+-The model can say:
+-
+-```
+-I am done.
+-```
+-
+-by calling:
++Instead of just accepting a normal assistant response, using the finish tool allows the model to indicate that it has completed its task. The model can signal completion by calling:
+ 
+ ```
+ finish(...)
+ ```
+ 
+-The harness then knows it can terminate the loop.
+-
+-This becomes very useful as the agent starts performing multi-step work.
+-
+----
++This informs the harness that it can terminate the loop, which is particularly useful when the agent is engaged in multi-step work.
+ 
+ # Running the agent
+ 

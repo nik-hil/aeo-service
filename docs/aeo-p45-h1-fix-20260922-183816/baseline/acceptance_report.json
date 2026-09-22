@@ -1,0 +1,379 @@
+{
+  "tip_sha": "a556c0044277b2afc40b2f60befd70a2a802ad8b",
+  "pr": 45,
+  "branch": "cursor/substantive-content-opt-e95e",
+  "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
+  "label": "baseline",
+  "model": "openai-gpt-4o-mini",
+  "job_id": "8b0b8423-bf2c-4233-928b-aac8d0e09077",
+  "status": "completed",
+  "error_message": null,
+  "elapsed_sec": 137.88,
+  "page_urls": [
+    "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling"
+  ],
+  "credentials": {
+    "do_key_present": true,
+    "openai_key_present": true,
+    "openai_base_url": "https://inference.do-ai.run/v1",
+    "paid_retrieval_opt_in": true
+  },
+  "resolved_openai_model": "openai-gpt-4o-mini",
+  "resolved_do_inference_model": "openai-gpt-4o-mini",
+  "options": {
+    "paid_retrieval_opt_in": true,
+    "content_optimization": true,
+    "content_draft": true,
+    "generate_draft": true,
+    "draft_paid": true,
+    "paid_llm_opt_in": true,
+    "content_draft_provider": "openai_compatible",
+    "provider": "digitalocean_web_search",
+    "selection_seed": 42,
+    "query_top_n": 20,
+    "max_pages": 4,
+    "max_depth": 1,
+    "runs_per_prompt": 1
+  },
+  "AEO_PAID_RETRIEVAL_OPT_IN": true,
+  "web_search": "ON (digitalocean_web_search)",
+  "crawl_source": "fixture_due_to_cloudflare_403",
+  "fixture_path": "docs/aeo-p45-h1-fix-20260922-182803/agents-z2h_current.md",
+  "live_http_status": 403,
+  "content_optimization_status": "completed",
+  "report_paid_llm": true,
+  "report_paid_retrieval": false,
+  "llm_used": true,
+  "paid_llm": true,
+  "stub": false,
+  "method": null,
+  "section_ops": [
+    {
+      "op_kind": "metadata_seo_description",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": null,
+      "llm_used": false,
+      "reason_preview": "Transport SEO description as Hashnode metadata only (body unchanged).",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_introduction",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd",
+        "gap_cite_miss_12e9f7d91d"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The finish tool",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The finish tool?' using in-section evidence.",
+      "related_gap_ids": [
+        "gap_cite_miss_12e9f7d91d"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "add_explanation",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The agent loop",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded add_explanation after 'The agent loop' for query 'What is The agent loop?'.",
+      "related_gap_ids": [
+        "gap_cite_miss_badff7be82"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "body",
+      "llm_used": false,
+      "reason_preview": "Grounded body-op budget exhausted (prefer 1\u20132 strong section ops); author input required \u2014 never invent.",
+      "related_gap_ids": [
+        "gap_cite_miss_bbb5221baf"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "metadata_seo_description",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "meta_description",
+      "llm_used": false,
+      "reason_preview": "Transport SEO description as Hashnode metadata only (body unchanged).",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The finish tool",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The finish tool?' using in-section evidence.",
+      "related_gap_ids": [
+        "gap_cite_miss_12e9f7d91d"
+      ],
+      "query_text": "What is The finish tool?"
+    },
+    {
+      "op_kind": "add_explanation",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The agent loop",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded add_explanation after 'The agent loop' for query 'What is The agent loop?'.",
+      "related_gap_ids": [
+        "gap_cite_miss_badff7be82"
+      ],
+      "query_text": "What is The agent loop?"
+    },
+    {
+      "op_kind": "rewrite_introduction",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "introduction",
+      "llm_used": false,
+      "reason_preview": "No grounded introduction rewrite from on-page evidence; author input required \u2014 never invent or reorder-only.",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "body",
+      "llm_used": false,
+      "reason_preview": "Grounded body-op budget exhausted (prefer 1\u20132 strong section ops); author input required \u2014 never invent.",
+      "related_gap_ids": [
+        "gap_cite_miss_bbb5221baf"
+      ],
+      "query_text": "What is Handling a tool call?"
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": null,
+      "disposition": null,
+      "target": "section:The finish tool",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": null,
+      "query_text": null
+    },
+    {
+      "op_kind": "add_explanation",
+      "status": null,
+      "disposition": null,
+      "target": "section:The agent loop",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": null,
+      "query_text": null
+    },
+    {
+      "op_kind": "metadata_seo_description",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": null,
+      "llm_used": false,
+      "reason_preview": "Transport SEO description as Hashnode metadata only (body unchanged).",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_introduction",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd",
+        "gap_cite_miss_12e9f7d91d"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The finish tool",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The finish tool?' using in-section evidence.",
+      "related_gap_ids": [
+        "gap_cite_miss_12e9f7d91d"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "add_explanation",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The agent loop",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded add_explanation after 'The agent loop' for query 'What is The agent loop?'.",
+      "related_gap_ids": [
+        "gap_cite_miss_badff7be82"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "body",
+      "llm_used": false,
+      "reason_preview": "Grounded body-op budget exhausted (prefer 1\u20132 strong section ops); author input required \u2014 never invent.",
+      "related_gap_ids": [
+        "gap_cite_miss_bbb5221baf"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "metadata_seo_description",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "meta_description",
+      "llm_used": false,
+      "reason_preview": "Transport SEO description as Hashnode metadata only (body unchanged).",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The finish tool",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The finish tool?' using in-section evidence.",
+      "related_gap_ids": [
+        "gap_cite_miss_12e9f7d91d"
+      ],
+      "query_text": "What is The finish tool?"
+    },
+    {
+      "op_kind": "add_explanation",
+      "status": "ready",
+      "disposition": "actionable",
+      "target": "section:The agent loop",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded add_explanation after 'The agent loop' for query 'What is The agent loop?'.",
+      "related_gap_ids": [
+        "gap_cite_miss_badff7be82"
+      ],
+      "query_text": "What is The agent loop?"
+    },
+    {
+      "op_kind": "rewrite_introduction",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "introduction",
+      "llm_used": false,
+      "reason_preview": "No grounded introduction rewrite from on-page evidence; author input required \u2014 never invent or reorder-only.",
+      "related_gap_ids": [
+        "gap_metadata_cafa21adfd"
+      ],
+      "query_text": null
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": "needs_author_input",
+      "disposition": "author_input_required",
+      "target": "body",
+      "llm_used": false,
+      "reason_preview": "Grounded body-op budget exhausted (prefer 1\u20132 strong section ops); author input required \u2014 never invent.",
+      "related_gap_ids": [
+        "gap_cite_miss_bbb5221baf"
+      ],
+      "query_text": "What is Handling a tool call?"
+    },
+    {
+      "op_kind": "rewrite_section",
+      "status": null,
+      "disposition": null,
+      "target": "section:The finish tool",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": null,
+      "query_text": null
+    },
+    {
+      "op_kind": "add_explanation",
+      "status": null,
+      "disposition": null,
+      "target": "section:The agent loop",
+      "llm_used": null,
+      "reason_preview": "",
+      "related_gap_ids": null,
+      "query_text": null
+    }
+  ],
+  "rewrite_section_targets": [
+    "section:The finish tool",
+    "section:The finish tool",
+    "section:The finish tool",
+    "section:The finish tool"
+  ],
+  "distinct_section_targets": [
+    "section:The finish tool"
+  ],
+  "mega_section_selected": false,
+  "repeated_section_target": true,
+  "applied_ops": [],
+  "current_chars": 11791,
+  "recommended_chars": 12608,
+  "current_ne_recommended": true,
+  "later_section_dumping": false,
+  "dumping_hits": [],
+  "ratio_blowups": [],
+  "dumping_gone": true,
+  "VERDICT": "PASS",
+  "diff_bytes": 1880,
+  "paid_do_web_search_evidence": {
+    "visibility_provider": {
+      "provider_name": "digitalocean_web_search",
+      "model_id": "openai-gpt-4o-mini",
+      "retrieval_enabled": 1,
+      "experiment_kind": "ai_search_visibility"
+    },
+    "visibility_observation_count": 11,
+    "visibility_retrieval_enabled_count": 11,
+    "visibility_search_queries_sample": [
+      [
+        "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling site:hashnode.dev"
+      ],
+      [
+        "Feeding the result back to the model in AI"
+      ],
+      [
+        "Our first two tools site:nik-hil.hashnode.dev"
+      ]
+    ],
+    "note": "Top-level report.paid_retrieval/content_optimization.paid_retrieval may be false even when digitalocean_web_search visibility ran with retrieval_enabled=1; trust experiment + visibility_observations for paid DO web search evidence."
+  },
+  "paid_do_web_search_ran": true,
+  "verdict_notes": "PASS requires completed+paid_llm+non-stub+rewrite_ready+current_ne_recommended+non-mega+dumping_gone. paid_do_web_search_ran recorded separately from report_paid_retrieval flag."
+}

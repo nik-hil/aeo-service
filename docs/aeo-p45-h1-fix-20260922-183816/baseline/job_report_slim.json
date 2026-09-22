@@ -1,0 +1,23 @@
+{
+  "job_id": "8b0b8423-bf2c-4233-928b-aac8d0e09077",
+  "status": "completed",
+  "model": "openai-gpt-4o-mini",
+  "label": "baseline",
+  "paid_llm": true,
+  "paid_retrieval": false,
+  "content_optimization": {
+    "status": "completed",
+    "paid_llm": true,
+    "paid_retrieval": false,
+    "pages_optimized": 1,
+    "warnings": []
+  },
+  "paid_do_web_search_ran": true,
+  "visibility_observation_count": 11,
+  "experiment": {
+    "provider_name": "digitalocean_web_search",
+    "model_id": "openai-gpt-4o-mini",
+    "retrieval_enabled": 1,
+    "experiment_kind": "ai_search_visibility"
+  }
+}

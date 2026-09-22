@@ -1,0 +1,42 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -483,15 +483,14 @@
+ ---
+ 
+ # The complete flow
+-
+-Imagine the user asks:
++Consider a scenario where a user requests:
+ 
+ ```
+ Write and execute a Python function for FizzBuzz up to 15.
+ Return the output.
+ ```
+ 
+-The agent might perform something like:
++The process might unfold as follows:
+ 
+ ```
+ USER
+@@ -515,17 +514,15 @@
+ FINAL ANSWER
+ ```
+ 
+-The important observation is that the LLM is not itself the agent.
+-
+-The combination is:
++It's crucial to note that the LLM itself does not act as the agent.
++
++The system is composed of:
+ 
+ ```
+ LLM + tool definitions + execution engine + state + control loop
+ ```
+ 
+-That is the beginning of the harness.
+-
+----
++This forms the initial framework.
+ 
+ # There is already a security problem
+ 
