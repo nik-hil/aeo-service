@@ -7,7 +7,11 @@ import json
 from aeo_mvp.content.grounded_synth import (
     GroundedClaim,
     OpenAICompatibleChat,
+    find_ws_canonical_corpus_span,
     grounded_synth_enabled,
+    novelty_violations,
+    quote_is_verbatim,
+    repair_claim_evidence_quotes,
     synthesize_rewrite_section,
     validate_claims_against_corpus,
 )
@@ -147,6 +151,137 @@ def test_fail_closed_without_draft_paid():
     assert result.disposition == "author_input_required"
     assert result.proposed is None
     assert result.llm_used is False
+
+
+def test_hashnode_list_whitespace_quote_lock():
+    """WS-canonical lock accepts Hashnode list spacing; not paraphrase."""
+    corpus = (
+        "The agent loop uses tools with:\n\n"
+        "*   permissions\n"
+        "    \n"
+        "    and sandboxes.\n\n"
+        "Tool results are appended to the message history.\n"
+    )
+    # LLM-normalized spacing (single spaces) must lock to corpus span.
+    llm_quote = "The agent loop uses tools with: * permissions and sandboxes."
+    assert quote_is_verbatim(llm_quote, corpus) is True
+    span = find_ws_canonical_corpus_span(llm_quote, corpus)
+    assert span is not None and span in corpus
+    assert "*   permissions" in span
+
+    repaired, warns = repair_claim_evidence_quotes(
+        [GroundedClaim(claim="Tools use permissions and sandboxes.", evidence_quote=llm_quote)],
+        corpus=corpus,
+    )
+    assert repaired[0].evidence_quote in corpus
+    assert any("ws_repaired" in w for w in warns)
+
+    # Paraphrase / invented span fails.
+    assert quote_is_verbatim(
+        "The agent loop invents magical new ranking powers now.", corpus
+    ) is False
+    assert find_ws_canonical_corpus_span(
+        "The agent loop invents magical new ranking powers now.", corpus
+    ) is None
+
+    # Novelty bans unchanged.
+    nov = novelty_violations(
+        "See https://evil.example/rank and gain 47% visibility", corpus
+    )
+    assert any("invented_url" in v for v in nov)
+    assert any("invented_number" in v for v in nov)
+
+    errs = validate_claims_against_corpus(
+        [
+            GroundedClaim(
+                claim="Agents gain 47% visibility.",
+                evidence_quote="not present on page at all xyz",
+            )
+        ],
+        corpus=corpus,
+        proposed="Agents gain 47% visibility via https://evil.example/rank",
+    )
+    assert any("quote_not_verbatim" in e for e in errs)
+    assert any("invented" in e for e in errs)
+
+
+def test_ws_quote_repair_enables_ready_rewrite_section():
+    """Section body with Hashnode list WS + LLM single-space quotes → ready."""
+    body = (
+        "The most important concept is the agent loop.\n\n"
+        "The model decides what should happen. The harness controls how it happens.\n\n"
+        "Capabilities include:\n\n"
+        "*   tool calling\n"
+        "    \n"
+        "*   message history\n"
+    )
+    quote_ws = (
+        "Capabilities include: * tool calling * message history"
+    )
+    corpus_quote_exact = find_ws_canonical_corpus_span(quote_ws, body)
+    assert corpus_quote_exact is not None
+
+    def _chat(messages, temperature=0.0):
+        user = ""
+        for m in messages:
+            if m.get("role") == "user":
+                user = m.get("content") or ""
+        if "ENTAILED or NOT_ENTAILED" in user or "Is the claim fully entailed" in user:
+            return "ENTAILED"
+        if "Fix evidence_quote" in user:
+            # Repair path: return WS-canonical quotes (still need repair to corpus span).
+            return json.dumps(
+                {
+                    "claims": [
+                        {
+                            "claim": "The harness controls how it happens.",
+                            "evidence_quote": (
+                                "The model decides what should happen. "
+                                "The harness controls how it happens."
+                            ),
+                        },
+                        {
+                            "claim": "Capabilities include tool calling and message history.",
+                            "evidence_quote": quote_ws,
+                        },
+                    ]
+                }
+            )
+        return json.dumps(
+            {
+                "proposed": (
+                    "The agent loop is the core control flow. The model decides what "
+                    "should happen. The harness controls how it happens. Capabilities "
+                    "include tool calling and message history."
+                ),
+                "claims": [
+                    {
+                        "claim": "The harness controls how it happens.",
+                        "evidence_quote": (
+                            "The model decides what should happen. "
+                            "The harness controls how it happens."
+                        ),
+                    },
+                    {
+                        "claim": "Capabilities include tool calling and message history.",
+                        "evidence_quote": quote_ws,
+                    },
+                ],
+            }
+        )
+
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_chat)
+    result = synthesize_rewrite_section(
+        client=client,
+        source_markdown=f"# {ARTICLE_H1}\n\nLead.\n\n## The agent loop\n\n{body}\n",
+        query_text="what is the agent loop",
+        h1=ARTICLE_H1,
+        section_heading="The agent loop",
+        section_body=body,
+    )
+    assert result.disposition == "actionable", result.to_dict()
+    assert result.status == "ready"
+    assert all(c.evidence_quote in body for c in result.claims)
 
 
 def test_rewrite_section_new_wording_with_claims():

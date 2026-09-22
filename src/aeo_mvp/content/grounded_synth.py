@@ -270,11 +270,75 @@ def token_overlap_ratio(proposed: str, corpus: str) -> float:
     return len(pt & ct) / len(pt)
 
 
-def quote_is_verbatim(quote: str, corpus: str) -> bool:
+def _collapse_ws(text: str) -> str:
+    """Collapse whitespace runs to a single space (for containment checks only)."""
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def find_ws_canonical_corpus_span(quote: str, corpus: str) -> str | None:
+    """Return an exact corpus substring that matches quote under WS-canonical rules.
+
+    Exact substring wins. Otherwise non-whitespace character sequences must match
+    contiguously in corpus order (whitespace may differ). No paraphrase / fuzzy /
+    edit-distance. Returns None when no such span exists (fail closed).
+    """
     q = (quote or "").strip()
-    if not q or len(q) < 8:
-        return False
-    return q in (corpus or "")
+    c = corpus or ""
+    if not q or len(q) < 8 or not c:
+        return None
+    if q in c:
+        return q
+    # Collapsed containment prefilter (not sufficient alone).
+    cq = _collapse_ws(q)
+    if len(cq) < 8 or cq not in _collapse_ws(c):
+        return None
+    q_chars = [ch for ch in q if not ch.isspace()]
+    if len(q_chars) < 8:
+        return None
+    c_idx = [(i, ch) for i, ch in enumerate(c) if not ch.isspace()]
+    n = len(q_chars)
+    if n > len(c_idx):
+        return None
+    for start in range(len(c_idx) - n + 1):
+        window = c_idx[start : start + n]
+        if [ch for _, ch in window] == q_chars:
+            lo = window[0][0]
+            hi = window[-1][0]
+            span = c[lo : hi + 1]
+            # Span must be a real contiguous slice of the original corpus.
+            if span and span in c:
+                return span
+    return None
+
+
+def quote_is_verbatim(quote: str, corpus: str) -> bool:
+    """True when quote is an exact or whitespace-canonical contiguous corpus span."""
+    return find_ws_canonical_corpus_span(quote, corpus) is not None
+
+
+def repair_claim_evidence_quotes(
+    claims: list[GroundedClaim],
+    *,
+    corpus: str,
+) -> tuple[list[GroundedClaim], list[str]]:
+    """Fail-closed WS repair: remap quotes to exact corpus spans when WS-canonical.
+
+    Never invents quotes. Unrepairable quotes are left unchanged for validation reject.
+    """
+    out: list[GroundedClaim] = []
+    warnings: list[str] = []
+    for i, cl in enumerate(claims):
+        raw_q = (cl.evidence_quote or "").strip()
+        span = find_ws_canonical_corpus_span(raw_q, corpus)
+        if span is None:
+            out.append(cl)
+            continue
+        if span != raw_q:
+            warnings.append(f"claim_{i}_evidence_quote_ws_repaired")
+            out.append(GroundedClaim(claim=cl.claim, evidence_quote=span))
+        else:
+            out.append(GroundedClaim(claim=cl.claim, evidence_quote=span))
+    return out, warnings
 
 
 def novelty_violations(text: str, corpus: str) -> list[str]:
@@ -326,6 +390,57 @@ def validate_claims_against_corpus(
     for v in novelty_violations(proposed, corpus):
         errors.append(f"proposed_{v}")
     return errors
+
+
+def _llm_repair_quotes_once(
+    client: OpenAICompatibleChat,
+    *,
+    claims: list[GroundedClaim],
+    corpus: str,
+    proposed: str,
+    errors: list[str],
+) -> tuple[list[GroundedClaim] | None, list[str]]:
+    """One fail-closed LLM attempt to rematerialize evidence_quote from corpus.
+
+    Returns (repaired_claims, warnings). On any failure → (None, warnings) and
+    caller keeps author_input. Never invents facts outside corpus; output still
+    must pass full validate + entailment.
+    """
+    warnings: list[str] = ["llm_quote_repair_attempted"]
+    bad = [e for e in errors if "quote_not_verbatim" in e]
+    if not bad:
+        return None, warnings
+    user = (
+        "Fix evidence_quote fields so each is an EXACT contiguous substring of the "
+        "corpus (whitespace differences only are allowed to be normalized to the "
+        "corpus spelling). Do not invent facts, URLs, numbers, or names.\n\n"
+        f"Corpus:\n{corpus[:8000]}\n\n"
+        f"Proposed (unchanged):\n{proposed}\n\n"
+        f"Claims JSON:\n{json.dumps([c.to_dict() for c in claims])}\n\n"
+        f"Validation errors:\n{json.dumps(errors)}\n\n"
+        'Return JSON: {"claims":[{"claim":"...","evidence_quote":"..."}]}'
+    )
+    try:
+        raw = client.chat(
+            [
+                {"role": "system", "content": _SYNTH_SYSTEM},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.0,
+        )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"llm_quote_repair_failed:{type(exc).__name__}")
+        return None, warnings
+    data = _parse_json_object(raw)
+    if data is None:
+        warnings.append("llm_quote_repair_non_json")
+        return None, warnings
+    repaired = _claims_from_payload(data)
+    if not repaired:
+        warnings.append("llm_quote_repair_empty_claims")
+        return None, warnings
+    warnings.append("llm_quote_repair_applied")
+    return repaired, warnings
 
 
 def judge_entailment(
@@ -558,9 +673,38 @@ def _finalize_grounded(
             llm_used=True,
         )
 
+    # Fail-closed WS quote repair before structural validate (never invents).
+    claims, repair_warns = repair_claim_evidence_quotes(claims, corpus=corpus)
+    warnings.extend(repair_warns)
+
     structural = validate_claims_against_corpus(
         claims, corpus=corpus, proposed=proposed
     )
+    if structural and any("quote_not_verbatim" in e for e in structural):
+        # Optional one repair LLM call for quote_not_verbatim only (fail closed).
+        non_quote = [
+            e
+            for e in structural
+            if "quote_not_verbatim" not in e and e != "claims_empty"
+        ]
+        if not non_quote:
+            repaired_claims, llm_repair_warns = _llm_repair_quotes_once(
+                client,
+                claims=claims,
+                corpus=corpus,
+                proposed=proposed,
+                errors=structural,
+            )
+            warnings.extend(llm_repair_warns)
+            if repaired_claims is not None:
+                claims, ws_warns = repair_claim_evidence_quotes(
+                    repaired_claims, corpus=corpus
+                )
+                warnings.extend(ws_warns)
+                structural = validate_claims_against_corpus(
+                    claims, corpus=corpus, proposed=proposed
+                )
+
     if structural:
         warnings.extend(structural)
         # Distinguish empty corpus quotes vs blocked evidence.

@@ -1,0 +1,47 @@
+{
+  "tip_note": "p45d WS quote-lock",
+  "credentials_key_present": false,
+  "html_bytes": 178450,
+  "md_bytes": 12095,
+  "html_md_identical": false,
+  "list_ws_sample": [
+    "    response = client.chat.completions.create(",
+    "        messages=messages,",
+    "        tools=TOOL_SCHEMAS,",
+    "    )",
+    "    if not response.tool_calls:"
+  ],
+  "cite_miss_full": [
+    {
+      "gap_id": "gap_cite_miss_681226a099",
+      "query_id": "q3",
+      "page_coverage": "full"
+    }
+  ],
+  "mock_ready_section_ops": [
+    {
+      "op_kind": "rewrite_section",
+      "target": "section:What exactly are we building?",
+      "llm_used": true,
+      "claims": 2,
+      "ws_repaired": false,
+      "reason": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'how does tool calling work'"
+    }
+  ],
+  "md_apply": {
+    "changed": true,
+    "applied_ops": [
+      "mvp_rewrite_section_section:What exactly are we building?",
+      "evidence_grounded_rewrite_section"
+    ],
+    "section_beyond_intro": true
+  },
+  "paid_dual_real_llm": "blocked_no_key",
+  "VERDICT": "FAIL",
+  "first_lost_stage": "live_paid_credentials_missing",
+  "job_ids": {
+    "html": null,
+    "md": null
+  },
+  "note": "WS-canonical quote lock + repair implemented. Real paid dual needs OPENAI_API_KEY or DO_MODEL_ACCESS_KEY in cloud env. Mock on live MD yielded 1 ready section op(s)."
+}
