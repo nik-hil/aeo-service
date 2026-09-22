@@ -12,13 +12,17 @@ Intro / ``rewrite`` semantics (deterministic mode)
 -------------------------------------------------
 The change-plan edit-op contract may name the action ``rewrite`` (e.g.
 ``rewrite`` + ``section:<H1>`` / ``introduction`` with an answer-first
-instruction). This generator does **not** invent rewrite copy. The
-optimization layer (``aeo_mvp.content.rewrite_proposal``) produces a
-validated ``proposed`` replacement grounded in source evidence. This
-generator **applies** that proposal after safety validation.
+instruction). This generator does **not** invent rewrite copy and must
+**not** call ``propose_introduction_rewrite`` /
+``enrich_ops_with_rewrite_proposals``. The content optimization layer
+produces a validated ``proposed`` replacement (with ``original`` /
+``evidence`` / ``reason`` / ``related_gap_ids``) before handoff. This
+generator defensively re-validates, then **applies** that proposal to the
+correct Markdown region — or skips and leaves the original unchanged when
+``proposed`` is absent/invalid.
 
 A bare paragraph move / reorder without ``proposed`` is **not** treated as a
-successful content rewrite.
+successful content rewrite. No proposal ⇒ no rewrite.
 
 Meta / SEO description provenance
 ---------------------------------
@@ -37,10 +41,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from aeo_mvp.content.rewrite_proposal import (
-    enrich_ops_with_rewrite_proposals,
-    validate_proposed_rewrite,
-)
+from aeo_mvp.content.rewrite_proposal import validate_proposed_rewrite
 
 _H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
@@ -584,10 +585,10 @@ def generate_recommended_markdown(
     placeholders in ``body``. UI shows honesty labeling as metadata/subtitle.
 
     Intro ``rewrite`` ops are applied only when a validated ``proposed``
-    replacement is present (built upstream or enriched here from source
-    evidence). Meta description ops are transported as ``seo_description``
-    metadata only (brief owns proposed-meta provenance; never HTML ``<meta>``
-    in body).
+    replacement is already present on the edit op (content optimization
+    layer owns generation). Meta description ops are transported as
+    ``seo_description`` metadata only (brief owns proposed-meta provenance;
+    never HTML ``<meta>`` in body).
     """
     pi = page_intelligence or {}
     resolved_source_url = source_url or pi.get("source_url") or pi.get("url")
@@ -641,15 +642,6 @@ def generate_recommended_markdown(
     # Snapshot structure for preservation asserts.
     source_headings = _headings_outside_intro(body)
     source_fences = _extract_fences(body)
-
-    # Enrich intro rewrite ops with evidence-grounded proposed content when missing.
-    ops, proposal, enrich_warnings = enrich_ops_with_rewrite_proposals(
-        ops,
-        source_markdown=body,
-        page_intelligence=pi,
-        h1=h1,
-    )
-    warnings.extend(enrich_warnings)
 
     # --- retain H1 (explicit no-op on body; records application) ---
     retain_ops = [op for op in ops if _is_retain_h1_op(op)]
@@ -713,11 +705,10 @@ def generate_recommended_markdown(
         proposed_text = ""
         if intro_op and isinstance(intro_op.get("proposed"), str):
             proposed_text = intro_op["proposed"].strip()
-        elif proposal and proposal.proposed:
-            proposed_text = proposal.proposed.strip()
 
         if not proposed_text:
-            # No grounded proposal — do NOT fall back to paragraph reorder.
+            # No grounded proposal from content opt layer — do NOT invent,
+            # reorder, or synthesize. No proposal ⇒ no rewrite.
             warnings.append("intro_rewrite_skipped_no_proposed")
             if intro_op and intro_op.get("target"):
                 warnings.append(
@@ -727,13 +718,9 @@ def generate_recommended_markdown(
             original_text = ""
             if intro_op:
                 original_text = str(intro_op.get("original") or "").strip()
-            if not original_text and proposal:
-                original_text = proposal.original
             evidence = []
             if intro_op:
                 evidence = list(intro_op.get("evidence") or [])
-            if not evidence and proposal:
-                evidence = list(proposal.evidence)
 
             val = validate_proposed_rewrite(
                 proposed=proposed_text,
@@ -772,11 +759,9 @@ def generate_recommended_markdown(
                     rewrite_provenance = {
                         "what_changed": "introduction",
                         "why": (intro_op or {}).get("instruction")
-                        or (proposal.reason if proposal else "")
                         or "Answer-first introduction grounded in page evidence.",
                         "related_gap_ids": list(
-                            (intro_op or {}).get("related_gap_ids")
-                            or (proposal.related_gap_ids if proposal else [])
+                            (intro_op or {}).get("related_gap_ids") or []
                         ),
                         "original": original_text,
                         "proposed": proposed_text,

@@ -457,10 +457,15 @@ def _build_proposed_intro(
         # Drop pure teaser openers that the rewrite supersedes.
         if _TEASER_RE.search(stripped) and len(stripped.split()) < 20:
             continue
-        if stripped.lower() in {
-            "call an llm. give it a prompt. get an answer.",
-            "but that is not really an agent.",
-        }:
+        # Drop short non-definitional stingers superseded by the answer-first lead
+        # (generic — not article-specific copy). Keep media, lists, quotes, URLs.
+        words = len(stripped.split())
+        if (
+            words <= 16
+            and _score_definitional(stripped) < 2.0
+            and not stripped.startswith(("```", "![", "[", "|", ">", "-", "*"))
+            and not _URL_RE.search(stripped)
+        ):
             continue
         remaining.append(stripped)
 
@@ -587,10 +592,19 @@ def enrich_ops_with_rewrite_proposals(
     page_intelligence: dict[str, Any] | None = None,
     h1: str | None = None,
 ) -> tuple[list[dict[str, Any]], RewriteProposal | None, list[str]]:
-    """Attach ``original`` / ``proposed`` / ``evidence`` onto intro rewrite ops.
+    """Content-optimization layer: generate + attach rewrite proposals onto ops.
+
+    Ownership boundary: this function belongs to the content optimization layer.
+    Platform Markdown generators must **consume** already-enriched ops and must
+    not call this (or ``propose_introduction_rewrite``) to invent copy.
+
+    Steps: identify intro rewrite targets → build evidence-grounded ``proposed``
+    → validate → attach ``original`` / ``proposed`` / ``evidence`` /
+    ``related_gap_ids`` / ``reason`` on the edit op.
 
     Returns (enriched_ops, proposal_or_none, warnings).
-    Ops that already carry a non-empty ``proposed`` are left unchanged (validated).
+    Ops that already carry a non-empty ``proposed`` are validated only (not
+    regenerated).
     """
     warnings: list[str] = []
     if not ops:
