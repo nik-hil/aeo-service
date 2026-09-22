@@ -3,6 +3,7 @@
   --aeo-muted: #5a6b7d;
   --aeo-accent: #0f766e;
   --aeo-accent-2: #155e75;
-  --aeo-panel: rgba(255, 255, 255, 0.78);
+  --aeo-panel: rgba(255, 255, 255, 0.92);
   --aeo-line: rgba(15, 28, 46, 0.10);
+  color-scheme: light;
 }
