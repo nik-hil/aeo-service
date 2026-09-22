@@ -35,14 +35,22 @@ def _job(options: dict | None = None, *, demo_mode: bool = False) -> Job:
     )
 
 
-def _settings_with_do_key(monkeypatch, *, key: str | None = "test-do-key-not-real"):
+def _settings_with_do_key(
+    monkeypatch,
+    *,
+    key: str | None = "test-do-key-not-real",
+    paid_retrieval_opt_in: bool = False,
+):
     """Settings with DO key from constructor (not .env leak)."""
     monkeypatch.delenv("DO_MODEL_ACCESS_KEY", raising=False)
     monkeypatch.delenv("MODEL_ACCESS_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("AEO_PAID_RETRIEVAL_OPT_IN", raising=False)
     get_settings.cache_clear()
-    kwargs: dict = {"_env_file": None, "AEO_PAID_RETRIEVAL_OPT_IN": False}
+    kwargs: dict = {
+        "_env_file": None,
+        "AEO_PAID_RETRIEVAL_OPT_IN": paid_retrieval_opt_in,
+    }
     if key is not None:
         kwargs["DO_MODEL_ACCESS_KEY"] = key
     isolated = Settings(**kwargs)
@@ -51,6 +59,57 @@ def _settings_with_do_key(monkeypatch, *, key: str | None = "test-do-key-not-rea
         lambda: isolated,
     )
     return isolated
+
+
+def test_paid_retrieval_opt_in_env_absent_defaults_false(monkeypatch):
+    monkeypatch.delenv("AEO_PAID_RETRIEVAL_OPT_IN", raising=False)
+    get_settings.cache_clear()
+    s = Settings(_env_file=None)
+    assert s.paid_retrieval_opt_in is False
+    get_settings.cache_clear()
+
+
+def test_paid_retrieval_opt_in_env_false(monkeypatch):
+    monkeypatch.setenv("AEO_PAID_RETRIEVAL_OPT_IN", "false")
+    get_settings.cache_clear()
+    s = Settings(_env_file=None)
+    assert s.paid_retrieval_opt_in is False
+    get_settings.cache_clear()
+
+
+def test_paid_retrieval_opt_in_env_true(monkeypatch):
+    monkeypatch.setenv("AEO_PAID_RETRIEVAL_OPT_IN", "true")
+    get_settings.cache_clear()
+    s = Settings(_env_file=None)
+    assert s.paid_retrieval_opt_in is True
+    get_settings.cache_clear()
+
+
+def test_paid_retrieval_opt_in_omit_env_default_unchanged(monkeypatch):
+    """Constructing Settings without the alias keeps Field default False."""
+    monkeypatch.delenv("AEO_PAID_RETRIEVAL_OPT_IN", raising=False)
+    get_settings.cache_clear()
+    s = Settings(_env_file=None)
+    assert "paid_retrieval_opt_in" in Settings.model_fields
+    assert Settings.model_fields["paid_retrieval_opt_in"].default is False
+    assert s.paid_retrieval_opt_in is False
+    get_settings.cache_clear()
+
+
+def test_resolve_opt_in_env_false_blocks_request_true(monkeypatch):
+    settings = _settings_with_do_key(monkeypatch, paid_retrieval_opt_in=False)
+    orch = JobOrchestrator.__new__(JobOrchestrator)
+    orch.settings = settings
+    assert orch._resolve_paid_retrieval_opt_in({"paid_retrieval_opt_in": True}) is False
+    assert orch._resolve_paid_retrieval_opt_in({}) is False
+
+
+def test_resolve_opt_in_env_true_enables_despite_schema_default_false(monkeypatch):
+    settings = _settings_with_do_key(monkeypatch, paid_retrieval_opt_in=True)
+    orch = JobOrchestrator.__new__(JobOrchestrator)
+    orch.settings = settings
+    assert orch._resolve_paid_retrieval_opt_in({"paid_retrieval_opt_in": False}) is True
+    assert orch._resolve_paid_retrieval_opt_in({}) is True
 
 
 def test_allow_paid_do_retrieval_requires_both_flags():
@@ -264,7 +323,9 @@ async def test_orchestrator_do_http_behavior_matrix(
     expect_do_http,
 ):
     key = "test-do-key-not-real" if do_key == "present" else None
-    settings = _settings_with_do_key(monkeypatch, key=key)
+    settings = _settings_with_do_key(
+        monkeypatch, key=key, paid_retrieval_opt_in=bool(paid_opt_in)
+    )
     # Orchestrator caches settings on __init__
     monkeypatch.setattr(
         "aeo_mvp.pipeline.orchestrator.get_settings",
@@ -273,7 +334,9 @@ async def test_orchestrator_do_http_behavior_matrix(
 
     options = {
         "provider": "auto",
-        "paid_retrieval_opt_in": paid_opt_in,
+        # Request flag is ignored for enabling when env is false (fail-closed);
+        # when env is true, schema-default false must not mask the env switch.
+        "paid_retrieval_opt_in": False,
         "discovery_only": discovery_only,
         "runs_per_prompt": 1,
         "query_top_n": 20,
@@ -361,7 +424,9 @@ async def test_orchestrator_do_http_behavior_matrix(
 
 @pytest.mark.asyncio
 async def test_opt_in_true_but_queryset_not_ready_zero_do_http(db_session, monkeypatch):
-    settings = _settings_with_do_key(monkeypatch, key="test-do-key-not-real")
+    settings = _settings_with_do_key(
+        monkeypatch, key="test-do-key-not-real", paid_retrieval_opt_in=True
+    )
     options = {
         "provider": "auto",
         "paid_retrieval_opt_in": True,
@@ -411,6 +476,131 @@ async def test_opt_in_true_but_queryset_not_ready_zero_do_http(db_session, monke
         patch(
             "aeo_mvp.pipeline.orchestrator.discover_queries",
             side_effect=_not_ready_discovery,
+        ),
+        patch(
+            "aeo_mvp.pipeline.orchestrator.DigitalOceanWebSearchProvider",
+            SpyDO,
+        ),
+        patch(
+            "aeo_mvp.visibility.digitalocean_web_search.httpx.AsyncClient",
+            return_value=mock_client,
+        ),
+    ):
+        orch = JobOrchestrator(db_session)
+        orch.settings = settings
+        await orch.run(job.id)
+
+    db_session.refresh(job)
+    assert job.status == "completed"
+    assert constructed == []
+    assert post_calls == []
+    cfg = db_session.query(ExperimentConfig).filter_by(job_id=job.id).one()
+    assert cfg.provider_name != "digitalocean_web_search"
+    assert cfg.retrieval_enabled == 0
+
+
+@pytest.mark.asyncio
+async def test_env_true_ready_queryset_and_creds_allows_paid_retrieval(
+    db_session, monkeypatch
+):
+    """Env true + ready QuerySet + DO key → paid DO allowed."""
+    settings = _settings_with_do_key(
+        monkeypatch, key="test-do-key-not-real", paid_retrieval_opt_in=True
+    )
+    monkeypatch.setattr(
+        "aeo_mvp.pipeline.orchestrator.get_settings",
+        lambda: settings,
+    )
+    options = {
+        "provider": "auto",
+        "paid_retrieval_opt_in": False,  # schema default must not mask env
+        "discovery_only": False,
+        "runs_per_prompt": 1,
+        "query_top_n": 20,
+    }
+    job = create_job_record(
+        db_session, "https://demo.example/", demo_mode=False, options=options
+    )
+    job.demo_mode = 0
+    db_session.commit()
+
+    mock_client, post_calls = _http_spy()
+    constructed: list = []
+    run_query_calls: list = []
+    real_do = DigitalOceanWebSearchProvider
+
+    class SpyDO(real_do):
+        def __init__(self, *a, **k):
+            constructed.append(True)
+            super().__init__(api_key="test-do-key-not-real")
+
+        async def run_query(self, query, *, context):
+            run_query_calls.append(query)
+            return await super().run_query(query, context=context)
+
+    with (
+        patch(
+            "aeo_mvp.pipeline.orchestrator.crawl_site",
+            side_effect=_fake_crawl,
+        ),
+        patch(
+            "aeo_mvp.pipeline.orchestrator.DigitalOceanWebSearchProvider",
+            SpyDO,
+        ),
+        patch(
+            "aeo_mvp.visibility.digitalocean_web_search.httpx.AsyncClient",
+            return_value=mock_client,
+        ),
+    ):
+        orch = JobOrchestrator(db_session)
+        orch.settings = settings
+        await orch.run(job.id)
+
+    db_session.refresh(job)
+    assert job.status == "completed"
+    assert constructed, "DO provider should be constructed when gate open"
+    assert run_query_calls
+    assert post_calls
+    cfg = db_session.query(ExperimentConfig).filter_by(job_id=job.id).one()
+    assert cfg.provider_name == "digitalocean_web_search"
+    assert cfg.retrieval_enabled == 1
+
+
+@pytest.mark.asyncio
+async def test_request_true_env_false_blocks_paid_retrieval(db_session, monkeypatch):
+    """Fail-closed: request cannot enable spend when env is false."""
+    settings = _settings_with_do_key(
+        monkeypatch, key="test-do-key-not-real", paid_retrieval_opt_in=False
+    )
+    monkeypatch.setattr(
+        "aeo_mvp.pipeline.orchestrator.get_settings",
+        lambda: settings,
+    )
+    options = {
+        "provider": "auto",
+        "paid_retrieval_opt_in": True,
+        "discovery_only": False,
+        "runs_per_prompt": 1,
+        "query_top_n": 20,
+    }
+    job = create_job_record(
+        db_session, "https://demo.example/", demo_mode=False, options=options
+    )
+    job.demo_mode = 0
+    db_session.commit()
+
+    mock_client, post_calls = _http_spy()
+    constructed: list = []
+
+    class SpyDO:
+        def __init__(self, *a, **k):
+            constructed.append(True)
+            raise AssertionError("DO must not construct when env opt-in false")
+
+    with (
+        patch(
+            "aeo_mvp.pipeline.orchestrator.crawl_site",
+            side_effect=_fake_crawl,
         ),
         patch(
             "aeo_mvp.pipeline.orchestrator.DigitalOceanWebSearchProvider",

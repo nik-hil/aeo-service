@@ -80,6 +80,18 @@ def create_job(
     # Persist JobOptions defaults (incl. content_optimization=True) so stored
     # options_json matches API schema defaults and orchestrator execution.
     options = (body.options or JobOptions()).model_dump(exclude_none=True)
+    # ADR-026 fail-closed: env AEO_PAID_RETRIEVAL_OPT_IN is the master switch.
+    # Schema default false must not mask env true; request true cannot bypass
+    # env false.
+    settings = get_settings()
+    req_paid = bool(options.get("paid_retrieval_opt_in", False))
+    env_paid = bool(settings.paid_retrieval_opt_in)
+    if req_paid and not env_paid:
+        logger.info(
+            "create_job: request paid_retrieval_opt_in=true ignored; "
+            "AEO_PAID_RETRIEVAL_OPT_IN=false (ADR-026 fail-closed)"
+        )
+    options["paid_retrieval_opt_in"] = env_paid
     if not body.demo_mode and is_obviously_unsafe_url(body.url):
         raise HTTPException(
             status_code=400,

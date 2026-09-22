@@ -68,11 +68,16 @@ pytest -q
 Responses API + `web_search`. **Does not** measure consumer ChatGPT/Gemini/Perplexity UI
 (`measures_consumer_ui=false`). See `docs/methodology/AI_SEARCH_VISIBILITY_DO.md`.
 
+**Enable paid DO retrieval:** set `AEO_PAID_RETRIEVAL_OPT_IN=true` in the environment
+(see `.env.example`). That is the runtime master switch. ADR-026 still applies:
+paid retrieval runs only when opt-in **and** a ready QuerySet **and** DO credentials
+(`DO_MODEL_ACCESS_KEY` / `MODEL_ACCESS_KEY`) are present. A DO key alone never spends.
+API `options.paid_retrieval_opt_in=true` cannot bypass env false (fail-closed).
+
 Under `provider=auto` / `AEO_VISIBILITY_PROVIDER=auto`: DigitalOcean web_search only when
-a DO key is present **and** ADR-026 allows paid retrieval (`paid_retrieval_opt_in` /
-`AEO_PAID_RETRIEVAL_OPT_IN` **and** a ready QuerySet). A DO key alone never spends.
-Otherwise OpenAI key → LLM mention; else DemoProvider. Demo mode always stays
-deterministic. See `docs/architecture/ADR-026-paid-retrieval-opt-in.md`.
+a DO key is present **and** ADR-026 allows paid retrieval. Otherwise OpenAI key → LLM
+mention; else DemoProvider. Demo mode always stays deterministic. See
+`docs/architecture/ADR-026-paid-retrieval-opt-in.md`.
 
 ## Leadership UI
 

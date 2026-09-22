@@ -28,6 +28,8 @@ class JobOptions(BaseModel):
     )
     discovery_only: bool = False
     dry_run: bool = False
+    # Echo / request hint only. Effective opt-in is gated by env
+    # AEO_PAID_RETRIEVAL_OPT_IN (fail-closed): request true cannot bypass env false.
     paid_retrieval_opt_in: bool = False
     query_top_n: int | None = Field(default=None, ge=8, le=30)
     semantic_dedup: Literal["lexical", "simhash", "simhash_v1"] | None = "lexical"

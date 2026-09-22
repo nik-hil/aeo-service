@@ -2,20 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from aeo_mvp.api.routes import api_router, router
+from aeo_mvp.config import get_settings
 from aeo_mvp.db.session import init_db
 from aeo_mvp.logging_config import setup_logging
 from aeo_mvp.security.api_auth import ApiAuthMiddleware
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
     init_db()
+    settings = get_settings()
+    logger.info(
+        "startup paid_retrieval_opt_in=%s (AEO_PAID_RETRIEVAL_OPT_IN; "
+        "ADR-026 still requires ready QuerySet + DO credentials)",
+        str(bool(settings.paid_retrieval_opt_in)).lower(),
+    )
     yield
 
 

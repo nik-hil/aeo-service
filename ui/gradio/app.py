@@ -968,10 +968,6 @@ def build_app():
                             ),
                         )
                     with gr.Tab("CURRENT vs RECOMMENDED"):
-                        gr.Markdown(
-                            "_Side-by-side complete documents with independent scroll — "
-                            "not a Git diff. Recommended draft is a suggestion only._"
-                        )
                         compare_md = gr.HTML(value=EMPTY_COMPARE)
                     with gr.Tab("Evidence"):
                         evidence_md = gr.Markdown(EMPTY_EVIDENCE)
