@@ -1,0 +1,120 @@
+{
+  "doc": "P45E_DUAL_PAID_PASS",
+  "tip_sha": "d253fb358166db7778fca12305693083a58c4565",
+  "tip_sha_short": "d253fb3",
+  "pr": 45,
+  "branch": "cursor/substantive-content-opt-e95e",
+  "proven_at": "2026-09-22 22:08:30 IST",
+  "merge": false,
+  "VERDICT": "PASS",
+  "first_lost_stage": null,
+  "quote_lock": "WS-canonical contiguous span; invent/novelty + entailment unchanged",
+  "tests": {
+    "focused_grounded_synth": {
+      "file": "tests/unit/test_grounded_synth.py",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "AEO_PAID_RETRIEVAL_OPT_IN": false,
+      "log": "/workspace/live-pr45d-d253fb3-paid-dual/focused_pytest.txt"
+    }
+  },
+  "html": {
+    "job_id": "f007539c-78ee-4dde-a2a1-88229ef8e822",
+    "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+    "llm_used": true,
+    "paid_llm": true,
+    "stub": false,
+    "method": "grounded_synth_v1+openai_compatible:openai-gpt-4o-mini",
+    "rewrite_section_ready": 1,
+    "section_beyond_intro": true,
+    "intro_rewrite_applied": true,
+    "current_ne_recommended": true,
+    "applied_ops": [
+      "op_0_retain_h1",
+      "op_2_add_meta_description",
+      "op_1_rewrite_section:Agents Zero to Hero #1: Building an AI Agent from Scratch w",
+      "evidence_grounded_rewrite:introduction",
+      "mvp_rewrite_section_section:The model does not execute code directly",
+      "evidence_grounded_rewrite_section"
+    ],
+    "section_ops": [
+      {
+        "op_kind": "rewrite_introduction",
+        "status": "ready",
+        "llm_used": false,
+        "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+        "related_gap_ids": null,
+        "reason_preview": "Answer-first introduction grounded in page topic; query=\"Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling\"; evidence=\"meta_description_missing\""
+      },
+      {
+        "op_kind": "rewrite_section",
+        "status": "ready",
+        "llm_used": true,
+        "target": "section:The model does not execute code directly",
+        "related_gap_ids": null,
+        "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence."
+      }
+    ],
+    "hard_pass": true,
+    "elapsed_sec": 292.3
+  },
+  "md": {
+    "job_id": "cb8e5ae8-ada4-4a3d-a6c8-7d846fd618b0",
+    "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
+    "llm_used": true,
+    "paid_llm": true,
+    "stub": false,
+    "method": "grounded_synth_v1+openai_compatible:openai-gpt-4o-mini",
+    "rewrite_section_ready": 2,
+    "section_beyond_intro": true,
+    "intro_rewrite_applied": true,
+    "current_ne_recommended": true,
+    "applied_ops": [
+      "op_0_retain_h1",
+      "op_2_add_meta_description",
+      "op_1_rewrite_section:Agents Zero to Hero #1: Building an AI Agent from Scratch w",
+      "evidence_grounded_rewrite:introduction",
+      "mvp_rewrite_section_section:The model does not execute code directly",
+      "evidence_grounded_rewrite_section"
+    ],
+    "hard_pass": true,
+    "elapsed_sec": 302.0,
+    "section_ops": [
+      {
+        "op_kind": "rewrite_introduction",
+        "status": "ready",
+        "llm_used": false,
+        "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+        "related_gap_ids": null,
+        "reason_preview": "Answer-first introduction grounded in page topic; query=\"Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling\"; evidence=\"meta_description_missing\""
+      },
+      {
+        "op_kind": "rewrite_section",
+        "status": "ready",
+        "llm_used": true,
+        "target": "section:The model does not execute code directly",
+        "related_gap_ids": null,
+        "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence."
+      },
+      {
+        "op_kind": "rewrite_introduction",
+        "status": "ready",
+        "llm_used": false,
+        "target": "introduction",
+        "related_gap_ids": null,
+        "reason_preview": "Answer-first introduction grounded in page evidence."
+      },
+      {
+        "op_kind": "rewrite_section",
+        "status": "ready",
+        "llm_used": true,
+        "target": "section:The model does not execute code directly",
+        "related_gap_ids": null,
+        "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence."
+      }
+    ]
+  },
+  "artifacts_local": "/workspace/live-pr45d-d253fb3-paid-dual/",
+  "note": "Paid dual with real DO/OpenAI-compatible key on CoS box; supersedes tip P45D credentials_missing FAIL."
+}

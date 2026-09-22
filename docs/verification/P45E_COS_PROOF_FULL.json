@@ -1,0 +1,288 @@
+{
+  "tip_sha": "d253fb358166db7778fca12305693083a58c4565",
+  "tip_sha_short": "d253fb3",
+  "branch": "cursor/substantive-content-opt-e95e",
+  "pr": 45,
+  "proven_at": "2026-09-22 22:08:30 IST",
+  "merge": false,
+  "quote_is_verbatim": "WS-canonical present (find_ws_canonical_corpus_span)",
+  "tests": {
+    "focused_grounded_synth": {
+      "file": "tests/unit/test_grounded_synth.py",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "AEO_PAID_RETRIEVAL_OPT_IN": false,
+      "log": "/workspace/live-pr45d-d253fb3-paid-dual/focused_pytest.txt"
+    }
+  },
+  "html_attempts_note": "attempt1+2 FAIL gap_selection (cite_miss_full=0 despite VO last-wins). attempt3 job f007539c interrupted at claimed; resumed to completion with MD-mirrored options \u2192 HARD PASS.",
+  "html": {
+    "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+    "job_id": "f007539c-78ee-4dde-a2a1-88229ef8e822",
+    "status": "completed",
+    "elapsed_sec": 292.3,
+    "llm_used": true,
+    "paid_llm": true,
+    "method": "grounded_synth_v1+openai_compatible:openai-gpt-4o-mini",
+    "stub_appeared": false,
+    "rewrite_section_ready": 1,
+    "add_explanation_ready": 0,
+    "rewrite_section_applied": true,
+    "add_explanation_applied": false,
+    "section_beyond_intro": true,
+    "intro_changed": true,
+    "intro_rewrite_applied": true,
+    "current_ne_recommended": true,
+    "cite_miss_full_count": 1,
+    "cite_miss_gaps": [
+      {
+        "id": "gap_cite_miss_e3383a8142",
+        "gap_type": "cite_miss",
+        "page_coverage": "full",
+        "query_id": "q_66de726666d4",
+        "kind": "missing_answer",
+        "topic": "The complete flow",
+        "disposition": "actionable",
+        "status": null
+      }
+    ],
+    "applied_ops": [
+      "op_0_retain_h1",
+      "op_2_add_meta_description",
+      "op_1_rewrite_section:Agents Zero to Hero #1: Building an AI Agent from Scratch w",
+      "evidence_grounded_rewrite:introduction",
+      "mvp_rewrite_section_section:The model does not execute code directly",
+      "evidence_grounded_rewrite_section"
+    ],
+    "ready_kinds": [
+      "metadata_seo_description",
+      "rewrite_introduction",
+      "rewrite_section"
+    ],
+    "llm_used_ops": [
+      {
+        "kind": "rewrite_section",
+        "llm_used": true,
+        "disposition": "actionable",
+        "status": "ready",
+        "target": "section:The model does not execute code directly"
+      }
+    ],
+    "grounded_synth_ops": [
+      {
+        "claims_count": 7,
+        "op_kind": "rewrite_section",
+        "target": "section:The model does not execute code directly"
+      }
+    ],
+    "source_chars": 12095,
+    "recommended_chars": 12028,
+    "full_diff_bytes": 2262,
+    "intro_diff_bytes": 1140,
+    "first_lost_stage": null,
+    "hard_pass": true,
+    "resumed": true,
+    "env_flags": {
+      "OPENAI_API_KEY": "SET",
+      "OPENAI_BASE_URL": "https://inference.do-ai.run/v1",
+      "OPENAI_MODEL": "openai-gpt-4o-mini",
+      "DO_MODEL_ACCESS_KEY": "SET",
+      "AEO_PAID_RETRIEVAL_OPT_IN": true,
+      "AEO_VISIBILITY_PROVIDER": "digitalocean_web_search",
+      "draft_paid_request": true,
+      "content_draft_request": true,
+      "generate_draft_alias": true,
+      "resumed_job": "f007539c-78ee-4dde-a2a1-88229ef8e822"
+    },
+    "options": {
+      "paid_retrieval_opt_in": true,
+      "content_optimization": true,
+      "content_draft": true,
+      "generate_draft": true,
+      "draft_paid": true,
+      "paid_llm_opt_in": true,
+      "content_draft_provider": "openai_compatible",
+      "provider": "auto",
+      "selection_seed": 42,
+      "query_top_n": 20,
+      "max_pages": 4,
+      "max_depth": 1
+    },
+    "section_ops": [
+      {
+        "op_kind": "rewrite_introduction",
+        "status": "ready",
+        "llm_used": false,
+        "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+        "related_gap_ids": null,
+        "reason_preview": "Answer-first introduction grounded in page topic; query=\"Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling\"; evidence=\"meta_description_missing\""
+      },
+      {
+        "op_kind": "rewrite_section",
+        "status": "ready",
+        "llm_used": true,
+        "target": "section:The model does not execute code directly",
+        "related_gap_ids": null,
+        "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence."
+      }
+    ]
+  },
+  "md": {
+    "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
+    "job_id": "cb8e5ae8-ada4-4a3d-a6c8-7d846fd618b0",
+    "status": "completed",
+    "elapsed_sec": 302.0,
+    "llm_used": true,
+    "paid_llm": true,
+    "method": "grounded_synth_v1+openai_compatible:openai-gpt-4o-mini",
+    "stub_appeared": false,
+    "rewrite_section_ready": 2,
+    "add_explanation_ready": 0,
+    "rewrite_section_applied": true,
+    "add_explanation_applied": false,
+    "section_beyond_intro": true,
+    "intro_changed": true,
+    "intro_rewrite_applied": true,
+    "current_ne_recommended": true,
+    "cite_miss_full_count": 1,
+    "cite_miss_gaps": [
+      {
+        "id": "gap_cite_miss_e3383a8142",
+        "gap_type": "cite_miss",
+        "page_coverage": "full",
+        "query_id": "q_66de726666d4",
+        "kind": "missing_answer",
+        "topic": "The complete flow",
+        "disposition": "actionable",
+        "status": null
+      }
+    ],
+    "applied_ops": [
+      "op_0_retain_h1",
+      "op_2_add_meta_description",
+      "op_1_rewrite_section:Agents Zero to Hero #1: Building an AI Agent from Scratch w",
+      "evidence_grounded_rewrite:introduction",
+      "mvp_rewrite_section_section:The model does not execute code directly",
+      "evidence_grounded_rewrite_section"
+    ],
+    "ready_kinds": [
+      "metadata_seo_description",
+      "rewrite_introduction",
+      "rewrite_section"
+    ],
+    "llm_used_ops": [
+      {
+        "kind": "rewrite_section",
+        "llm_used": true,
+        "disposition": "actionable",
+        "status": "ready",
+        "target": "section:The model does not execute code directly"
+      }
+    ],
+    "grounded_synth_ops": [
+      {
+        "claims_count": 10,
+        "op_kind": "rewrite_section",
+        "target": "section:The model does not execute code directly"
+      }
+    ],
+    "source_chars": 12095,
+    "recommended_chars": 13131,
+    "full_diff_bytes": 3366,
+    "intro_diff_bytes": 1136,
+    "first_lost_stage": null,
+    "hard_pass": true,
+    "resumed": null,
+    "env_flags": {
+      "OPENAI_API_KEY": "SET",
+      "OPENAI_BASE_URL": "https://inference.do-ai.run/v1",
+      "OPENAI_MODEL": "openai-gpt-4o-mini",
+      "DO_MODEL_ACCESS_KEY": "SET",
+      "AEO_PAID_RETRIEVAL_OPT_IN": true,
+      "AEO_VISIBILITY_PROVIDER": "digitalocean_web_search",
+      "draft_paid_request": true,
+      "content_draft_request": true,
+      "generate_draft_alias": true
+    },
+    "options": {
+      "paid_retrieval_opt_in": true,
+      "content_optimization": true,
+      "content_draft": true,
+      "generate_draft": true,
+      "draft_paid": true,
+      "paid_llm_opt_in": true,
+      "content_draft_provider": "openai_compatible",
+      "provider": "auto",
+      "selection_seed": 42,
+      "query_top_n": 20,
+      "max_pages": 4,
+      "max_depth": 1
+    },
+    "section_ops": [
+      {
+        "op_kind": "rewrite_introduction",
+        "status": "ready",
+        "llm_used": false,
+        "target": "section:Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+        "related_gap_ids": null,
+        "reason_preview": "Answer-first introduction grounded in page topic; query=\"Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling\"; evidence=\"meta_description_missing\""
+      },
+      {
+        "op_kind": "rewrite_section",
+        "status": "ready",
+        "llm_used": true,
+        "target": "section:The model does not execute code directly",
+        "related_gap_ids": null,
+        "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence."
+      },
+      {
+        "op_kind": "rewrite_introduction",
+        "status": "ready",
+        "llm_used": false,
+        "target": "introduction",
+        "related_gap_ids": null,
+        "reason_preview": "Answer-first introduction grounded in page evidence."
+      },
+      {
+        "op_kind": "rewrite_section",
+        "status": "ready",
+        "llm_used": true,
+        "target": "section:The model does not execute code directly",
+        "related_gap_ids": null,
+        "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'What is The complete flow?' using in-section evidence."
+      }
+    ]
+  },
+  "diffs_summary": {
+    "html": {
+      "current_ne_recommended": true,
+      "intro_changed": true,
+      "full_diff_bytes": 2262,
+      "intro_diff_bytes": 1140,
+      "source_chars": 12095,
+      "recommended_chars": 12028
+    },
+    "md": {
+      "current_ne_recommended": true,
+      "intro_changed": true,
+      "full_diff_bytes": 3366,
+      "intro_diff_bytes": 1136,
+      "source_chars": 12095,
+      "recommended_chars": 13131
+    }
+  },
+  "hard_pass_criteria": {
+    "llm_used": true,
+    "paid_llm": true,
+    "stub": false,
+    "section_ops_beyond_intro_ready_or_applied": true,
+    "CURRENT_ne_RECOMMENDED": true,
+    "intro_rewrite_present": true
+  },
+  "dual_hard_pass": true,
+  "first_lost_stage": null,
+  "VERDICT": "PASS",
+  "artifact_path": "/workspace/live-pr45d-d253fb3-paid-dual/COS_PROOF.json",
+  "outdir": "/workspace/live-pr45d-d253fb3-paid-dual"
+}
