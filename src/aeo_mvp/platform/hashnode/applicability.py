@@ -12,12 +12,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 # Codes that assume author-controlled HTML/infra SEO — not actionable on Hashnode MD.
+# Note: REC_ADD_META_DESCRIPTION is NOT managed — Hashnode exposes SEO description
+# in article SEO settings (see capabilities.seo_description); remap to editor language.
 HASHNODE_PLATFORM_MANAGED_CODES = frozenset(
     {
         "REC_FIX_ROBOTS_BLOCK",
         "REC_REMOVE_NOINDEX",
         "REC_ADD_CANONICAL",
-        "REC_ADD_META_DESCRIPTION",
         "REC_ADD_JSONLD_ORG",
         "REC_BROADEN_JSONLD_COVERAGE",
         "REC_ADD_TYPE_FIT_SCHEMA",
@@ -121,8 +122,8 @@ _CONTENT_CODES = frozenset(
 _USER_EDITABLE_CODES = frozenset(
     {
         "REC_IMPROVE_TITLE",
-        # Meta description remaps to SEO description when shown; still filtered out
-        # of actionable when platform_managed for Hashnode MD (see managed set).
+        # Hashnode SEO settings — not raw HTML <meta>; remapped in _HASHNODE_ACTION_REMAP.
+        "REC_ADD_META_DESCRIPTION",
     }
 )
 
@@ -151,10 +152,11 @@ def is_hashnode_markdown_context(
 def categorize_recommendation(code: str) -> RecommendationCategory:
     if code in HASHNODE_PLATFORM_MANAGED_CODES:
         return RecommendationCategory.PLATFORM_MANAGED
-    if code in _CONTENT_CODES:
-        return RecommendationCategory.CONTENT_OPTIMIZATION
+    # Prefer user_editable over content_optimization when both apply (e.g. title / SEO).
     if code in _USER_EDITABLE_CODES:
         return RecommendationCategory.USER_EDITABLE
+    if code in _CONTENT_CODES:
+        return RecommendationCategory.CONTENT_OPTIMIZATION
     if code in ("REC_REVIEW_DEMO_ONLY",):
         return RecommendationCategory.INFORMATIONAL
     return RecommendationCategory.INFORMATIONAL

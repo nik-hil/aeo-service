@@ -156,11 +156,23 @@ def _attach_hashnode_recommended_markdown(
                     if isinstance(g, dict):
                         gap_flat.append(g)
         brief_wire = (wire.get("optimization_briefs") or [None])[0] or wire.get("brief") or {}
+        rec_hints: list[dict[str, Any]] = []
+        for d in wire.get("content_drafts") or []:
+            if isinstance(d, dict) and isinstance(d.get("recommendations"), list):
+                rec_hints.extend(
+                    r for r in d["recommendations"] if isinstance(r, dict)
+                )
+        # Soft signals from brief work_queue / action codes when present on wire.
+        for key in ("recommendations", "selected_recommendations"):
+            for r in wire.get(key) or []:
+                if isinstance(r, dict):
+                    rec_hints.append(r)
         recommended = generate_recommended_markdown(
             source_markdown=source_markdown,
             page_intelligence=intel,
             brief=brief_wire if isinstance(brief_wire, dict) else {},
             gaps=gap_flat,
+            recommendations=rec_hints or None,
             title_hint=title,
         )
         draft_entry = {

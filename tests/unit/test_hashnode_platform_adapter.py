@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aeo_mvp.platform.hashnode.applicability import (
     HASHNODE_PLATFORM_MANAGED_CODES,
+    RecommendationCategory,
     apply_hashnode_recommendation_filter,
     categorize_recommendation,
     is_hashnode_markdown_context,
@@ -37,10 +38,15 @@ def test_is_hashnode_markdown_context():
     )
 
 
-def test_filter_suppresses_jsonld_meta_canonical_robots():
+def test_filter_keeps_seo_description_suppresses_platform_managed():
+    """SEO description is user-editable on Hashnode; HTML/infra SEO is not."""
     recs = [
         {"code": "REC_ADD_JSONLD_ORG", "title": "Add JSON-LD"},
-        {"code": "REC_ADD_META_DESCRIPTION", "title": "Meta"},
+        {
+            "code": "REC_ADD_META_DESCRIPTION",
+            "title": "Add a meta description",
+            "recommended_action": 'Add a <meta name="description"> tag.',
+        },
         {"code": "REC_ADD_CANONICAL", "title": "Canonical"},
         {"code": "REC_FIX_ROBOTS_BLOCK", "title": "Robots"},
         {"code": "REC_ADD_ANSWER_FIRST", "title": "Answer first", "recommended_action": "x"},
@@ -54,12 +60,22 @@ def test_filter_suppresses_jsonld_meta_canonical_robots():
     )
     codes = {r["code"] for r in filtered}
     assert "REC_ADD_JSONLD_ORG" not in codes
-    assert "REC_ADD_META_DESCRIPTION" not in codes
     assert "REC_ADD_CANONICAL" not in codes
     assert "REC_FIX_ROBOTS_BLOCK" not in codes
+    assert "REC_ADD_META_DESCRIPTION" in codes
     assert "REC_ADD_ANSWER_FIRST" in codes
     assert "REC_ADD_FAQ_SECTION" in codes
-    # Remap content advice to Hashnode editor language.
+
+    seo = next(r for r in filtered if r["code"] == "REC_ADD_META_DESCRIPTION")
+    assert seo["applicability_category"] == RecommendationCategory.USER_EDITABLE.value
+    assert "SEO description" in seo["title"] or "SEO description" in seo["recommended_action"]
+    assert "Hashnode" in seo["recommended_action"]
+    assert "SEO settings" in seo["recommended_action"]
+    assert "<meta" not in seo["recommended_action"]
+    # Must not instruct authors to edit raw HTML meta — SEO settings only.
+    assert "Add a <meta" not in seo["recommended_action"]
+    assert 'name="description"' not in seo["recommended_action"]
+
     af = next(r for r in filtered if r["code"] == "REC_ADD_ANSWER_FIRST")
     assert "Hashnode" in af["recommended_action"]
     assert "<meta" not in af["recommended_action"]
@@ -78,12 +94,17 @@ def test_non_hashnode_filter_passthrough():
 def test_platform_managed_codes_categorized():
     for code in (
         "REC_ADD_JSONLD_ORG",
-        "REC_ADD_META_DESCRIPTION",
         "REC_ADD_CANONICAL",
         "REC_FIX_ROBOTS_BLOCK",
+        "REC_REMOVE_NOINDEX",
     ):
         assert code in HASHNODE_PLATFORM_MANAGED_CODES
         assert categorize_recommendation(code).value == "platform_managed"
+    assert "REC_ADD_META_DESCRIPTION" not in HASHNODE_PLATFORM_MANAGED_CODES
+    assert (
+        categorize_recommendation("REC_ADD_META_DESCRIPTION").value
+        == RecommendationCategory.USER_EDITABLE.value
+    )
 
 
 def test_recommended_markdown_preserves_content_and_label():
