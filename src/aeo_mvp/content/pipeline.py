@@ -1,4 +1,4 @@
-"""Phase 5 pipeline: page_intel → gaps → brief → draft."""
+"""Phase 5 pipeline: page_intel → gaps → brief → draft (+ question opportunities)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,10 @@ from aeo_mvp.content.draft import build_optimized_draft, resolve_draft_generator
 from aeo_mvp.content.gaps import build_content_gap_report
 from aeo_mvp.content.models import ContentOptimizationResult, PageIntelligence
 from aeo_mvp.content.page_intel import extract_page_intelligence
+from aeo_mvp.content.question_opportunities import (
+    build_question_opportunity_analysis,
+    extract_article_text,
+)
 
 
 def run_content_optimization(
@@ -25,10 +29,13 @@ def run_content_optimization(
     llm_api_key: str | None = None,
     visibility_observations: list[dict[str, Any]] | None = None,
     source_excerpts: list[str] | None = None,
+    source_markdown: str | None = None,
 ) -> ContentOptimizationResult:
     """Grounded optimization. Gaps+brief deterministic. Draft behind Protocol.
 
     Defaults: generate_draft=false, draft_paid=false, paid_retrieval=false.
+    Question opportunity analysis reuses the same page/gaps/queryset inputs
+    (no parallel AEO pipeline).
     """
     cfg = dict(config or {})
     cfg.setdefault("generate_draft", generate_draft)
@@ -65,6 +72,26 @@ def run_content_optimization(
         generator=generator,
         source_excerpts=source_excerpts,
     )
+
+    article_text = extract_article_text(
+        html=html,
+        source_markdown=source_markdown or cfg.get("source_markdown"),
+        page=page,
+    )
+    if source_excerpts:
+        article_text = (article_text + "\n" + "\n".join(source_excerpts)).strip()
+
+    q_analysis = build_question_opportunity_analysis(
+        page,
+        gaps,
+        article_text=article_text,
+        queryset=queryset,
+        visibility_observations=visibility_observations,
+        llm_json=cfg.get("question_analysis_llm_json"),
+        provider=cfg.get("question_analysis_provider"),
+        model=cfg.get("question_analysis_model") or cfg.get("llm_model"),
+    )
+
     return ContentOptimizationResult(
         page_intelligence=page,
         gap_report=gaps,
@@ -72,4 +99,5 @@ def run_content_optimization(
         draft=draft,
         paid_retrieval=False,
         paid_llm=bool(draft.paid_llm),
+        question_opportunity_analysis=q_analysis.to_dict(),
     )

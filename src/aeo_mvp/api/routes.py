@@ -320,6 +320,7 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
                 draft_paid=draft_paid,
                 llm_api_key=api_key,
                 allow_empty_html=bool(body.allow_empty_html),
+                source_markdown=page_extras.get("source_markdown"),
             )
             return _attach_hashnode_recommended_markdown(
                 wire,

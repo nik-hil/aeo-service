@@ -940,10 +940,11 @@ class ContentOptimizationResult:
     draft: OptimizedContentDraft
     paid_retrieval: bool = False
     paid_llm: bool = False
+    question_opportunity_analysis: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """AUTHORITATIVE report keys (lists for gaps/briefs/drafts)."""
-        return {
+        out: dict[str, Any] = {
             "page_intelligence": self.page_intelligence.to_dict(),
             "content_gaps": [self.gap_report.to_dict()],
             "optimization_briefs": [self.brief.to_dict()],
@@ -955,3 +956,6 @@ class ContentOptimizationResult:
             "paid_retrieval": self.paid_retrieval,
             "paid_llm": self.paid_llm or self.draft.paid or self.draft.paid_llm,
         }
+        if self.question_opportunity_analysis is not None:
+            out["question_opportunity_analysis"] = self.question_opportunity_analysis
+        return out

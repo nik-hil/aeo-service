@@ -48,18 +48,23 @@ from services.adapters import (
     adapt_evidence,
     adapt_overview,
     adapt_pages,
+    adapt_question_opportunities,
     adapt_recommendations,
     adapt_recommended_markdown,
     adapt_recommended_warnings_markdown,
     comparison_html,
     enrichment_error_markdown,
+    error_question_opportunities_markdown,
     loading_enrichment_markdown,
+    loading_question_opportunities_markdown,
     merge_page_opt_into_report,
     overview_markdown,
     page_header,
     page_select_choices,
     page_url_from_choice,
     pages_table,
+    question_copy_payloads,
+    question_opportunities_markdown,
     recommendations_markdown,
 )
 from services.api_client import AeoApiClient, AeoApiError, user_safe_enrichment_error
@@ -99,7 +104,8 @@ STAGE_LABELS = {
 EMPTY_OVERVIEW = "_Run an analysis to see AEO Health, gaps, and recommendations._"
 EMPTY_DETAIL = (
     "_Select a page (multi-page) or run analysis (single-page) to inspect "
-    "CURRENT → RECOMMENDED → CURRENT vs RECOMMENDED → Evidence → WHY THESE CHANGES._"
+    "CURRENT → RECOMMENDED → CURRENT vs RECOMMENDED → Evidence → WHY THESE CHANGES "
+    "→ AEO QUESTIONS & OPPORTUNITIES._"
 )
 EMPTY_RECS = "_No recommendation detail yet._"
 EMPTY_BRIEF = ""
@@ -111,11 +117,80 @@ EMPTY_COMPARE = (
     "</div>"
 )
 EMPTY_HEADER = ""
+EMPTY_QOA = (
+    "### AEO QUESTIONS & OPPORTUNITIES\n\n"
+    "_Select a page to analyze AEO questions._\n"
+)
+EMPTY_COPY = ""
 OPP_HEADERS = ["#", "Kind", "Title", "Summary", "Page", "Signal"]
 PAGE_HEADERS = ["Title", "URL", "Depth", "Status", "Error"]
 
 AnalysisOutput = tuple[Any, ...]
 DetailOutput = tuple[Any, ...]
+
+
+def _empty_qoa_fields() -> tuple[Any, ...]:
+    import gradio as gr
+
+    return (
+        EMPTY_QOA,
+        EMPTY_COPY,
+        EMPTY_COPY,
+        EMPTY_COPY,
+        gr.update(choices=[], value=None),
+        "[]",
+    )
+
+
+def _qoa_fields_from_report(
+    report: dict[str, Any] | None, page_url: str | None
+) -> tuple[Any, ...]:
+    import json
+
+    import gradio as gr
+
+    md = question_opportunities_markdown(report, page_url=page_url)
+    cq, co, cc, per = question_copy_payloads(report, page_url=page_url)
+    raw = adapt_question_opportunities(report, page_url=page_url)
+    labels: list[str] = []
+    for i, q in enumerate(raw.get("questions") or []):
+        if not isinstance(q, dict):
+            continue
+        labels.append(f"{i + 1}. {str(q.get('question') or '')[:90]}")
+    return (
+        md,
+        cq,
+        co,
+        cc,
+        gr.update(choices=labels, value=labels[0] if labels else None),
+        json.dumps(per),
+    )
+
+
+def _loading_qoa_fields() -> tuple[Any, ...]:
+    import gradio as gr
+
+    return (
+        loading_question_opportunities_markdown(),
+        EMPTY_COPY,
+        EMPTY_COPY,
+        EMPTY_COPY,
+        gr.update(choices=[], value=None),
+        "[]",
+    )
+
+
+def _error_qoa_fields(message: str) -> tuple[Any, ...]:
+    import gradio as gr
+
+    return (
+        error_question_opportunities_markdown(message),
+        EMPTY_COPY,
+        EMPTY_COPY,
+        EMPTY_COPY,
+        gr.update(choices=[], value=None),
+        "[]",
+    )
 
 
 def _client() -> AeoApiClient:
@@ -202,6 +277,13 @@ def detail_panels(
     )
 
 
+def detail_qoa_fields(
+    report: dict[str, Any] | None, page_url: str | None
+) -> tuple[Any, ...]:
+    """QOA markdown + copy payloads for Gradio outputs."""
+    return _qoa_fields_from_report(report, page_url)
+
+
 def _compare_panel(
     report: dict[str, Any],
     page_url: str | None,
@@ -228,6 +310,7 @@ def _blank_ui(state: AnalysisState, status: str, *, kind: str = "err") -> Analys
         EMPTY_RECOMMENDED_META,
         EMPTY_EVIDENCE,
         EMPTY_COMPARE,
+        *_empty_qoa_fields(),
         gr.update(choices=[], value=None),
         gr.update(choices=[], value=None),
     )
@@ -253,6 +336,7 @@ def _loading_detail(state: AnalysisState, page_url: str) -> DetailOutput:
             "Observed CURRENT Markdown stays visible while this loads."
             "</p></div>"
         ),
+        *_loading_qoa_fields(),
     )
 
 
@@ -280,6 +364,7 @@ def _terminal_detail(
             recommended_meta,
             evidence_md,
             compare,
+            *detail_qoa_fields(display, page_url),
         )
     err = entry.error_message or "Optimization analysis unavailable."
     before, _, _, _, _ = detail_panels(base, page_url, pages_payload=state.pages)
@@ -295,6 +380,7 @@ def _terminal_detail(
             f'<div class="aeo-md-compare"><p><strong>Could not load CURRENT vs RECOMMENDED:</strong> '
             f"{escape_text(err)}</p></div>"
         ),
+        *_error_qoa_fields(err),
     )
 
 
@@ -315,9 +401,11 @@ def _analysis_output(
     compare: str,
     page_choices: list[tuple[str, str]] | list[str],
     selected: str,
+    qoa_fields: tuple[Any, ...] | None = None,
 ) -> AnalysisOutput:
     import gradio as gr
 
+    qoa = qoa_fields if qoa_fields is not None else _empty_qoa_fields()
     return (
         state,
         gr_update_status(status_msg, kind="ok"),
@@ -332,6 +420,7 @@ def _analysis_output(
         recommended_meta,
         evidence_md,
         compare,
+        *qoa,
         gr.update(choices=page_choices, value=selected),
         gr.update(choices=opportunity_choices(state), value=None),
     )
@@ -457,6 +546,7 @@ def run_analysis(
                 compare=_compare_panel(display, selected, pages_payload=pages),
                 page_choices=page_choices,
                 selected=selected,
+                qoa_fields=detail_qoa_fields(display, selected),
             )
             return
 
@@ -479,6 +569,7 @@ def run_analysis(
             compare=loading[7],
             page_choices=page_choices,
             selected=selected,
+            qoa_fields=loading[8:14],
         )
 
         if role == "owner":
@@ -539,6 +630,12 @@ def run_analysis(
                 f"{escape_text(err)}</p></div>"
             )
             header = page_header(report, pages, selected)
+        if entry.status == EnrichmentStatus.SUCCESS and entry.payload:
+            qoa_fields = detail_qoa_fields(display, selected)
+        else:
+            qoa_fields = _error_qoa_fields(
+                entry.error_message or "Optimization analysis unavailable."
+            )
         yield _analysis_output(
             state,
             status_msg=status_msg,
@@ -555,6 +652,7 @@ def run_analysis(
             compare=compare,
             page_choices=page_choices,
             selected=selected,
+            qoa_fields=qoa_fields,
         )
     except AeoApiError as exc:
         state.clear_results()
@@ -577,6 +675,7 @@ def _empty_detail(state: AnalysisState) -> DetailOutput:
         EMPTY_RECOMMENDED_META,
         EMPTY_EVIDENCE,
         EMPTY_COMPARE,
+        *_empty_qoa_fields(),
     )
 
 
@@ -659,6 +758,7 @@ async def on_select_page(
             recommended_meta,
             evidence_md,
             compare,
+            *detail_qoa_fields(display, page_url),
         )
         return
 
@@ -682,6 +782,7 @@ async def on_select_page(
             recommended_meta,
             evidence_md,
             compare,
+            *detail_qoa_fields(base, page_url),
         )
         return
 
@@ -705,6 +806,7 @@ async def on_select_page(
                 recommended_meta,
                 evidence_md,
                 compare,
+                *detail_qoa_fields(base, page_url),
             )
         return
 
@@ -770,6 +872,7 @@ async def on_select_opportunity_choice(
         EMPTY_RECOMMENDED_META,
         EMPTY_EVIDENCE,
         EMPTY_COMPARE,
+        *_empty_qoa_fields(),
     )
     if not state.report or not choice or not state.opportunities:
         yield blank
@@ -800,6 +903,7 @@ async def on_page_table_select(
         EMPTY_RECOMMENDED_META,
         EMPTY_EVIDENCE,
         EMPTY_COMPARE,
+        *_empty_qoa_fields(),
     )
     rows = adapt_pages(state.pages)
     if not state.report or not rows:
@@ -977,6 +1081,126 @@ def build_app():
                             "audit / explanation, visually secondary._"
                         )
                         recs_md = gr.Markdown(EMPTY_RECS)
+                    with gr.Tab("AEO QUESTIONS & OPPORTUNITIES"):
+                        gr.Markdown(
+                            "_Auto-generated AEO questions with answerability, evidence "
+                            "validated against article text, and grounded proposed changes._"
+                        )
+                        qoa_md = gr.Markdown(EMPTY_QOA, elem_id="aeo-qoa-section")
+                        with gr.Row():
+                            copy_questions_btn = gr.Button(
+                                "Copy Questions",
+                                elem_id="aeo-copy-questions",
+                                variant="secondary",
+                            )
+                            copy_opportunities_btn = gr.Button(
+                                "Copy Opportunities",
+                                elem_id="aeo-copy-opportunities",
+                                variant="secondary",
+                            )
+                            copy_changes_btn = gr.Button(
+                                "Copy Recommended Changes",
+                                elem_id="aeo-copy-recommended-changes",
+                                variant="secondary",
+                            )
+                        copy_feedback = gr.Markdown("", elem_id="aeo-qoa-copy-feedback")
+                        copy_questions_text = gr.Textbox(
+                            value=EMPTY_COPY,
+                            visible=False,
+                            elem_id="aeo-qoa-copy-questions-text",
+                        )
+                        copy_opportunities_text = gr.Textbox(
+                            value=EMPTY_COPY,
+                            visible=False,
+                            elem_id="aeo-qoa-copy-opportunities-text",
+                        )
+                        copy_changes_text = gr.Textbox(
+                            value=EMPTY_COPY,
+                            visible=False,
+                            elem_id="aeo-qoa-copy-changes-text",
+                        )
+                        per_question_dd = gr.Dropdown(
+                            choices=[],
+                            label="Per-question copy",
+                            info="Select a question card, then Copy selected question.",
+                            elem_id="aeo-qoa-per-question",
+                        )
+                        per_question_json = gr.Textbox(
+                            value="[]",
+                            visible=False,
+                            elem_id="aeo-qoa-per-question-json",
+                        )
+                        copy_one_btn = gr.Button(
+                            "Copy selected question",
+                            elem_id="aeo-copy-one-question",
+                            variant="secondary",
+                        )
+
+                        _CLIP_JS = (
+                            "(text) => { "
+                            "navigator.clipboard.writeText(text ?? ''); "
+                            "return 'Copied'; "
+                            "}"
+                        )
+
+                        def _copied_label(msg: str) -> str:
+                            return f"**{msg}**" if msg else ""
+
+                        copy_questions_btn.click(
+                            fn=_copied_label,
+                            inputs=[copy_questions_text],
+                            outputs=[copy_feedback],
+                            js=_CLIP_JS,
+                        )
+                        copy_opportunities_btn.click(
+                            fn=_copied_label,
+                            inputs=[copy_opportunities_text],
+                            outputs=[copy_feedback],
+                            js=_CLIP_JS,
+                        )
+                        copy_changes_btn.click(
+                            fn=_copied_label,
+                            inputs=[copy_changes_text],
+                            outputs=[copy_feedback],
+                            js=_CLIP_JS,
+                        )
+
+                        def _copy_selected_question(choice: str | None, payload: str) -> str:
+                            import json
+
+                            try:
+                                items = json.loads(payload or "[]")
+                            except json.JSONDecodeError:
+                                return "**Copy failed**"
+                            if not choice or not isinstance(items, list) or not items:
+                                return "**Nothing to copy**"
+                            try:
+                                idx = int(str(choice).split(".", 1)[0]) - 1
+                            except ValueError:
+                                idx = 0
+                            if idx < 0 or idx >= len(items):
+                                return "**Nothing to copy**"
+                            return "**Copied**"
+
+                        copy_one_btn.click(
+                            fn=_copy_selected_question,
+                            inputs=[per_question_dd, per_question_json],
+                            outputs=[copy_feedback],
+                            js=(
+                                "(choice, payload) => { "
+                                "let items = []; "
+                                "try { items = JSON.parse(payload || '[]'); } catch (e) { items = []; } "
+                                "let idx = 0; "
+                                "if (choice) { "
+                                "  const n = parseInt(String(choice).split('.')[0], 10); "
+                                "  if (!Number.isNaN(n) && n > 0) idx = n - 1; "
+                                "} "
+                                "const text = (items && items[idx]) ? items[idx] : ''; "
+                                "navigator.clipboard.writeText(text); "
+                                "return [choice, payload]; "
+                                "}"
+                            ),
+                        )
 
         outputs = [
             state,
@@ -992,6 +1216,12 @@ def build_app():
             recommended_meta,
             evidence_md,
             compare_md,
+            qoa_md,
+            copy_questions_text,
+            copy_opportunities_text,
+            copy_changes_text,
+            per_question_dd,
+            per_question_json,
             page_select,
             opp_select,
         ]
@@ -1029,6 +1259,7 @@ def build_app():
                 EMPTY_RECOMMENDED_META,
                 EMPTY_EVIDENCE,
                 EMPTY_COMPARE,
+                *_empty_qoa_fields(),
                 gr.update(choices=[], value=None),
                 gr.update(choices=[], value=None),
                 "",
@@ -1055,6 +1286,12 @@ def build_app():
             recommended_meta,
             evidence_md,
             compare_md,
+            qoa_md,
+            copy_questions_text,
+            copy_opportunities_text,
+            copy_changes_text,
+            per_question_dd,
+            per_question_json,
         ]
         sync_outputs = [state, page_select, *detail_outputs[1:]]
 

@@ -23,6 +23,7 @@ from aeo_mvp.content.draft import (
     resolve_draft_generator,
 )
 from aeo_mvp.content.gaps import build_content_gap_report, page_coverage_status
+from aeo_mvp.content.grounded_synth import synthesize_proposed_change
 from aeo_mvp.content.models import (
     BRIEF_VERSION,
     CONTENT_OPTIMIZATION_METHODOLOGY,
@@ -51,6 +52,9 @@ from aeo_mvp.content.models import (
 )
 from aeo_mvp.content.page_intel import extract_page_intelligence
 from aeo_mvp.content.pipeline import run_content_optimization
+from aeo_mvp.content.question_opportunities import (
+    build_question_opportunity_analysis,
+)
 
 __all__ = [
     "PAGE_INTEL_VERSION",
@@ -88,4 +92,6 @@ __all__ = [
     "PaidLLMDraftGenerator",
     "resolve_draft_generator",
     "run_content_optimization",
+    "build_question_opportunity_analysis",
+    "synthesize_proposed_change",
 ]

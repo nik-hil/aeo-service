@@ -456,9 +456,11 @@ def optimize_job_pages(
     content_drafts: list[dict[str, Any]] = []
     page_ids: list[str] = []
     primary_intel: dict[str, Any] | None = None
+    primary_qoa: dict[str, Any] | None = None
     any_paid_llm = False
 
     for idx, page in enumerate(selected):
+        page_md = getattr(page, "source_markdown", None)
         result = run_content_optimization(
             html=page.html,
             url=page.url or "",
@@ -470,6 +472,7 @@ def optimize_job_pages(
             draft_paid=draft_paid,
             llm_api_key=api_key,
             visibility_observations=visibility_observations,
+            source_markdown=page_md,
         )
         wire = result.to_dict()
         wire = _attach_hashnode_recommended_markdown(
@@ -477,7 +480,7 @@ def optimize_job_pages(
             page_url=page.url or "",
             page_id=page.id,
             title=page.title,
-            source_markdown=getattr(page, "source_markdown", None),
+            source_markdown=page_md,
             content_representation=getattr(page, "content_representation", None),
             source_url=getattr(page, "source_url", None),
             canonical_url=getattr(page, "canonical_url", None) or page.url,
@@ -486,13 +489,14 @@ def optimize_job_pages(
 
         if idx == 0:
             primary_intel = intel
+            primary_qoa = wire.get("question_opportunity_analysis")
         content_gaps.extend(wire.get("content_gaps") or [])
         optimization_briefs.extend(wire.get("optimization_briefs") or [])
         content_drafts.extend(wire.get("content_drafts") or [])
         page_ids.append(page.id)
         any_paid_llm = any_paid_llm or bool(wire.get("paid_llm"))
 
-    return {
+    out = {
         **base,
         "status": "completed",
         "pages_optimized": len(page_ids),
@@ -508,6 +512,9 @@ def optimize_job_pages(
         "paid_llm": any_paid_llm,
         "paid_retrieval": False,
     }
+    if primary_qoa is not None:
+        out["question_opportunity_analysis"] = primary_qoa
+    return out
 
 
 def _load_queryset_from_job(session: Session, job: Job) -> dict[str, Any] | None:
@@ -636,6 +643,8 @@ def run_from_resolved(
     draft_paid: bool,
     llm_api_key: str | None,
     allow_empty_html: bool = False,
+    source_markdown: str | None = None,
+    visibility_observations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if not (html and str(html).strip()) and not allow_empty_html:
         raise OptimizationRequestError(
@@ -651,6 +660,8 @@ def run_from_resolved(
         generate_draft=generate_draft,
         draft_paid=draft_paid,
         llm_api_key=llm_api_key,
+        source_markdown=source_markdown,
+        visibility_observations=visibility_observations,
     )
     return result.to_dict()
 

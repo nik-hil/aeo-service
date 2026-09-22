@@ -491,6 +491,10 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
                 content_optimization.get("paid_retrieval", False)
             )
             report["paid_llm"] = bool(content_optimization.get("paid_llm", False))
+            if content_optimization.get("question_opportunity_analysis") is not None:
+                report["question_opportunity_analysis"] = content_optimization[
+                    "question_opportunity_analysis"
+                ]
 
     emitted = report["emitted_at"]
     existing = session.query(Report).filter(Report.job_id == job.id).one_or_none()

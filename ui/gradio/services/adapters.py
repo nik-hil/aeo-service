@@ -1157,7 +1157,84 @@ def merge_page_opt_into_report(report: dict[str, Any], opt: dict[str, Any]) -> d
         merged["content_drafts"] = opt["content_drafts"]
     elif opt.get("draft"):
         merged["content_drafts"] = [opt["draft"]]
+    if opt.get("question_opportunity_analysis") is not None:
+        merged["question_opportunity_analysis"] = opt["question_opportunity_analysis"]
     return merged
+
+
+def adapt_question_opportunities(
+    report: dict[str, Any] | None,
+    *,
+    page_url: str | None = None,
+) -> dict[str, Any]:
+    """Return question_opportunity_analysis dict for the selected page (or empty)."""
+    if not report:
+        return {"status": "unavailable", "questions": [], "page_url": page_url or ""}
+    raw = report.get("question_opportunity_analysis")
+    if not isinstance(raw, dict):
+        return {"status": "unavailable", "questions": [], "page_url": page_url or ""}
+    # If analysis is for another page URL, treat as unavailable for this selection.
+    analysis_url = str(raw.get("page_url") or "").rstrip("/")
+    if page_url and analysis_url and analysis_url != str(page_url).rstrip("/"):
+        return {
+            "status": "unavailable",
+            "questions": [],
+            "page_url": page_url,
+            "warnings": ["analysis_page_mismatch"],
+        }
+    return raw
+
+
+def question_opportunities_markdown(
+    report: dict[str, Any] | None,
+    *,
+    page_url: str | None = None,
+) -> str:
+    from aeo_mvp.content.question_opportunities import analysis_to_markdown
+
+    return analysis_to_markdown(adapt_question_opportunities(report, page_url=page_url))
+
+
+def question_copy_payloads(
+    report: dict[str, Any] | None,
+    *,
+    page_url: str | None = None,
+) -> tuple[str, str, str, list[str]]:
+    """Plain clipboard payloads: questions, opportunities, recommended changes, per-q."""
+    from aeo_mvp.content.question_opportunities import (
+        QuestionOpportunityAnalysis,
+        copy_text_one_question,
+        copy_text_opportunities,
+        copy_text_questions,
+        copy_text_recommended_changes,
+    )
+
+    raw = adapt_question_opportunities(report, page_url=page_url)
+    analysis = QuestionOpportunityAnalysis.from_dict(raw)
+    per_q = [copy_text_one_question(q) for q in analysis.questions]
+    return (
+        copy_text_questions(analysis),
+        copy_text_opportunities(analysis),
+        copy_text_recommended_changes(analysis),
+        per_q,
+    )
+
+
+def loading_question_opportunities_markdown() -> str:
+    return (
+        "### AEO QUESTIONS & OPPORTUNITIES\n\n"
+        "_Analyzing AEO questions…_\n\n"
+        "_Observed page signals stay visible in CURRENT while this loads._"
+    )
+
+
+def error_question_opportunities_markdown(message: str) -> str:
+    return (
+        "### AEO QUESTIONS & OPPORTUNITIES\n\n"
+        "**AEO question analysis unavailable.** "
+        f"{escape_text(message)}\n\n"
+        "_The rest of this page report remains valid._"
+    )
 
 
 @dataclass
