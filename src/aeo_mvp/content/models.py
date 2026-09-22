@@ -60,9 +60,13 @@ EditAction = Literal["retain", "rewrite", "expand", "remove", "add"]
 # Alias — Optimizer ChangeAction
 ChangeAction = EditAction
 
-# Substantive edit-op kinds (content-opt ownership). Apply only when grounded.
+# Locked MVP op kinds (Architect + Content Optimizer design lock).
 OpKind = Literal[
     "rewrite_introduction",
+    "metadata_seo_description",
+    "add_faq_from_existing_qa",
+    "add_howto_from_existing_steps",
+    # Deferred / non-MVP — emit as needs_author_input or unsupported only.
     "rewrite_section",
     "add_definition",
     "add_answer_first",
@@ -75,30 +79,47 @@ OpKind = Literal[
     "author_input_required",
 ]
 
+ApplyMode = Literal[
+    "replace_region",
+    "insert_after",
+    "metadata_only",
+    "author_input_required",
+    "unsupported",
+]
+
+OpStatus = Literal["ready", "needs_author_input", "unsupported"]
+
 # Disposition of a gap or edit op after evidence diagnosis.
 GapDisposition = Literal["actionable", "author_input_required", "deferred"]
 
-# Op kinds with a safe Markdown apply path today.
+# Op kinds with a safe apply path in this MVP slice.
 IMPLEMENTED_OP_KINDS: frozenset[str] = frozenset(
     {
         "rewrite_introduction",
+        "metadata_seo_description",
+        "add_faq_from_existing_qa",
+        "add_howto_from_existing_steps",
+    }
+)
+
+# Contract-only — never invent; surface as needs_author_input / unsupported.
+DEFERRED_OP_KINDS: frozenset[str] = frozenset(
+    {
         "rewrite_section",
         "add_definition",
         "add_answer_first",
         "add_process_summary",
         "clarify_relationship",
-    }
-)
-
-# Contract-only until grounding + apply are safe.
-DEFERRED_OP_KINDS: frozenset[str] = frozenset(
-    {
         "expand_concept",
         "strengthen_example",
         "improve_conclusion",
         "improve_terminology",
     }
 )
+
+# Minimum existing on-page evidence for promote-only FAQ / HowTo.
+FAQ_MIN_EXISTING_QA_PAIRS = 2
+HOWTO_MIN_EXISTING_STEPS = 3
 
 Severity = Literal["high", "medium", "low"]
 # Compat for older callers that used critical/info (mapped at emit time)
@@ -705,6 +726,67 @@ class ContentGapReport:
 
 
 @dataclass
+class ContentChangeOperation:
+    """Thin generic change-op (opt engine ownership; platform adapters map apply).
+
+    Hashnode Markdown generator consumes ``status=ready`` ops only and never
+    invents ``proposed`` text.
+    """
+
+    action: EditAction
+    target_kind: str
+    target_locator: str | None = None
+    original: str | None = None
+    proposed: str | None = None
+    evidence: list[str] = field(default_factory=list)
+    related_gap_ids: list[str] = field(default_factory=list)
+    related_query_ids: list[str] = field(default_factory=list)
+    reason: str = ""
+    apply_mode: ApplyMode = "unsupported"
+    status: OpStatus = "unsupported"
+    op_kind: OpKind | str | None = None
+    expected_aeo_benefit: str = ""
+    op_id: str = ""
+    # Optional platform hint (never required for apply).
+    platform_hint: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def to_edit_op_dict(self) -> dict[str, Any]:
+        """Wire shape compatible with EditOp / MD generator consumers."""
+        disposition: GapDisposition | None = None
+        if self.status == "ready":
+            disposition = "actionable"
+        elif self.status == "needs_author_input":
+            disposition = "author_input_required"
+        elif self.status == "unsupported":
+            disposition = "deferred"
+        return {
+            "action": self.action,
+            "target": self.target_locator or self.target_kind,
+            "target_kind": self.target_kind,
+            "target_locator": self.target_locator,
+            "anchor_locator": self.target_locator if self.action == "add" else None,
+            "instruction": self.reason,
+            "reason": self.reason,
+            "original": self.original,
+            "proposed": self.proposed,
+            "evidence": list(self.evidence),
+            "related_gap_ids": list(self.related_gap_ids),
+            "related_query_ids": list(self.related_query_ids),
+            "op_kind": self.op_kind or self.target_kind,
+            "disposition": disposition,
+            "apply_mode": self.apply_mode,
+            "status": self.status,
+            "expected_aeo_benefit": self.expected_aeo_benefit,
+            "op_id": self.op_id
+            or f"{self.action}:{self.target_locator or self.target_kind}"[:80],
+            "platform_hint": self.platform_hint,
+        }
+
+
+@dataclass
 class EditOp:
     op_id: str
     action: EditAction
@@ -725,6 +807,9 @@ class EditOp:
     op_kind: OpKind | str | None = None
     disposition: GapDisposition | None = None
     expected_aeo_benefit: str = ""
+    apply_mode: ApplyMode | None = None
+    status: OpStatus | None = None
+    target_kind: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -746,6 +831,9 @@ class ContentChange:
     op_kind: OpKind | str | None = None
     disposition: GapDisposition | None = None
     expected_aeo_benefit: str = ""
+    apply_mode: ApplyMode | None = None
+    status: OpStatus | None = None
+    target_kind: str | None = None
 
     def to_edit_op(self, *, idx: int = 0) -> EditOp:
         return EditOp(
@@ -765,6 +853,9 @@ class ContentChange:
             op_kind=self.op_kind,
             disposition=self.disposition,
             expected_aeo_benefit=self.expected_aeo_benefit,
+            apply_mode=self.apply_mode,
+            status=self.status,
+            target_kind=self.target_kind,
         )
 
     def to_dict(self) -> dict[str, Any]:

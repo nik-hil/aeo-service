@@ -208,6 +208,7 @@ def _attach_hashnode_recommended_markdown(
             h1=str(intel.get("h1") or intel.get("title") or "").strip() or None,
             gaps=gap_flat,
             coverage_by_query=coverage_by_query,
+            brief=brief_wire,
         )
         # Extract substantive change-plan metadata (not applied to MD body).
         substantive_plan: dict[str, Any] | None = None
@@ -303,6 +304,9 @@ def _attach_hashnode_recommended_markdown(
                 "op_kind",
                 "disposition",
                 "expected_aeo_benefit",
+                "apply_mode",
+                "status",
+                "target_kind",
             ):
                 if src.get(field) is not None:
                     out[field] = src[field]

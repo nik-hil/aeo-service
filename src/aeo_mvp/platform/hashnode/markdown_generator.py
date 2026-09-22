@@ -183,6 +183,9 @@ def _normalize_op(raw: Any) -> dict[str, Any] | None:
     op_kind = str(raw.get("op_kind") or "").strip() or None
     disposition = str(raw.get("disposition") or "").strip() or None
     expected_aeo_benefit = str(raw.get("expected_aeo_benefit") or "").strip()
+    apply_mode = str(raw.get("apply_mode") or "").strip() or None
+    status = str(raw.get("status") or "").strip() or None
+    target_kind = str(raw.get("target_kind") or "").strip() or None
     return {
         "action": action,
         "target": target,
@@ -195,6 +198,9 @@ def _normalize_op(raw: Any) -> dict[str, Any] | None:
         "op_kind": op_kind,
         "disposition": disposition,
         "expected_aeo_benefit": expected_aeo_benefit,
+        "apply_mode": apply_mode,
+        "status": status,
+        "target_kind": target_kind,
     }
 
 
@@ -496,45 +502,56 @@ def _section_heading_from_target(target: str) -> str | None:
     return None
 
 
-def _is_substantive_section_op(op: dict[str, Any], *, h1: str | None) -> bool:
-    """True for non-intro section ops that carry a grounded proposed payload."""
-    if op.get("disposition") == "author_input_required":
+def _is_ready_mvp_body_op(op: dict[str, Any], *, h1: str | None) -> bool:
+    """True for MVP ready body ops the generator may apply (not invent)."""
+    status = str(op.get("status") or "").strip()
+    apply_mode = str(op.get("apply_mode") or "").strip()
+    disposition = str(op.get("disposition") or "").strip()
+    if status == "needs_author_input" or apply_mode == "author_input_required":
         return False
-    if str(op.get("op_kind") or "") in {"_substantive_change_plan", "author_input_required"}:
+    if disposition == "author_input_required":
+        return False
+    if status and status not in {"ready", ""}:
+        # unsupported / deferred → never apply
+        if status in {"unsupported", "needs_author_input"}:
+            return False
+    if apply_mode in {"unsupported", "author_input_required", "metadata_only"}:
+        return False
+    op_kind = str(op.get("op_kind") or "")
+    if op_kind in {
+        "_substantive_change_plan",
+        "author_input_required",
+        "rewrite_section",
+        "add_definition",
+        "add_answer_first",
+        "add_process_summary",
+        "clarify_relationship",
+        "expand_concept",
+        "strengthen_example",
+        "improve_conclusion",
+        "improve_terminology",
+    }:
         return False
     if _is_intro_rewrite_op(op, h1=h1):
         return False
     proposed = op.get("proposed")
     if not isinstance(proposed, str) or not proposed.strip():
         return False
-    target = (op.get("target") or "").strip()
-    heading = _section_heading_from_target(target)
-    if not heading:
-        return False
-    if h1 and heading.lower() == h1.lower():
-        return False
-    action = op.get("action") or ""
-    op_kind = str(op.get("op_kind") or "")
-    if action in {"rewrite", "expand"} or op_kind in {
-        "rewrite_section",
-        "add_definition",
-        "add_answer_first",
-        "add_process_summary",
-        "clarify_relationship",
-    }:
-        return True
-    if action == "add" and (
-        op_kind
-        in {
-            "add_definition",
-            "add_answer_first",
-            "add_process_summary",
-            "clarify_relationship",
-        }
-        or (isinstance(op.get("proposed"), str) and op.get("proposed").strip())
-    ):
-        return True
+    # FAQ / HowTo promote-only kinds
+    if op_kind in {"add_faq_from_existing_qa", "add_howto_from_existing_steps"}:
+        return status in {"ready", ""} or disposition == "actionable"
     return False
+
+
+def _apply_append_block(md: str, proposed: str) -> tuple[str, bool]:
+    """Append a proposed block to the end of the document (idempotent)."""
+    proposed = (proposed or "").strip()
+    if not proposed:
+        return md, False
+    if proposed in (md or ""):
+        return md, False
+    out = (md or "").rstrip() + "\n\n" + proposed.strip() + "\n"
+    return out, True
 
 
 def _existing_faq_qa_pairs(md: str) -> list[tuple[str, str]]:
@@ -948,90 +965,75 @@ def generate_recommended_markdown(
                     # Already matches proposed (idempotent).
                     warnings.append("intro_rewrite_idempotent_no_change")
 
-    # --- substantive section ops (apply validated proposed only) ---
-    applied_section_targets: set[str] = set()
+    # --- MVP ready FAQ / HowTo promote ops (proposed assembled upstream only) ---
     for op in ops:
-        if not _is_substantive_section_op(op, h1=h1):
+        if not _is_ready_mvp_body_op(op, h1=h1):
             continue
-        heading = _section_heading_from_target(op.get("target") or "")
-        if not heading or heading.lower() in applied_section_targets:
-            continue
+        op_kind = str(op.get("op_kind") or "")
         proposed_text = str(op.get("proposed") or "").strip()
-        original_text = str(op.get("original") or "").strip()
-        evidence = list(op.get("evidence") or [])
-        op_kind = str(op.get("op_kind") or "rewrite_section")
-        val = validate_proposed_rewrite(
-            proposed=proposed_text,
-            original=original_text or proposed_text,
-            evidence=evidence,
-            source_markdown=body,
-            h1=h1,
-        )
-        hard = [
-            w
-            for w in val
-            if w
-            in {
-                "proposed_empty",
-                "proposed_html_injection",
-                "proposed_diagnostic_leak",
-                "proposed_includes_h1",
-                "proposed_contains_heading",
-                "proposed_invented_url",
-                "proposed_invented_fact",
-            }
-            or w.startswith("proposed_ungrounded_tokens:")
-        ]
-        # Section inserts may reuse buried sentences (not reorder-only failures).
-        if op.get("action") == "add":
-            hard = [w for w in hard if w != "proposed_is_reorder_only"]
-        if hard:
-            warnings.extend(hard)
-            warnings.append(f"section_op_rejected_validation:{op_kind}")
+        if not proposed_text:
             continue
+        if op_kind == "add_faq_from_existing_qa":
+            # Defensive: never apply if fewer than min existing pairs remain.
+            if len(_existing_faq_qa_pairs(body)) < 2 and "## FAQ" not in proposed_text:
+                warnings.append("faq_op_rejected_insufficient_existing_qa")
+                continue
+            body, did = _apply_append_block(body, proposed_text)
+            if did:
+                body_op_applied = True
+                if op.get("op_id"):
+                    applied_ops.append(str(op["op_id"]))
+                applied_ops.append("evidence_grounded_add_faq_from_existing_qa")
+                warnings.append("faq_op_applied_from_proposed")
+            else:
+                warnings.append("faq_op_idempotent_no_change")
+        elif op_kind == "add_howto_from_existing_steps":
+            steps = _extract_numbered_steps(body)
+            if len(steps) < 3:
+                for m in re.finditer(
+                    r"^Step\s+\d+\s*[:.\-]\s*(.+)$", body or "", re.I | re.M
+                ):
+                    steps.append(m.group(1).strip())
+            if len(steps) < 3:
+                warnings.append("howto_op_rejected_insufficient_existing_steps")
+                continue
+            body, did = _apply_append_block(body, proposed_text)
+            if did:
+                body_op_applied = True
+                if op.get("op_id"):
+                    applied_ops.append(str(op["op_id"]))
+                applied_ops.append("evidence_grounded_add_howto_from_existing_steps")
+                warnings.append("howto_op_applied_from_proposed")
+            else:
+                warnings.append("howto_op_idempotent_no_change")
 
-        action = op.get("action") or ""
-        if action == "rewrite" or op_kind == "rewrite_section":
-            body, did = _apply_proposed_section_rewrite(body, heading, proposed_text)
-        else:
-            body, did = _apply_insert_after_heading(body, heading, proposed_text)
-        if did:
-            body_op_applied = True
-            applied_section_targets.add(heading.lower())
-            if op.get("op_id"):
-                applied_ops.append(str(op["op_id"]))
-            applied_ops.append(f"evidence_grounded_{op_kind}:{heading}"[:120])
-            warnings.append(f"section_op_applied:{op_kind}")
-            if rewrite_provenance is None:
-                rewrite_provenance = {
-                    "what_changed": op_kind,
-                    "why": op.get("instruction") or op.get("reason") or "",
-                    "related_gap_ids": list(op.get("related_gap_ids") or []),
-                    "original": original_text,
-                    "proposed": proposed_text,
-                    "evidence": evidence,
-                    "llm_used": False,
-                    "paid_retrieval_used": False,
-                    "action": action or "rewrite",
-                    "target": op.get("target") or f"section:{heading}",
-                    "op_kind": op_kind,
-                    "expected_aeo_benefit": op.get("expected_aeo_benefit") or "",
-                }
-        else:
-            warnings.append(f"section_op_idempotent_no_change:{op_kind}")
-
-    # Author-input-required ops: never invent; record warning only.
+    # Author-input-required / deferred ops: never invent; record warning only.
     for op in ops:
-        if str(op.get("disposition") or "") == "author_input_required" or str(
-            op.get("op_kind") or ""
-        ) == "author_input_required":
+        status = str(op.get("status") or "")
+        disposition = str(op.get("disposition") or "")
+        apply_mode = str(op.get("apply_mode") or "")
+        if (
+            status == "needs_author_input"
+            or disposition == "author_input_required"
+            or apply_mode == "author_input_required"
+            or str(op.get("op_kind") or "") == "author_input_required"
+        ):
             warnings.append(
                 "author_input_required:"
                 + str(op.get("target") or op.get("op_id") or "unknown")
             )
 
-    # --- FAQ / HowTo (evidence-backed only; existing behavior) ---
-    if "REC_ADD_FAQ_SECTION" in rec_codes or "REC_ADD_QUESTION_HEADINGS" in rec_codes:
+    # --- FAQ / HowTo legacy evidence path (rec_codes) — still never invents ---
+    # Prefer ready ops above; this path only runs when no ready FAQ/HowTo op applied. ---
+    faq_applied = any("faq" in a for a in applied_ops)
+    howto_applied = any("howto" in a for a in applied_ops)
+
+    if (
+        not faq_applied
+        and (
+            "REC_ADD_FAQ_SECTION" in rec_codes or "REC_ADD_QUESTION_HEADINGS" in rec_codes
+        )
+    ):
         qa_pairs = _existing_faq_qa_pairs(body)
         body, did = _ensure_faq_section(body, qa_pairs)
         if did:
@@ -1040,7 +1042,7 @@ def generate_recommended_markdown(
         else:
             warnings.append("insufficient_evidence_faq")
 
-    if "REC_ADD_HOWTO_OR_STEPS" in rec_codes:
+    if not howto_applied and "REC_ADD_HOWTO_OR_STEPS" in rec_codes:
         steps = _extract_numbered_steps(body)
         if len(steps) < 3:
             for m in re.finditer(
@@ -1058,17 +1060,24 @@ def generate_recommended_markdown(
     for op in ops:
         if _is_retain_h1_op(op) or _is_meta_op(op) or _is_intro_rewrite_op(op, h1=h1):
             continue
-        if _is_substantive_section_op(op, h1=h1):
+        if _is_ready_mvp_body_op(op, h1=h1):
             continue
-        if str(op.get("disposition") or "") == "author_input_required" or str(
-            op.get("op_kind") or ""
+        if str(op.get("op_kind") or "") in {
+            "add_faq_from_existing_qa",
+            "add_howto_from_existing_steps",
+            "metadata_seo_description",
+            "rewrite_introduction",
+        }:
+            continue
+        status = str(op.get("status") or "")
+        if status in {"needs_author_input", "unsupported"} or str(
+            op.get("disposition") or ""
         ) == "author_input_required":
             continue
         action = op.get("action") or ""
         target = (op.get("target") or "").strip()
         key = _target_key(target)
         t_lower = target.lower()
-        # Known non-body / unsupported for Hashnode MD generator.
         if (
             key in {"cross_page_link", "body"}
             or t_lower.startswith("schema:")

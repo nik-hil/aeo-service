@@ -603,6 +603,7 @@ def enrich_ops_with_rewrite_proposals(
     h1: str | None = None,
     gaps: list[dict[str, Any]] | None = None,
     coverage_by_query: list[dict[str, Any]] | None = None,
+    brief: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], RewriteProposal | None, list[str]]:
     """Content-optimization layer: generate + attach rewrite proposals onto ops.
 
@@ -610,17 +611,11 @@ def enrich_ops_with_rewrite_proposals(
     Platform Markdown generators must **consume** already-enriched ops and must
     not call this (or ``propose_introduction_rewrite``) to invent copy.
 
-    Steps: run substantive change-plan diagnosis (query→gap→evidence→op) →
-    build evidence-grounded ``proposed`` for intro + other safe op kinds →
-    validate → attach ``original`` / ``proposed`` / ``evidence`` /
-    ``related_gap_ids`` / ``reason`` / ``op_kind`` / ``disposition`` on ops.
-
-    Unsupported gaps become ``author_input_required`` (no invented ``proposed``).
-    Never forces a fixed number of edits.
+    MVP ready kinds: rewrite_introduction, metadata_seo_description,
+    add_faq_from_existing_qa, add_howto_from_existing_steps. All other gaps
+    become needs_author_input / unsupported (never invent).
 
     Returns (enriched_ops, primary_intro_proposal_or_none, warnings).
-    Ops that already carry a non-empty ``proposed`` are validated only (not
-    regenerated) for intro targets.
     """
     from aeo_mvp.content.substantive_ops import (
         build_substantive_change_plan,
@@ -660,7 +655,6 @@ def enrich_ops_with_rewrite_proposals(
             and isinstance(existing_proposed, str)
             and existing_proposed.strip()
         ):
-            # Caller-supplied proposal — validate only.
             original = str(op.get("original") or "").strip()
             evidence = [str(e) for e in (op.get("evidence") or []) if str(e).strip()]
             val = validate_proposed_rewrite(
@@ -686,8 +680,13 @@ def enrich_ops_with_rewrite_proposals(
             ]
             if hard:
                 warnings.extend(hard)
-                # Strip invalid proposed so generator skips apply.
-                cleaned = {**op, "proposed": None}
+                cleaned = {
+                    **op,
+                    "proposed": None,
+                    "status": "needs_author_input",
+                    "apply_mode": "author_input_required",
+                    "disposition": "author_input_required",
+                }
                 enriched.append(cleaned)
                 continue
             proposal = RewriteProposal(
@@ -701,12 +700,16 @@ def enrich_ops_with_rewrite_proposals(
                 op_kind="rewrite_introduction",
                 disposition="actionable",
             )
-            row = {
-                **op,
-                "op_kind": op.get("op_kind") or "rewrite_introduction",
-                "disposition": "actionable",
-            }
-            enriched.append(row)
+            enriched.append(
+                {
+                    **op,
+                    "op_kind": op.get("op_kind") or "rewrite_introduction",
+                    "disposition": "actionable",
+                    "status": "ready",
+                    "apply_mode": "replace_region",
+                    "target_kind": "introduction",
+                }
+            )
             continue
 
         if action in {"rewrite", "expand"} and _is_intro_target(
@@ -726,7 +729,9 @@ def enrich_ops_with_rewrite_proposals(
                     {
                         **op,
                         "disposition": "author_input_required",
-                        "op_kind": "author_input_required",
+                        "op_kind": "rewrite_introduction",
+                        "status": "needs_author_input",
+                        "apply_mode": "author_input_required",
                     }
                 )
                 continue
@@ -742,8 +747,10 @@ def enrich_ops_with_rewrite_proposals(
                 "op_kind": "rewrite_introduction",
                 "disposition": "actionable",
                 "expected_aeo_benefit": proposal.expected_aeo_benefit,
+                "status": "ready",
+                "apply_mode": "replace_region",
+                "target_kind": "introduction",
             }
-            # Keep EditOp wire keys when present.
             if op.get("target_locator") and not op.get("target"):
                 row["target_locator"] = op.get("target_locator")
             if op.get("instruction") and not row.get("instruction"):
@@ -753,7 +760,7 @@ def enrich_ops_with_rewrite_proposals(
 
         enriched.append(op)
 
-    # --- Pass 2: substantive multi-op diagnosis (gaps → evidence → ops) ---
+    # --- Pass 2: MVP substantive plan (intro/SEO/FAQ/HowTo + deferred author_input) ---
     plan = build_substantive_change_plan(
         source_markdown=source_markdown,
         gaps=gaps,
@@ -761,11 +768,11 @@ def enrich_ops_with_rewrite_proposals(
         page_intelligence=pi,
         existing_ops=enriched or seed_ops,
         h1=resolved_h1,
+        brief=brief,
     )
     warnings.extend(plan.warnings)
     merged = merge_plan_into_ops(enriched or seed_ops, plan)
 
-    # Ensure primary intro proposal is surfaced for callers/tests.
     if proposal is None:
         for it in plan.items:
             if it.op_kind == "rewrite_introduction" and it.proposed_content:
@@ -784,36 +791,23 @@ def enrich_ops_with_rewrite_proposals(
                 )
                 break
 
-    # Stash plan summary on a synthetic warning-free side channel via op metadata
-    # is awkward; service layer reads plan separately. Attach plan dict onto
-    # first actionable intro op when present for transport.
-    if plan.items:
-        for op in merged:
-            if not isinstance(op, dict):
-                continue
-            if op.get("op_kind") == "rewrite_introduction" and op.get("proposed"):
-                op.setdefault("_substantive_plan_ref", True)
-                break
-        # Expose full plan for service via warnings channel key is wrong —
-        # return plan through warnings list as structured sentinel? Better:
-        # attach to module-level is bad. Service will call build_substantive
-        # again OR we encode plan in a dedicated list entry.
-        # Attach as non-applied metadata op:
-        if not any(
-            isinstance(o, dict) and o.get("op_kind") == "_substantive_change_plan"
-            for o in merged
-        ):
-            merged.append(
-                {
-                    "action": "retain",
-                    "target": "_substantive_change_plan",
-                    "op_kind": "_substantive_change_plan",
-                    "disposition": "deferred",
-                    "proposed": None,
-                    "plan": plan.to_dict(),
-                    "instruction": "Substantive change-plan metadata (not applied).",
-                    "related_gap_ids": [],
-                }
-            )
+    if plan.items and not any(
+        isinstance(o, dict) and o.get("op_kind") == "_substantive_change_plan"
+        for o in merged
+    ):
+        merged.append(
+            {
+                "action": "retain",
+                "target": "_substantive_change_plan",
+                "op_kind": "_substantive_change_plan",
+                "disposition": "deferred",
+                "status": "unsupported",
+                "apply_mode": "unsupported",
+                "proposed": None,
+                "plan": plan.to_dict(),
+                "instruction": "MVP substantive change-plan metadata (not applied).",
+                "related_gap_ids": [],
+            }
+        )
 
     return merged, proposal, warnings

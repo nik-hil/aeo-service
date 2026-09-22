@@ -1,128 +1,49 @@
 {
   "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
-  "queries": [
-    {
-      "query_id": "q1",
-      "query_text": "what is an AI agent",
-      "page_coverage": "thin"
-    },
-    {
-      "query_id": "q2",
-      "query_text": "what exactly are we building agents zero to hero",
-      "page_coverage": "thin"
-    },
-    {
-      "query_id": "q3",
-      "query_text": "how does the agent loop work",
-      "page_coverage": "thin"
-    },
-    {
-      "query_id": "q4",
-      "query_text": "what is the complete agent flow with tool calling",
-      "page_coverage": "thin"
-    },
-    {
-      "query_id": "q_absent",
-      "query_text": "quantum blockchain widget pricing",
-      "page_coverage": "absent"
-    }
-  ],
-  "gaps": [
-    {
-      "gap_id": "gap_af",
-      "query_id": "q1",
-      "gap_type": "evidence_gap",
-      "rationale": "Intro not answer-first"
-    },
-    {
-      "gap_id": "gap_build",
-      "query_id": "q2",
-      "gap_type": "thin_coverage",
-      "rationale": "Building section under-explained at lead"
-    },
-    {
-      "gap_id": "gap_loop",
-      "query_id": "q3",
-      "gap_type": "no_answer_block",
-      "rationale": "Agent loop process not scannable as answer unit"
-    },
-    {
-      "gap_id": "gap_flow",
-      "query_id": "q4",
-      "gap_type": "thin_coverage",
-      "rationale": "Complete flow buried"
-    },
-    {
-      "gap_id": "gap_absent",
-      "query_id": "q_absent",
-      "gap_type": "missing_page",
-      "rationale": "Unsupported probe with no on-page evidence"
-    }
-  ],
-  "actionable_count": 2,
-  "author_input_required_count": 2,
-  "actionable_ops": [
+  "mvp_ready_ops": [
     {
       "op_kind": "rewrite_introduction",
       "target": "introduction",
-      "query_text": null,
-      "related_gap_ids": [
-        "gap_af",
-        "gap_loop",
-        "gap_absent"
-      ],
-      "evidence": [
-        "Building an AI agent sounds deceptively simple.",
-        "Call an LLM. Give it a prompt. Get an answer.",
-        "But that is not really an agent."
-      ],
-      "proposed_content_preview": "An AI agent is an LLM-based system that can **decide when to take actions**, use capabilities outside the model, observe their results, and continue working toward a task.\n\nSo instead of starting with a framework, I decided to build one myself.\n\nThis repository is my attempt to u",
-      "reason": "Answer-first introduction grounded in page evidence.",
-      "expected_aeo_benefit": "Improves answer-first extractability of the page lead for probe overlap."
+      "status": "ready",
+      "apply_mode": "replace_region",
+      "proposed_preview": "An AI agent is an LLM-based system that can **decide when to take actions**, use capabilities outside the model, observe their results, and continue working toward a task.\n\nSo instead of starting with"
     },
     {
-      "op_kind": "clarify_relationship",
-      "target": "section:The agent loop",
-      "query_text": "how does the agent loop work",
-      "related_gap_ids": [
-        "gap_loop"
-      ],
-      "evidence": [
-        "The model decides what should happen. The harness controls how it happens."
-      ],
-      "proposed_content_preview": "The model decides what should happen. The harness controls how it happens.",
-      "reason": "Promote on-page relationship statement to section lead.",
-      "expected_aeo_benefit": "Promotes an on-page relationship statement so model-vs-harness roles are explicit."
+      "op_kind": "metadata_seo_description",
+      "target": "meta_description",
+      "status": "ready",
+      "apply_mode": "metadata_only",
+      "proposed_preview": "Build an AI agent from scratch with tool calling."
     }
   ],
-  "author_input_required": [
+  "needs_author_input": [
     {
-      "gap": "Building section under-explained at lead",
-      "query_text": "what exactly are we building agents zero to hero",
-      "reason": "No on-page evidence strong enough to ground an automatic edit for query 'what exactly are we building agents zero to hero'; author input required.",
+      "op_kind": "add_faq_from_existing_qa",
+      "reason": "add_faq_from_existing_qa requires existing on-page question headings with answer paragraphs; author input required \u2014 never invent Q or A.",
       "related_gap_ids": [
-        "gap_build"
+        "gap_faq"
       ]
     },
     {
-      "gap": "Complete flow buried",
-      "query_text": "what is the complete agent flow with tool calling",
-      "reason": "No on-page evidence strong enough to ground an automatic edit for query 'what is the complete agent flow with tool calling'; author input required.",
+      "op_kind": "add_howto_from_existing_steps",
+      "reason": "add_howto_from_existing_steps requires \u22653 existing numbered steps or 'Step N:' lines; author input required \u2014 never invent steps.",
       "related_gap_ids": [
-        "gap_flow"
+        "gap_howto"
       ]
     }
   ],
+  "ready_count": 2,
+  "author_input_count": 2,
   "applied_ops": [
     "retain:h1",
+    "expand:meta_description",
     "rewrite:section:Agents Zero to Hero #1: Building an AI Agent from Scratch with T",
-    "evidence_grounded_rewrite:introduction",
-    "sub_clarify_relationship_section:The agent loop",
-    "evidence_grounded_clarify_relationship:The agent loop"
+    "evidence_grounded_rewrite:introduction"
   ],
   "changed": true,
-  "current_intro_preview": "Building an AI agent sounds deceptively simple.\n\nCall an LLM. Give it a prompt. Get an answer.\n\nBut that is not really an agent.\n\nAn LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete.\n\nThat sounds complicated when described using terms like *agentic workflows*, *tool calling*, *harnesses*, and *autonomous coding agents*.\n\nSo instead of starting with a framework, I decided to build one myself.\n\nThis repository is my attempt to understand the mechanics of an AI agent harness **from first principles**, one Git tag at a time.\n\nRepository:\n\nhttps://github.com/nik-hil/agents-zero-2",
-  "recommended_intro_preview": "An AI agent is an LLM-based system that can **decide when to take actions**, use capabilities outside the model, observe their results, and continue working toward a task.\n\nSo instead of starting with a framework, I decided to build one myself.\n\nThis repository is my attempt to understand the mechanics of an AI agent harness **from first principles**, one Git tag at a time.\n\nhttps://github.com/nik-hil/agents-zero-2-hero\n\nOur first milestone is:\n\n> **An LLM that can call a Python tool and decide when it is finished.**\n\n* * *",
-  "beyond_one_line_intro": true,
-  "honest_assessment": "Yes \u2014 beyond the PR#44 answer-first intro rewrite, the live article also supports a grounded clarify_relationship under 'The agent loop' (model decides / harness controls), which was applied. Two gaps remained author_input_required with no invented content. Not every under-covered probe yielded a safe automatic edit."
+  "seo_description_transported": true,
+  "intro_rewrite_applied": true,
+  "live_article_faq_status": "needs_author_input",
+  "live_article_howto_status": "needs_author_input",
+  "honest_assessment": "On the live Agents Zero-to-Hero article, the justified automatic body edit is the PR#44 evidence-grounded introduction rewrite (plus SEO metadata transport). FAQ promote=needs_author_input; HowTo promote=needs_author_input \u2014 article lacks enough existing ### \u2026? Q&A pairs / numbered Step lines, so both correctly become needs_author_input with zero invented Q/A/steps. Unit fixtures cover multi-op FAQ+HowTo when evidence exists."
 }
