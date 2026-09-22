@@ -628,7 +628,7 @@ def draft_ui_label(draft: dict[str, Any]) -> str:
     status = str(draft.get("status") or "")
     generator = str(draft.get("generator") or draft.get("writer") or "")
     if "hashnode_recommended" in generator.lower() or draft.get("content_provenance") == "recommended_from_source_markdown":
-        return "RECOMMENDED MARKDOWN"
+        return "RECOMMENDED"
     if status == "skipped_paid_false" or not (draft.get("body_markdown") or "").strip():
         return "No draft generated"
     if "skeleton" in generator.lower():
@@ -640,7 +640,49 @@ def draft_ui_label(draft: dict[str, Any]) -> str:
     return "Suggested Structure"
 
 
+def _raw_recommended_body(
+    report: dict[str, Any], *, page_url: str | None = None
+) -> str:
+    """Extract paste-ready recommended Markdown body (no UI chrome / disclaimer)."""
+    from aeo_mvp.platform.hashnode.markdown_generator import (
+        strip_legacy_recommended_chrome,
+    )
+
+    raw = ""
+    for d in report.get("content_drafts") or []:
+        if not isinstance(d, dict):
+            continue
+        if page_url and _normalize_url(d.get("page_url")) != _normalize_url(page_url):
+            continue
+        raw = str(d.get("body_markdown") or "")
+        break
+    if not raw and isinstance(report.get("draft"), dict):
+        raw = str(report["draft"].get("body_markdown") or "")
+    if not raw:
+        pi = _page_intelligence_for(report, page_url)
+        raw = str((pi or {}).get("recommended_markdown") or "")
+    return strip_legacy_recommended_chrome(raw)
+
+
+def _recommended_warnings(
+    report: dict[str, Any], *, page_url: str | None = None
+) -> list[str]:
+    for d in report.get("content_drafts") or []:
+        if not isinstance(d, dict):
+            continue
+        if page_url and _normalize_url(d.get("page_url")) != _normalize_url(page_url):
+            continue
+        return [str(w) for w in (d.get("warnings") or []) if w]
+    if isinstance(report.get("draft"), dict):
+        return [str(w) for w in (report["draft"].get("warnings") or []) if w]
+    return []
+
+
 def adapt_draft(report: dict[str, Any], *, page_url: str | None = None) -> DraftView | None:
+    from aeo_mvp.platform.hashnode.markdown_generator import (
+        SUGGESTED_MARKDOWN_SUBTITLE,
+    )
+
     drafts = [d for d in (report.get("content_drafts") or []) if isinstance(d, dict)]
     draft = None
     if page_url:
@@ -663,21 +705,18 @@ def adapt_draft(report: dict[str, Any], *, page_url: str | None = None) -> Draft
                 "generator": "hashnode_recommended_markdown_v1",
                 "content_provenance": "recommended_from_source_markdown",
                 "body_markdown": rec_md,
-                "disclaimer": (
-                    "RECOMMENDED MARKDOWN — suggested draft for Hashnode editor / "
-                    "GitHub publish / bulk import. Not a final or guaranteed AEO article."
-                ),
+                "disclaimer": SUGGESTED_MARKDOWN_SUBTITLE,
             }
     if draft is None:
         return None
 
-    body = str(draft.get("body_markdown") or "")
+    body = _raw_recommended_body(report, page_url=page_url) or str(
+        draft.get("body_markdown") or ""
+    )
     label = draft_ui_label(draft)
     empty = not body.strip()
-    disclaimer = str(
-        draft.get("disclaimer")
-        or "Draft suggestion only — not published; not a guarantee of AI citation."
-    )
+    disclaimer = str(draft.get("disclaimer") or SUGGESTED_MARKDOWN_SUBTITLE)
+    # Metadata header for non-Code consumers only — body_markdown stays paste-ready.
     header = (
         f"### {escape_text(label)}\n\n"
         f"**Status:** {escape_text(draft.get('status'))} · "
@@ -692,7 +731,6 @@ def adapt_draft(report: dict[str, Any], *, page_url: str | None = None) -> Draft
             "without fabricating content._"
         )
     else:
-        # Sanitize + fence; never inject raw HTML into Gradio Markdown unsafely.
         md = header + sanitize_code_block(body, language="markdown")
 
     return DraftView(
@@ -712,58 +750,27 @@ def adapt_recommended_markdown(
     *,
     page_url: str | None = None,
 ) -> str:
-    """Primary RECOMMENDED MARKDOWN tab body — unfenced, copy-ready Markdown.
-
-    Includes honesty labeling; raw draft body is not wrapped in fences so a
-    Gradio Code/Textbox copy control can place the article on the clipboard.
-    """
-    draft = adapt_draft(report, page_url=page_url)
-    raw = ""
-    for d in report.get("content_drafts") or []:
-        if not isinstance(d, dict):
-            continue
-        if page_url and _normalize_url(d.get("page_url")) != _normalize_url(page_url):
-            continue
-        raw = str(d.get("body_markdown") or "")
-        break
-    if not raw and isinstance(report.get("draft"), dict):
-        raw = str(report["draft"].get("body_markdown") or "")
-    if not raw:
-        pi = _page_intelligence_for(report, page_url)
-        raw = str((pi or {}).get("recommended_markdown") or "")
-
-    if draft is None and not raw.strip():
-        return (
-            "# RECOMMENDED MARKDOWN\n\n"
-            "No recommended Markdown draft for this page. "
-            "When Hashnode Markdown is available, a complete suggested draft appears here — "
-            "never labeled as a final or guaranteed AEO article.\n"
-        )
-
-    label = draft.label if draft else "RECOMMENDED MARKDOWN"
-    disclaimer = (
-        draft.disclaimer
-        if draft
-        else (
-            "RECOMMENDED MARKDOWN — suggested draft for Hashnode editor / "
-            "GitHub publish / bulk import. Not a final or guaranteed AEO article."
-        )
-    )
-    status = draft.status if draft else "—"
-    generator = draft.generator if draft else "—"
-    provenance = draft.content_provenance if draft else "—"
-    header = (
-        f"# {label}\n\n"
-        f"Status: {status} · Generator: {generator} · Provenance: {provenance}\n\n"
-        f"_{disclaimer}_\n\n"
-        "---\n\n"
-    )
+    """Paste-ready RECOMMENDED body only — no disclaimer / heading chrome."""
+    raw = _raw_recommended_body(report, page_url=page_url)
     if not raw.strip():
-        return header + (
-            "No meaningful recommended Markdown could be generated for this page "
-            "without fabricating content.\n"
-        )
-    return header + raw.strip() + "\n"
+        return ""
+    return raw.strip() + "\n"
+
+
+def adapt_recommended_warnings_markdown(
+    report: dict[str, Any],
+    *,
+    page_url: str | None = None,
+) -> str:
+    """Separate warnings metadata for the RECOMMENDED tab (never in body)."""
+    warnings = _recommended_warnings(report, page_url=page_url)
+    if not warnings:
+        return ""
+    lines = ["_Warnings:_"]
+    for w in warnings:
+        label = escape_text(w.replace("_", " "))
+        lines.append(f"- {label}")
+    return "\n".join(lines)
 
 
 def adapt_recommendations(report: dict[str, Any], *, page_url: str | None = None) -> list[RecView]:
@@ -807,25 +814,44 @@ def recommendations_markdown(recs: list[RecView]) -> str:
         "",
     ]
     for i, r in enumerate(recs, start=1):
-        parts.append(f"#### {i}. {escape_text(r.title)}")
+        title = escape_text(r.title) if r.title else f"Recommendation {i}"
+        parts.append(f"#### {i}. {title}")
         parts.append("")
-        if r.problem:
+        if r.problem and str(r.problem).strip() not in {"", "None", "null"}:
             parts.append(f"**Problem:** {escape_text(r.problem)}")
-        if r.why:
-            parts.append(f"**Why it matters:** {escape_text(r.why)}")
-        if r.action:
-            parts.append(f"**Recommended action:** {escape_text(r.action)}")
-        parts.append(f"**Effort:** {escape_text(r.effort)} · **Impact:** {escape_text(r.impact)}")
-        if r.affected_urls:
-            parts.append(
-                "**Affected page:** " + ", ".join(escape_text(u) for u in r.affected_urls[:5])
-            )
-        if r.evidence_snippets:
             parts.append("")
-            parts.append("Evidence:")
-            parts.extend(f"- {escape_text(s)}" for s in r.evidence_snippets)
-        parts.append("")
-    return "\n".join(parts)
+        if r.why and str(r.why).strip() not in {"", "None", "null"}:
+            parts.append(f"**Why it matters:** {escape_text(r.why)}")
+            parts.append("")
+        if r.action and str(r.action).strip() not in {"", "None", "null"}:
+            parts.append(f"**Recommended action:** {escape_text(r.action)}")
+            parts.append("")
+        meta_bits: list[str] = []
+        if r.effort and str(r.effort).strip() not in {"", "—", "None", "null"}:
+            meta_bits.append(f"**Effort:** {escape_text(r.effort)}")
+        if r.impact is not None and str(r.impact).strip() not in {"", "None", "null"}:
+            meta_bits.append(f"**Impact:** {escape_text(r.impact)}")
+        if meta_bits:
+            parts.append(" · ".join(meta_bits))
+            parts.append("")
+        urls = [u for u in (r.affected_urls or []) if u and str(u).strip() not in {"None", "null"}]
+        if urls:
+            parts.append("**Affected page:**")
+            for u in urls[:5]:
+                safe = escape_text(u)
+                parts.append(f"- [{safe}]({safe})")
+            parts.append("")
+        snippets = [
+            s
+            for s in (r.evidence_snippets or [])
+            if s is not None and str(s).strip() not in {"", "None", "null"}
+        ]
+        if snippets:
+            parts.append("**Evidence:**")
+            parts.extend(f"- {escape_text(s)}" for s in snippets)
+            parts.append("")
+        # Never dump raw dict/JSON — fields above are the only formatted view.
+    return "\n".join(parts).rstrip() + "\n"
 
 
 def _count_md_stats(text: str) -> tuple[int, int]:
@@ -852,23 +878,12 @@ def comparison_html(
     pages_payload: dict[str, Any] | None = None,
 ) -> str:
     """Diffchecker-like layout: two independent scroll panes (no Git unified diff)."""
+    from aeo_mvp.platform.hashnode.markdown_generator import (
+        SUGGESTED_MARKDOWN_SUBTITLE,
+    )
+
     current = _source_markdown_for(report, page_url, pages_payload) or ""
-    draft = adapt_draft(report, page_url=page_url)
-    recommended = ""
-    if draft and draft.body_markdown:
-        # Prefer raw body from report drafts (without UI header chrome).
-        for d in report.get("content_drafts") or []:
-            if isinstance(d, dict) and (
-                not page_url
-                or _normalize_url(d.get("page_url")) == _normalize_url(page_url)
-            ):
-                recommended = str(d.get("body_markdown") or "")
-                break
-        if not recommended and isinstance(report.get("draft"), dict):
-            recommended = str(report["draft"].get("body_markdown") or "")
-        if not recommended:
-            pi = _page_intelligence_for(report, page_url)
-            recommended = str((pi or {}).get("recommended_markdown") or "")
+    recommended = _raw_recommended_body(report, page_url=page_url)
 
     if not current and not recommended:
         before = adapt_before(report, page_url=page_url, pages_payload=pages_payload)
@@ -879,11 +894,8 @@ def comparison_html(
             f"Word count: {before.word_count}\n\n"
             + "\n".join(f"# {h}" for h in before.headings[:12])
         )
-        right_text = recommended or (
-            draft.disclaimer if draft else "No recommended Markdown for this page."
-        )
         current = left_text
-        recommended = right_text if recommended else (
+        recommended = (
             "(No recommended Markdown draft — HTML page path uses brief/signals only.)"
         )
 
@@ -901,18 +913,18 @@ def comparison_html(
         f"{summary}"
         '<div class="aeo-md-compare-grid">'
         '<div class="aeo-md-pane">'
-        '<div class="aeo-md-pane-header">CURRENT MARKDOWN</div>'
+        '<div class="aeo-md-pane-header">CURRENT</div>'
         f'<pre class="aeo-md-scroll">{escape_text(current) or "—"}</pre>'
         "</div>"
         '<div class="aeo-md-pane">'
-        '<div class="aeo-md-pane-header">RECOMMENDED MARKDOWN</div>'
+        '<div class="aeo-md-pane-header">RECOMMENDED</div>'
         f'<pre class="aeo-md-scroll">{escape_text(recommended) or "—"}</pre>'
         "</div>"
         "</div>"
-        '<p class="aeo-compare-note">'
-        "Independent scroll panes — not a Git diff or patch view. "
-        "Recommended draft is a suggestion, not a final/guaranteed AEO article."
-        "</p>"
+        f'<p class="aeo-compare-note">'
+        f"Independent scroll panes — not a Git diff or patch view. "
+        f"{escape_text(SUGGESTED_MARKDOWN_SUBTITLE)}"
+        f"</p>"
         "</div>"
     )
 

@@ -127,7 +127,7 @@ def run() -> int:
             shoot(page, f"demo-multi-after-select-{tag}")
             # Click detail tabs
             try:
-                page.get_by_role("tab", name="RECOMMENDED MARKDOWN").click()
+                page.get_by_role("tab", name="RECOMMENDED").click()
                 time.sleep(0.4)
                 shoot(page, f"demo-multi-recommended-{tag}")
                 page.get_by_role("tab", name="CURRENT vs RECOMMENDED").click()
@@ -170,7 +170,7 @@ def run() -> int:
                 "- Guide accordion open",
                 "- One-click demo — multi-page (same-host crawl seed)",
                 "- Secondary page select (async enrichment loading → loaded when applicable)",
-                "- Detail tabs: CURRENT / RECOMMENDED MARKDOWN / CURRENT vs RECOMMENDED / Evidence / WHY THESE CHANGES",
+                "- Detail tabs: CURRENT / RECOMMENDED / CURRENT vs RECOMMENDED / Evidence / WHY THESE CHANGES",
                 "",
                 "## Observations",
                 "- Brand (AEO Leadership Demo) is hero-level in the first viewport.",

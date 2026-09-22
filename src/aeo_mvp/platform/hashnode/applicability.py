@@ -182,7 +182,7 @@ def apply_hashnode_recommendation_filter(
     source_url: str | None = None,
     include_informational: bool = False,
 ) -> list[dict[str, Any]]:
-    """Filter/remap recommendations for Hashnode Markdown articles.
+    """Filter/remap recommendations for a single Hashnode Markdown page context.
 
     Suppresses platform-managed infra/SEO HTML advice as actionable.
     Keeps content_optimization / user_editable items and remaps copy to
@@ -191,6 +191,10 @@ def apply_hashnode_recommendation_filter(
     Canonical / Original URL is **not** promoted as a default actionable
     recommendation (only conditional when republishing — omitted unless
     explicitly present as a non-managed code).
+
+    Callers with multi-page crawls should use
+    ``filter_recommendations_page_scoped`` so non-Hashnode pages keep
+    generic recommendation behavior.
     """
     if not is_hashnode_markdown_context(
         url=url,
@@ -211,4 +215,87 @@ def apply_hashnode_recommendation_filter(
         if category == RecommendationCategory.INFORMATIONAL and not include_informational:
             continue
         out.append(_remap_hashnode_fields(rec))
+    return out
+
+
+def _normalize_page_url(url: str | None) -> str:
+    return (url or "").strip().rstrip("/").lower()
+
+
+def filter_recommendations_page_scoped(
+    recommendations: list[dict[str, Any]],
+    pages: list[Any],
+    *,
+    include_informational: bool = False,
+) -> list[dict[str, Any]]:
+    """Apply Hashnode filter only to recs associated with Hashnode Markdown pages.
+
+    Non-Hashnode / non-MD / unrelated recommendations keep generic behavior.
+    Site-level recommendations (no ``affected_urls``) are left unchanged even
+    when the crawl also contains a Hashnode Markdown page.
+    """
+    hashnode_pages: list[Any] = []
+    hashnode_url_index: dict[str, Any] = {}
+    for page in pages or []:
+        url = getattr(page, "url", None)
+        if isinstance(page, dict):
+            url = page.get("url")
+            content_representation = page.get("content_representation")
+            source_url = page.get("source_url")
+        else:
+            content_representation = getattr(page, "content_representation", None)
+            source_url = getattr(page, "source_url", None)
+        if not is_hashnode_markdown_context(
+            url=url,
+            content_representation=content_representation,
+            source_url=source_url,
+        ):
+            continue
+        hashnode_pages.append(page)
+        for candidate in (url, source_url):
+            key = _normalize_page_url(candidate)
+            if key:
+                hashnode_url_index[key] = page
+                # Logical article URL for ``….md`` sources.
+                if key.endswith(".md"):
+                    hashnode_url_index[key[: -len(".md")]] = page
+
+    if not hashnode_pages:
+        return list(recommendations)
+
+    out: list[dict[str, Any]] = []
+    for rec in recommendations:
+        if not isinstance(rec, dict):
+            continue
+        affected = [str(u) for u in (rec.get("affected_urls") or []) if u]
+        if not affected:
+            out.append(rec)
+            continue
+        matched_page = None
+        for u in affected:
+            matched_page = hashnode_url_index.get(_normalize_page_url(u))
+            if matched_page is not None:
+                break
+        if matched_page is None:
+            out.append(rec)
+            continue
+        if isinstance(matched_page, dict):
+            filtered = apply_hashnode_recommendation_filter(
+                [rec],
+                url=matched_page.get("url"),
+                content_representation=matched_page.get("content_representation"),
+                source_url=matched_page.get("source_url"),
+                include_informational=include_informational,
+            )
+        else:
+            filtered = apply_hashnode_recommendation_filter(
+                [rec],
+                url=getattr(matched_page, "url", None),
+                content_representation=getattr(
+                    matched_page, "content_representation", None
+                ),
+                source_url=getattr(matched_page, "source_url", None),
+                include_informational=include_informational,
+            )
+        out.extend(filtered)
     return out

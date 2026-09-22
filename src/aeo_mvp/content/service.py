@@ -174,20 +174,25 @@ def _attach_hashnode_recommended_markdown(
             gaps=gap_flat,
             recommendations=rec_hints or None,
             title_hint=title,
+            source_url=source_url,
         )
+        from aeo_mvp.platform.hashnode.markdown_generator import (
+            SUGGESTED_MARKDOWN_SUBTITLE,
+        )
+
         draft_entry = {
             "page_url": page_url,
             "page_id": page_id,
             "status": "generated" if recommended.ok else "skipped_no_meaningful_draft",
-            "generator": recommended.generator,
-            "writer": recommended.generator,
+            "generator": recommended.generator_version,
+            "writer": recommended.generator_version,
+            "generator_version": recommended.generator_version,
             "content_provenance": "recommended_from_source_markdown",
             "body_markdown": recommended.body,
-            "disclaimer": (
-                "RECOMMENDED MARKDOWN — suggested draft for Hashnode editor / "
-                "GitHub publish / bulk import. Not a final or guaranteed AEO article."
-            ),
+            "disclaimer": SUGGESTED_MARKDOWN_SUBTITLE,
             "warnings": list(recommended.warnings),
+            "changed": recommended.changed,
+            "source_url": recommended.source_url,
             "title": recommended.title,
         }
         draft_list = list(wire.get("content_drafts") or [])

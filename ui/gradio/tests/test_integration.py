@@ -42,18 +42,15 @@ def test_guide_and_info_icons_copy():
 
 
 def test_detail_panels_tabs_content():
-    before, recs, recommended, evidence = detail_panels(
+    before, recs, recommended, evidence, recommended_meta = detail_panels(
         SAMPLE_REPORT, "https://demo.example/"
     )
     assert "CURRENT" in before or "observed" in before.lower()
     assert "WHY THESE CHANGES" in recs or "answer-first" in recs.lower()
-    assert (
-        "RECOMMENDED" in recommended
-        or "draft" in recommended.lower()
-        or "Markdown" in recommended
-    )
-    assert "Evidence" in evidence or "evidence" in evidence.lower()
+    assert "review before publishing" in recommended_meta.lower()
+    assert "RECOMMENDED MARKDOWN" not in recommended
     assert "Optimized Page" not in recommended
+    assert "Evidence" in evidence or "evidence" in evidence.lower()
 
 
 @pytest.mark.asyncio
@@ -70,8 +67,9 @@ async def test_page_select_updates_detail():
     assert outs
     assert state.selected_page_url == "https://demo.example/about"
     assert outs[-1][2]  # before
-    assert outs[-1][4]  # brief
-    assert outs[-1][5]  # evidence
+    assert outs[-1][4] is not None  # recommended body (may be empty string)
+    assert outs[-1][6]  # evidence
+    assert len(outs[-1]) >= 8  # includes recommended_meta + compare
 
 
 def test_clear_state_resets():
