@@ -204,8 +204,13 @@ def get_pages(job_id: str) -> PagesResponse:
                     id=p.id,
                     url=p.url,
                     final_url=p.final_url,
+                    source_url=getattr(p, "source_url", None),
+                    content_representation=getattr(p, "content_representation", None),
                     depth=p.depth,
                     status_code=p.status_code,
+                    primary_status_code=getattr(p, "primary_status_code", None),
+                    primary_fetch_status=getattr(p, "primary_fetch_status", None),
+                    alternate_fetch_status=getattr(p, "alternate_fetch_status", None),
                     title=p.title,
                     fetch_error=p.fetch_error,
                 )

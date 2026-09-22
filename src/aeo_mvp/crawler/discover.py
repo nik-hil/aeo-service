@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from aeo_mvp.config import USER_AGENT, get_settings
 from aeo_mvp.crawler.fetch import default_headers, fetch_url
+from aeo_mvp.crawler.page_fetch import fetch_page_with_alternate
 from aeo_mvp.crawler.robots import parse_robots, path_from_url
 from aeo_mvp.db.models import Page, new_id, utc_now_iso
 from aeo_mvp.demo.loader import load_demo_pages, load_demo_robots
@@ -135,8 +136,13 @@ def crawl_demo(session: Session, job_id: str) -> CrawlOutcome:
             job_id=job_id,
             url=fixture.url,
             final_url=fixture.url,
+            source_url=fixture.url,
+            content_representation="html",
             depth=fixture.depth,
             status_code=200,
+            primary_status_code=200,
+            primary_fetch_status="success",
+            alternate_fetch_status="not_applicable",
             content_type="text/html; charset=utf-8",
             fetched_at=now,
             html=fixture.html,
@@ -219,8 +225,13 @@ async def crawl_live(
                         job_id=job_id,
                         url=norm,
                         final_url=norm,
+                        source_url=None,
+                        content_representation=None,
                         depth=depth,
                         status_code=None,
+                        primary_status_code=None,
+                        primary_fetch_status="failed",
+                        alternate_fetch_status="not_attempted",
                         content_type=None,
                         fetched_at=utc_now_iso(),
                         html=None,
@@ -235,35 +246,45 @@ async def crawl_live(
                     continue
 
             seen.add(norm)
-            result = await fetch_url(client, norm, timeout_s=timeout_s)
+            outcome = await fetch_page_with_alternate(client, norm, timeout_s=timeout_s)
             title = robots_meta = canonical = None
-            if result.text:
-                title, robots_meta, canonical = extract_title_meta(result.text)
+            if outcome.html and outcome.representation == "html":
+                title, robots_meta, canonical = extract_title_meta(outcome.html)
+            if not title and outcome.title:
+                title = outcome.title
             page = Page(
                 id=new_id(),
                 job_id=job_id,
                 url=norm,
-                final_url=result.final_url,
+                final_url=outcome.source_url or norm,
+                source_url=outcome.source_url,
+                content_representation=outcome.representation if outcome.html else None,
                 depth=depth,
-                status_code=result.status_code,
-                content_type=result.content_type,
+                status_code=outcome.status_code,
+                primary_status_code=outcome.primary_status_code,
+                primary_fetch_status=outcome.primary_fetch_status,
+                alternate_fetch_status=outcome.alternate_fetch_status,
+                content_type=outcome.content_type,
                 fetched_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-                html=result.text,
+                html=outcome.html,
                 title=title,
                 robots_meta=robots_meta,
                 canonical_url=canonical,
-                fetch_error=result.error,
+                fetch_error=outcome.fetch_error,
             )
             session.add(page)
             pages.append(page)
 
+            # Link discovery is HTML-only. Markdown alternates are content-only
+            # (do not invent a Markdown crawl frontier).
             if (
-                result.text
-                and result.status_code
-                and 200 <= result.status_code < 300
+                outcome.html_discovery_ok
+                and outcome.html
+                and outcome.status_code
+                and 200 <= outcome.status_code < 300
                 and depth < max_depth
             ):
-                for link in extract_links(result.text, result.final_url or norm):
+                for link in extract_links(outcome.html, outcome.source_url or norm):
                     if link not in seen and same_host(link, base_host):
                         queue.append((link, depth + 1))
 

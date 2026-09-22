@@ -694,7 +694,7 @@ def build_app():
     theme = build_theme()
 
     # Lock light color-scheme so Soft's OS-dark preference cannot paint near-white
-    # ink onto our light ``.aeo-panel`` surfaces (glossary / empty states).
+    # ink onto white panels or dark dataframe headers.
     with gr.Blocks(
         title="AEO Leadership Demo",
         theme=theme,
