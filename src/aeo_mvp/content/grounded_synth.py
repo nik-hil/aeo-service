@@ -125,6 +125,49 @@ def grounded_synth_enabled(
     return bool(draft_paid) and bool((api_key or "").strip())
 
 
+def resolve_openai_compatible_credentials(
+    *,
+    api_key: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+) -> tuple[str | None, str | None, str | None]:
+    """Resolve OpenAI-compatible key/model/base_url (OPENAI_* or DO inference).
+
+    Prefer explicit args, then OPENAI_*, then DO_MODEL_ACCESS_KEY +
+    DO_INFERENCE_BASE_URL / DO_INFERENCE_MODEL. Never logs secrets.
+    """
+    settings = get_settings()
+    key = (api_key or "").strip() or None
+    if not key:
+        key = (settings.openai_api_key or "").strip() or None
+    if not key:
+        key = (settings.effective_do_api_key or "").strip() or None
+
+    mdl = (model or "").strip() or None
+    if not mdl:
+        # If key came from DO-only path (no OPENAI key), prefer DO model.
+        if not (settings.openai_api_key or "").strip() and (
+            settings.effective_do_api_key or ""
+        ).strip():
+            mdl = (settings.do_inference_model or "").strip() or None
+        else:
+            mdl = (settings.openai_model or "").strip() or None
+    if not mdl:
+        mdl = (settings.do_inference_model or "").strip() or None
+
+    base = (base_url or "").strip() or None
+    if not base:
+        if not (settings.openai_api_key or "").strip() and (
+            settings.effective_do_api_key or ""
+        ).strip():
+            base = (settings.do_inference_base_url or "").strip() or None
+        else:
+            base = (settings.openai_base_url or "").strip() or None
+    if not base:
+        base = (settings.do_inference_base_url or "").strip() or None
+    return key, mdl, base
+
+
 def resolve_openai_compatible_client(
     *,
     draft_paid: bool = False,
@@ -134,23 +177,26 @@ def resolve_openai_compatible_client(
     chat_fn: ChatFn | None = None,
 ) -> "OpenAICompatibleChat | None":
     """Return a chat client when opted in; else None (fail closed)."""
+    key, mdl, base = resolve_openai_compatible_credentials(
+        api_key=api_key, model=model, base_url=base_url
+    )
     if chat_fn is not None and grounded_synth_enabled(
-        draft_paid=draft_paid, api_key=api_key or "mock"
+        draft_paid=draft_paid, api_key=key or api_key or "mock"
     ):
         # Tests may inject chat_fn with a sentinel key.
-        key = (api_key or "").strip() or "mock"
+        use_key = (key or api_key or "").strip() or "mock"
         return OpenAICompatibleChat(
-            api_key=key,
-            model=model,
-            base_url=base_url,
+            api_key=use_key,
+            model=mdl or model,
+            base_url=base or base_url,
             chat_fn=chat_fn,
         )
-    if not grounded_synth_enabled(draft_paid=draft_paid, api_key=api_key):
+    if not grounded_synth_enabled(draft_paid=draft_paid, api_key=key):
         return None
     return OpenAICompatibleChat(
-        api_key=(api_key or "").strip(),
-        model=model,
-        base_url=base_url,
+        api_key=(key or "").strip(),
+        model=mdl or model,
+        base_url=base or base_url,
         chat_fn=None,
     )
 

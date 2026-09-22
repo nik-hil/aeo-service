@@ -340,12 +340,24 @@ def resolve_draft_generator(
     - ``content_draft=false`` / ``generate_draft=false`` → ``NullDraftGenerator``
       (status skipped_paid_false).
     - ``content_draft=true`` + provider null/skeleton → ``DeterministicSkeletonDraftGenerator``.
-    - paid provider + key → paid stub (refuses live calls in MVP).
+    - Live grounded body ops (rewrite_section / add_explanation) use
+      ``content/grounded_synth.py`` when ``draft_paid`` + key — **not** this
+      draft writer. ``PaidLLMDraftGenerator`` stub is only selected when the
+      provider is explicitly ``paid_llm_stub`` (legacy/tests); it must never
+      appear as the live paid LLM path or llm_used reporter.
     """
     want_draft = bool(generate_draft if content_draft is None else content_draft)
     provider = (content_draft_provider or "").strip().lower() or None
-    if draft_paid and api_key and provider in (None, "openai_compatible", "paid"):
+    # Explicit stub only — never default draft_paid+key onto refusing stub.
+    if (
+        draft_paid
+        and api_key
+        and provider in {"paid_llm_stub", "paid_stub", "stub"}
+    ):
         return PaidLLMDraftGenerator(draft_paid=True, api_key=api_key, model=model)
+    if want_draft or (draft_paid and api_key and provider in (None, "openai_compatible", "paid")):
+        # draft_paid+openai_compatible → skeleton here; grounded_synth owns LLM body.
+        return DeterministicSkeletonDraftGenerator()
     if want_draft:
         return DeterministicSkeletonDraftGenerator()
     return NullDraftGenerator()

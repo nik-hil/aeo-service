@@ -134,6 +134,7 @@ def test_p1_4_draft_paid_returns_failed_not_raise():
     )
     gaps = build_content_gap_report(page, _queryset())
     brief = build_optimization_brief(page, gaps)
+    # Explicit stub still refuses live calls without raising.
     gen = PaidLLMDraftGenerator(draft_paid=True, api_key="sk-fake")
     draft = build_optimized_draft(page, brief, gaps, generator=gen)
     assert draft.status == "failed"
@@ -145,8 +146,9 @@ def test_p1_4_draft_paid_returns_failed_not_raise():
     assert any("paid_llm_not_implemented" in w for w in draft.warnings)
 
 
-def test_p1_4_api_draft_paid_with_key_returns_200_failed(client, monkeypatch):
+def test_p1_4_api_draft_paid_with_key_returns_200_not_stub(client, monkeypatch):
     from aeo_mvp.config import get_settings
+    from aeo_mvp.content.draft import DeterministicSkeletonDraftGenerator
     from tests.conftest import _install_isolated_settings
 
     db_url = get_settings().database_url
@@ -172,15 +174,15 @@ def test_p1_4_api_draft_paid_with_key_returns_200_failed(client, monkeypatch):
     assert r.status_code == 200, r.text
     data = r.json()
     draft = data["draft"]
-    assert draft["status"] == "failed"
-    assert not (draft.get("body_markdown") or "").strip()
-    assert draft.get("paid") is False
-    assert draft.get("paid_llm") is False
-    # Opt-in path was taken (paid generator), not silent null/skeleton success.
-    assert "paid_llm_not_implemented" in " ".join(draft.get("warnings") or [])
+    # Live path must NOT route through PaidLLMDraftGenerator stub.
+    assert "paid_llm_stub" not in str(draft.get("method") or "")
+    assert "paid_llm_not_implemented" not in " ".join(draft.get("warnings") or [])
+    assert draft.get("status") in {"generated", "skipped_paid_false", "failed"}
 
 
-def test_p1_4_pipeline_draft_paid_opt_in_preserved_no_fake_content():
+def test_p1_4_pipeline_draft_paid_uses_skeleton_not_stub():
+    from aeo_mvp.content.draft import DeterministicSkeletonDraftGenerator
+
     result = run_content_optimization(
         html=_html("saas_product.html"),
         url="https://acme.example/",
@@ -189,12 +191,23 @@ def test_p1_4_pipeline_draft_paid_opt_in_preserved_no_fake_content():
         llm_api_key="sk-fake",
         config={"content_draft": True, "draft_paid": True},
     )
-    assert result.draft.status == "failed"
-    assert result.draft.body_markdown == ""
-    assert result.paid_llm is False
+    # Stub no longer owns draft_paid+key; grounded_synth owns paid body ops.
+    assert result.draft.status == "generated"
+    assert "paid_llm_stub" not in str(result.draft.method or "")
     assert isinstance(
         resolve_draft_generator(
             generate_draft=True, draft_paid=True, content_draft=True, api_key="sk-fake"
+        ),
+        DeterministicSkeletonDraftGenerator,
+    )
+    # Explicit stub provider still available for legacy tests.
+    assert isinstance(
+        resolve_draft_generator(
+            generate_draft=True,
+            draft_paid=True,
+            content_draft=True,
+            content_draft_provider="paid_llm_stub",
+            api_key="sk-fake",
         ),
         PaidLLMDraftGenerator,
     )

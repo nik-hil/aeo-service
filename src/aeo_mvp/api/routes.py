@@ -299,12 +299,32 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
         draft_paid = bool(body.draft_paid or body.paid_llm_opt_in)
         content_draft = bool(body.content_draft or body.generate_draft)
         generate_draft = content_draft
-        api_key = settings.openai_api_key if draft_paid else None
         cfg = dict(body.config or {})
+        api_key = None
+        llm_model = cfg.get("llm_model")
+        llm_base_url = cfg.get("llm_base_url")
+        if draft_paid:
+            from aeo_mvp.content.grounded_synth import (
+                resolve_openai_compatible_credentials,
+            )
+
+            api_key, resolved_model, resolved_base = (
+                resolve_openai_compatible_credentials(
+                    model=llm_model if isinstance(llm_model, str) else None,
+                    base_url=llm_base_url if isinstance(llm_base_url, str) else None,
+                )
+            )
+            llm_model = resolved_model
+            llm_base_url = resolved_base
         cfg["generate_draft"] = generate_draft
         cfg["content_draft"] = content_draft
         cfg["content_draft_provider"] = body.content_draft_provider
         cfg["draft_paid"] = draft_paid
+        if llm_model:
+            cfg.setdefault("llm_model", llm_model)
+        if llm_base_url:
+            cfg.setdefault("llm_base_url", llm_base_url)
+        _ = settings  # settings used for auth elsewhere in request lifecycle
 
         try:
             from aeo_mvp.content.service import _attach_hashnode_recommended_markdown
@@ -332,8 +352,8 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
                 canonical_url=page_extras.get("canonical_url"),
                 draft_paid=draft_paid,
                 llm_api_key=api_key,
-                llm_model=cfg.get("llm_model"),
-                llm_base_url=cfg.get("llm_base_url"),
+                llm_model=llm_model if isinstance(llm_model, str) else None,
+                llm_base_url=llm_base_url if isinstance(llm_base_url, str) else None,
             )
         except OptimizationRequestError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

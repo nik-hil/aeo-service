@@ -770,15 +770,31 @@ class JobOrchestrator:
                     options.get("draft_paid") or options.get("paid_llm_opt_in")
                 )
                 site_profile = load_site_profile(self.session, job) or understanding.to_dict()
+                llm_api_key = None
+                if draft_paid:
+                    from aeo_mvp.content.grounded_synth import (
+                        resolve_openai_compatible_credentials,
+                    )
+
+                    llm_api_key, llm_model, llm_base = (
+                        resolve_openai_compatible_credentials(
+                            model=options.get("llm_model"),
+                            base_url=options.get("llm_base_url"),
+                        )
+                    )
+                    if llm_model and not options.get("llm_model"):
+                        options = dict(options)
+                        options["llm_model"] = llm_model
+                    if llm_base and not options.get("llm_base_url"):
+                        options = dict(options)
+                        options["llm_base_url"] = llm_base
                 p1_sections["content_optimization"] = optimize_job_pages(
                     pages,
                     queryset=queryset_from_discovery(discovery),
                     site_profile=site_profile,
                     options=options,
                     visibility_observations=vis_obs_payload or None,
-                    llm_api_key=(
-                        self.settings.openai_api_key if draft_paid else None
-                    ),
+                    llm_api_key=llm_api_key,
                 )
             else:
                 p1_sections["content_optimization"] = {

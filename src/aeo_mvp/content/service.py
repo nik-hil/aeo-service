@@ -407,12 +407,34 @@ def _attach_hashnode_recommended_markdown(
             SUGGESTED_MARKDOWN_SUBTITLE,
         )
 
+        # Honest LLM flags from grounded_synth body ops (not PaidLLMDraftGenerator stub).
+        grounded_ready = [
+            op
+            for op in (enriched_ops or [])
+            if isinstance(op, dict)
+            and str(op.get("op_kind") or "") in {"rewrite_section", "add_explanation"}
+            and str(op.get("status") or "") == "ready"
+            and bool(op.get("llm_used"))
+        ]
+        grounded_llm_used = bool(grounded_ready)
+        grounded_model = (
+            llm_model
+            or wire.get("llm_model")
+            or (wire.get("config") or {}).get("llm_model")
+            or "openai_compatible"
+        )
+        grounded_method = (
+            f"grounded_synth_v1+openai_compatible:{grounded_model}"
+            if grounded_llm_used
+            else None
+        )
+
         draft_entry = {
             "page_url": page_url,
             "page_id": page_id,
             "status": "generated" if recommended.ok else "skipped_no_meaningful_draft",
-            "generator": recommended.generator_version,
-            "writer": recommended.generator_version,
+            "generator": grounded_method or recommended.generator_version,
+            "writer": grounded_method or recommended.generator_version,
             "generator_version": recommended.generator_version,
             "content_provenance": "recommended_from_source_markdown",
             "body_markdown": recommended.body,
@@ -422,16 +444,48 @@ def _attach_hashnode_recommended_markdown(
             "source_url": recommended.source_url,
             "title": recommended.title,
             "applied_ops": list(recommended.applied_ops),
-            "llm_used": False,
-            "paid": False,
-            "paid_llm": False,
+            "llm_used": grounded_llm_used,
+            "paid": grounded_llm_used,
+            "paid_llm": grounded_llm_used,
             "paid_retrieval_used": False,
+            "method": grounded_method
+            or f"hashnode_md_apply+{recommended.generator_version}",
         }
+        if grounded_llm_used:
+            draft_entry["grounded_synth_ops"] = [
+                {
+                    "op_kind": op.get("op_kind"),
+                    "target": op.get("target") or op.get("target_locator"),
+                    "claims_count": len(op.get("claims") or []),
+                }
+                for op in grounded_ready
+            ]
         if recommended.seo_description:
             draft_entry["seo_description"] = recommended.seo_description
             draft_entry["meta_description"] = recommended.seo_description
         draft_list = list(wire.get("content_drafts") or [])
         existing0 = draft_list[0] if draft_list and isinstance(draft_list[0], dict) else {}
+        # Never let stub method/flags override grounded_synth honesty.
+        if grounded_llm_used:
+            for bad_key in ("paid_llm_stub", "paid_llm_not_implemented"):
+                if bad_key in str(existing0.get("method") or "") or bad_key in str(
+                    existing0.get("writer") or ""
+                ):
+                    existing0 = {
+                        k: v
+                        for k, v in existing0.items()
+                        if k
+                        not in {
+                            "method",
+                            "writer",
+                            "generator",
+                            "llm_used",
+                            "paid",
+                            "paid_llm",
+                            "warnings",
+                        }
+                    }
+                    break
         if recommended.rewrite_provenance:
             draft_entry["rewrite_provenance"] = dict(recommended.rewrite_provenance)
             # Surface onto change_plan for UI/report (what/why/gap/evidence).
@@ -509,6 +563,10 @@ def _attach_hashnode_recommended_markdown(
         # Surface substantive plan at top-level wire for reports/UI.
         if substantive_plan:
             wire["substantive_change_plan"] = substantive_plan
+        if grounded_llm_used:
+            wire["paid_llm"] = True
+            wire["llm_used"] = True
+            wire["grounded_synth_method"] = grounded_method
         return wire
 
     wire["page_intelligence"] = intel
@@ -540,8 +598,32 @@ def optimize_job_pages(
         "content_draft_provider": opts.get("content_draft_provider"),
         "draft_paid": draft_paid,
     }
+    if opts.get("llm_model"):
+        cfg["llm_model"] = opts.get("llm_model")
+    if opts.get("llm_base_url"):
+        cfg["llm_base_url"] = opts.get("llm_base_url")
     # Fail-safe: only pass LLM key when paid draft is explicitly opted in.
+    # Resolve OPENAI_* or DO inference credentials when caller key is empty.
     api_key = llm_api_key if draft_paid else None
+    llm_model = opts.get("llm_model")
+    llm_base_url = opts.get("llm_base_url")
+    if draft_paid:
+        from aeo_mvp.content.grounded_synth import resolve_openai_compatible_credentials
+
+        resolved_key, resolved_model, resolved_base = (
+            resolve_openai_compatible_credentials(
+                api_key=api_key if isinstance(api_key, str) else None,
+                model=llm_model if isinstance(llm_model, str) else None,
+                base_url=llm_base_url if isinstance(llm_base_url, str) else None,
+            )
+        )
+        api_key = resolved_key
+        llm_model = resolved_model
+        llm_base_url = resolved_base
+        if llm_model:
+            cfg["llm_model"] = llm_model
+        if llm_base_url:
+            cfg["llm_base_url"] = llm_base_url
     max_pages = int(opts.get("content_optimization_max_pages") or CONTENT_OPT_PAGE_CAP)
     max_pages = max(1, min(max_pages, CONTENT_OPT_PAGE_CAP))
 
@@ -619,8 +701,8 @@ def optimize_job_pages(
             canonical_url=getattr(page, "canonical_url", None) or page.url,
             draft_paid=draft_paid,
             llm_api_key=api_key,
-            llm_model=opts.get("llm_model") or cfg.get("llm_model"),
-            llm_base_url=opts.get("llm_base_url") or cfg.get("llm_base_url"),
+            llm_model=llm_model if isinstance(llm_model, str) else None,
+            llm_base_url=llm_base_url if isinstance(llm_base_url, str) else None,
         )
         intel = dict(wire.get("page_intelligence") or {})
 

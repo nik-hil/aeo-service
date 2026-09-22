@@ -318,3 +318,133 @@ def test_contract_includes_grounded_ops():
     assert "add_explanation" in IMPLEMENTED_OP_KINDS
     assert "rewrite_section" not in DEFERRED_OP_KINDS
     assert "clarify_relationship" in DEFERRED_OP_KINDS
+
+
+def test_cite_miss_full_routes_to_grounded_synth():
+    """Architect lock: cite_miss+full → rewrite_section/add_explanation when paid."""
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_mock_chat_grounded)
+    gaps = [
+        {
+            "gap_id": "gap_cite_miss_q1",
+            "id": "gap_cite_miss_q1",
+            "gap_type": "cite_miss",
+            "kind": "missing_answer",
+            "query_id": "q_agent_loop",
+            "query_ids": ["q_agent_loop"],
+            "page_coverage": "full",
+            "rationale": "Mentioned or probed but not cited in visibility observations",
+            "explanation": "Mentioned or probed but not cited in visibility observations",
+        },
+        {
+            "gap_id": "gap_schema",
+            "gap_type": "schema_gap",
+            "kind": "thin_passage",
+            "page_coverage": "full",
+            "rationale": "Missing meta description",
+        },
+        {
+            "gap_id": "gap_format",
+            "gap_type": "format_gap",
+            "kind": "unstructured",
+            "rationale": "No JSON-LD",
+        },
+        {
+            "gap_id": "gap_tech",
+            "gap_type": "technical_extractability_gap",
+            "kind": "unstructured",
+            "rationale": "no main landmark",
+        },
+    ]
+    coverage = [
+        {
+            "query_id": "q_agent_loop",
+            "query_text": "what is the agent loop",
+            "page_coverage": "full",
+        },
+    ]
+    plan = build_substantive_change_plan(
+        source_markdown=SECTION_MD,
+        gaps=gaps,
+        coverage_by_query=coverage,
+        page_intelligence={
+            "h1": ARTICLE_H1,
+            "title": ARTICLE_H1,
+            "answerability_signals": {"answer_first_heuristic": True},
+            "limits": [],
+        },
+        h1=ARTICLE_H1,
+        draft_paid=True,
+        llm_api_key="mock",
+        grounded_client=client,
+    )
+    ready_section = [
+        i
+        for i in plan.items
+        if i.status == "ready"
+        and i.op_kind in {"rewrite_section", "add_explanation"}
+    ]
+    assert ready_section, f"expected cite_miss→section op, got {[i.to_dict() for i in plan.items]}"
+    item = ready_section[0]
+    assert item.llm_used is True
+    assert item.claims
+    assert "citation guarantee" not in item.reason.lower() or "not a citation" in item.reason.lower()
+    assert "Cite-readiness" in item.reason or "cite-readiness" in item.reason.lower()
+    # Deferred kinds stay author_input — never routed to synth invent.
+    deferred_kinds = {
+        i.op_kind
+        for i in plan.items
+        if str(i.related_gap_ids)
+        and any(x in str(i.related_gap_ids) for x in ("schema", "format", "tech"))
+    }
+    for it in plan.items:
+        gids = " ".join(it.related_gap_ids or [])
+        if "schema" in gids or "format" in gids or "tech" in gids:
+            assert it.status == "needs_author_input"
+            assert it.proposed_content is None
+
+
+def test_cite_miss_fail_closed_without_paid():
+    gaps = [
+        {
+            "gap_id": "gap_cite_miss_q1",
+            "gap_type": "cite_miss",
+            "kind": "missing_answer",
+            "query_id": "q_agent_loop",
+            "page_coverage": "full",
+            "rationale": "not cited",
+        }
+    ]
+    plan = build_substantive_change_plan(
+        source_markdown=SECTION_MD,
+        gaps=gaps,
+        coverage_by_query=COVERAGE_SECTION,
+        page_intelligence={"h1": ARTICLE_H1},
+        h1=ARTICLE_H1,
+        draft_paid=False,
+    )
+    section = [i for i in plan.items if i.op_kind in {"rewrite_section", "add_explanation"}]
+    assert section
+    assert all(i.status == "needs_author_input" for i in section)
+    assert all(i.proposed_content is None for i in section)
+    assert all(i.llm_used is False for i in section)
+
+
+def test_resolve_draft_generator_skips_stub_by_default():
+    from aeo_mvp.content.draft import (
+        DeterministicSkeletonDraftGenerator,
+        PaidLLMDraftGenerator,
+        resolve_draft_generator,
+    )
+
+    gen = resolve_draft_generator(
+        generate_draft=True, draft_paid=True, content_draft=True, api_key="sk-x"
+    )
+    assert isinstance(gen, DeterministicSkeletonDraftGenerator)
+    stub = resolve_draft_generator(
+        generate_draft=True,
+        draft_paid=True,
+        content_draft=True,
+        content_draft_provider="paid_llm_stub",
+        api_key="sk-x",
+    )
+    assert isinstance(stub, PaidLLMDraftGenerator)

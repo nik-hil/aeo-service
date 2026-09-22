@@ -1,0 +1,72 @@
+{
+  "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+  "md_url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
+  "fetch_errors": [],
+  "html_bytes": 178450,
+  "md_bytes": 12095,
+  "credentials": {
+    "key_present": false,
+    "model": "gpt-4o-mini",
+    "base_url": "https://api.openai.com/v1",
+    "grounded_enabled_if_draft_paid": false
+  },
+  "cite_miss_gaps": [
+    {
+      "gap_id": "gap_cite_miss_3f6edf69c8",
+      "page_coverage": "partial",
+      "query_id": "q2"
+    },
+    {
+      "gap_id": "gap_cite_miss_681226a099",
+      "page_coverage": "full",
+      "query_id": "q3"
+    }
+  ],
+  "gap_types": [
+    "cite_miss"
+  ],
+  "coverage_summary": {
+    "queries": 5,
+    "covered": 5,
+    "gapped": 0,
+    "full": 3,
+    "partial": 2,
+    "thin": 0,
+    "absent": 0,
+    "mismatched": 0,
+    "unknown": 0
+  },
+  "paid_dual_no_key_ready_section_ops": 0,
+  "mock_client_ready_section_ops": [
+    {
+      "op_kind": "rewrite_section",
+      "target": "section:What exactly are we building?",
+      "llm_used": true,
+      "reason_preview": "Cite-readiness via clearer on-page answerability (not a citation guarantee). Grounded rewrite_section for query 'how does tool calling work' using in-section ev",
+      "claims_count": 1
+    }
+  ],
+  "md_apply_mock": {
+    "changed": true,
+    "applied_ops": [
+      "mvp_rewrite_section_section:What exactly are we building?",
+      "evidence_grounded_rewrite_section"
+    ],
+    "section_op_applied": true,
+    "intro_applied": false,
+    "body_len": 11544,
+    "differs_from_source": true
+  },
+  "pr44_intro_proposal": true,
+  "job_options_for_paid_dual": {
+    "draft_paid": true,
+    "paid_llm_opt_in": true,
+    "content_draft": true,
+    "AEO_PAID_RETRIEVAL_OPT_IN": false,
+    "credentials": "OPENAI_API_KEY or DO_MODEL_ACCESS_KEY + DO_INFERENCE_BASE_URL/MODEL",
+    "visibility_observations": "required to emit cite_miss gaps"
+  },
+  "VERDICT": "FAIL",
+  "first_lost_stage": "live_paid_credentials_missing",
+  "honest_assessment": "Wiring: cite_miss+full \u2192 grounded_synth; PaidLLMDraftGenerator stub bypassed; schema/format/technical stay deferred. This environment has no OPENAI/DO API key, so live paid dual cannot set llm_used=true. Mock client on live MD corpus proves 1 ready section op(s) with cite-readiness reason. HARD CoS PASS requires re-run with real key in env."
+}

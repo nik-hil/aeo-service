@@ -569,9 +569,10 @@ def build_substantive_change_plan(
 
     # Resolve grounded synth client (fail closed when draft_paid=false / no key).
     synth_client = grounded_client
-    if synth_client is None and draft_paid and (llm_api_key or "").strip():
+    if synth_client is None and draft_paid:
         from aeo_mvp.content.grounded_synth import resolve_openai_compatible_client
 
+        # Resolves OPENAI_* or DO_MODEL_ACCESS_KEY / DO_INFERENCE_* when args empty.
         synth_client = resolve_openai_compatible_client(
             draft_paid=True,
             api_key=llm_api_key,
@@ -589,6 +590,9 @@ def build_substantive_change_plan(
         kind = str(g.get("kind") or "").lower()
         # FAQ / HowTo gaps are handled by promote-only paths — not intro.
         if kind in {"missing_faq", "missing_steps"}:
+            continue
+        # cite_miss is citation-readiness (section synth), never intro rewrite.
+        if gt == "cite_miss":
             continue
         if (
             "answer_first" in str(g.get("gap_id") or "")
@@ -784,15 +788,23 @@ def build_substantive_change_plan(
         gt = str(g.get("gap_type") or "").lower()
         kind = str(g.get("kind") or "").lower()
         qtext = _query_text_for_gap(g, coverage)
-        # Schema / JSON-LD invent, cross-page, freshness, entity, cite — never synth
+        page_cov = str(g.get("page_coverage") or "").lower()
+
+        # cite_miss + full coverage → citation-readiness section synth (opt-in only).
+        # Page already covers the query; rewrite/clarify with on-page evidence only.
+        # Never invent citations/URLs. schema/format/technical stay deferred below.
+        is_cite_miss_full = gt == "cite_miss" and page_cov in {"full", "present"}
+
+        # Schema / JSON-LD invent, freshness, entity — never synth.
+        # cite_miss without full coverage also deferred (no safe corpus claim).
         if gt in {
             "schema_gap",
             "false_coverage_nav",
             "genre_mismatch",
             "freshness_gap",
             "entity_mismatch",
-            "cite_miss",
             "technical_extractability_gap",
+            "format_gap",
         } or kind in {"entity_unclear", "outdated_claim", "unsupported_claim"}:
             items.append(
                 _author_input_for_deferred(
@@ -800,30 +812,58 @@ def build_substantive_change_plan(
                     query_text=qtext,
                     reason=(
                         f"Deferred/non-MVP gap_type={gt or kind}: no automatic invent "
-                        "(schema/JSON-LD, cross-page URLs, freshness/entity/cite). "
-                        "Author input required."
+                        "(schema/JSON-LD, format, cross-page URLs, freshness/entity, "
+                        "technical landmark). Author input required."
                     ),
                     op_kind="author_input_required",
                 )
             )
             continue
-        # Thin/absent coverage → attempt grounded section synth when opted in.
-        if g.get("page_coverage") in {"absent", "thin", "mismatched"} or gt in {
-            "thin_coverage",
-            "missing_page",
-            "question_coverage_gap",
-            "evidence_gap",
-            "structure_gap",
-        }:
+        if gt == "cite_miss" and not is_cite_miss_full:
+            items.append(
+                _author_input_for_deferred(
+                    gap=g,
+                    query_text=qtext,
+                    reason=(
+                        "cite_miss without full on-page coverage: research_required / "
+                        "author input — never invent citations or URLs."
+                    ),
+                    op_kind="author_input_required",
+                )
+            )
+            continue
+
+        # Thin/absent coverage OR cite_miss(full) → grounded section synth when opted in.
+        eligible = (
+            is_cite_miss_full
+            or g.get("page_coverage") in {"absent", "thin", "mismatched"}
+            or gt in {
+                "thin_coverage",
+                "missing_page",
+                "question_coverage_gap",
+                "evidence_gap",
+                "structure_gap",
+                "cite_miss",
+            }
+        )
+        if eligible:
             if not (g.get("query_id") or g.get("query_ids") or qtext):
-                continue
+                # cite_miss may lack query_id — still try with gap rationale as query.
+                if not is_cite_miss_full:
+                    continue
+                qtext = str(
+                    g.get("rationale")
+                    or g.get("explanation")
+                    or g.get("topic")
+                    or "clarify on-page answer for citation readiness"
+                )
             # Intro gaps already handled by rewrite_introduction — skip duplicate.
-            if kind in {"missing_answer", "no_answer_first"} or (
-                gid and "answer_first" in gid
+            # cite_miss(full) is citation-readiness, not intro — never skip it here.
+            if not is_cite_miss_full and (
+                kind in {"missing_answer", "no_answer_first"}
+                or (gid and "answer_first" in gid)
             ):
-                if any(
-                    it.op_kind == "rewrite_introduction" for it in items
-                ):
+                if any(it.op_kind == "rewrite_introduction" for it in items):
                     continue
             qids = [str(x) for x in (g.get("query_ids") or [])]
             if g.get("query_id"):
@@ -837,13 +877,21 @@ def build_substantive_change_plan(
                         gap=g,
                         query_text=qtext,
                         reason=(
-                            "rewrite_section / add_explanation require draft_paid + "
-                            "API key (fail closed) or grounded budget exhausted; "
-                            "author input required — never invent content."
-                            if synth_client is None
+                            (
+                                "cite_miss (full coverage): rewrite_section / "
+                                "add_explanation require draft_paid + API key "
+                                "(fail closed); author input required — never invent."
+                            )
+                            if is_cite_miss_full and synth_client is None
                             else (
-                                "Grounded body-op budget exhausted (prefer 1–2 strong "
-                                "section ops); author input required — never invent."
+                                "rewrite_section / add_explanation require draft_paid + "
+                                "API key (fail closed) or grounded budget exhausted; "
+                                "author input required — never invent content."
+                                if synth_client is None
+                                else (
+                                    "Grounded body-op budget exhausted (prefer 1–2 strong "
+                                    "section ops); author input required — never invent."
+                                )
                             )
                         ),
                         op_kind="rewrite_section",
@@ -851,6 +899,12 @@ def build_substantive_change_plan(
                 )
                 continue
 
+            cite_reason_prefix = (
+                "Cite-readiness via clearer on-page answerability "
+                "(not a citation guarantee). "
+                if is_cite_miss_full
+                else ""
+            )
             picked = select_section_for_query(
                 source_markdown,
                 query_text=qtext or "",
@@ -938,12 +992,16 @@ def build_substantive_change_plan(
                     content_gap=str(
                         g.get("rationale")
                         or g.get("explanation")
-                        or f"Thin coverage for query: {qtext or gid}"
+                        or (
+                            f"Cite-miss with full coverage for: {qtext or gid}"
+                            if is_cite_miss_full
+                            else f"Thin coverage for query: {qtext or gid}"
+                        )
                     ),
                     evidence=list(result.evidence),
                     proposed_action=str(result.op_kind),
                     proposed_content=result.proposed,
-                    reason=result.reason,
+                    reason=f"{cite_reason_prefix}{result.reason}".strip(),
                     expected_aeo_benefit=_benefit(str(result.op_kind)),
                     op_kind=result.op_kind,  # type: ignore[arg-type]
                     disposition=result.disposition,  # type: ignore[arg-type]
