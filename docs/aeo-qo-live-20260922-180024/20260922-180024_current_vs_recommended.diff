@@ -1,0 +1,28 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -1,24 +1,12 @@
+ # Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling
+ 
+-Building an AI agent sounds deceptively simple.
+-
+-Call an LLM. Give it a prompt. Get an answer.
+-
+-But that is not really an agent.
+-
+-An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete.
+-
+-That sounds complicated when described using terms like *agentic workflows*, *tool calling*, *harnesses*, and *autonomous coding agents*.
++An AI agent is an LLM-based system that can **decide when to take actions**, use capabilities outside the model, observe their results, and continue working toward a task.
+ 
+ So instead of starting with a framework, I decided to build one myself.
+ 
+ This repository is my attempt to understand the mechanics of an AI agent harness **from first principles**, one Git tag at a time.
+ 
+-Repository:
+-
+ https://github.com/nik-hil/agents-zero-2-hero
+-
+-This series starts at the smallest useful building block.
+ 
+ Our first milestone is:
+ 

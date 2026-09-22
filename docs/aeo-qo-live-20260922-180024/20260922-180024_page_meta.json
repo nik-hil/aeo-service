@@ -1,0 +1,41 @@
+{
+  "job_id": "0b578cdc-4c02-4554-a65c-37a05a30ca47",
+  "job_status": "completed",
+  "tip_sha": "5cdee14ecc59b68134ef4b9bbb7205cccb9d8eaa",
+  "seed_url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
+  "page_url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+  "content_representation": "markdown",
+  "source_markdown_chars": 12095,
+  "recommended_markdown_chars": 11754,
+  "seed_was_md_uri": true,
+  "paid_retrieval_report": false,
+  "elapsed_s": 341.4,
+  "generated_at": "2026-09-22T18:06:06.380420+00:00",
+  "experiment": {
+    "provider_name": "digitalocean_web_search",
+    "retrieval_enabled": true,
+    "observations_count": 33,
+    "llm_mention_rate": null
+  },
+  "rec_meta": {
+    "from": "page_intelligence.recommended_markdown",
+    "method": "opt-draft-v1+paid_llm_stub_v0",
+    "generator": "hashnode_recommended_markdown_v1",
+    "llm_used": false,
+    "paid_llm": false,
+    "grounded_synth_ops": null,
+    "applied_ops": [
+      "op_0_retain_h1",
+      "op_2_add_meta_description",
+      "op_1_rewrite_section:Agents Zero to Hero #1: Building an AI Agent from Scratch w",
+      "evidence_grounded_rewrite:introduction"
+    ],
+    "warnings": [
+      "seo_description_for_hashnode_settings",
+      "seo_description_transported_from_brief",
+      "intro_rewrite_applied_from_proposed"
+    ]
+  },
+  "qoa_question_count": 10,
+  "pages_count": 1
+}
