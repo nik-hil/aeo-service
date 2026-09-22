@@ -68,6 +68,11 @@ def migrate_schema(database_url: str | None = None) -> None:
         ("visibility_observations", "target_domain_appeared", "INTEGER"),
         ("visibility_observations", "target_domain_cited", "INTEGER"),
         ("recommendations", "details_json", "TEXT"),
+        ("pages", "source_url", "TEXT"),
+        ("pages", "content_representation", "VARCHAR(32)"),
+        ("pages", "primary_status_code", "INTEGER"),
+        ("pages", "primary_fetch_status", "VARCHAR(32)"),
+        ("pages", "alternate_fetch_status", "VARCHAR(32)"),
     ):
         try:
             _sqlite_add_column_if_missing(engine, table, column, coltype)

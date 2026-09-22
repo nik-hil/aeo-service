@@ -82,8 +82,18 @@ class Page(Base):
     job_id: Mapped[str] = mapped_column(String(36), ForeignKey("jobs.id"), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     final_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # URL that supplied analyzable body (may be a .md alternate).
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # html | markdown — content representation of the analyzable body.
+    content_representation: Mapped[str | None] = mapped_column(String(32), nullable=True)
     depth: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # HTTP status of the primary (user) URL fetch; preserved when alternate used.
+    primary_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # success | blocked | failed
+    primary_fetch_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # not_applicable | not_attempted | success | failed
+    alternate_fetch_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     content_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     fetched_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     html: Mapped[str | None] = mapped_column(Text, nullable=True)

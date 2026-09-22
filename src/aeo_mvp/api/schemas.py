@@ -90,8 +90,13 @@ class PageItem(BaseModel):
     id: str
     url: str
     final_url: str | None = None
+    source_url: str | None = None
+    content_representation: str | None = None
     depth: int
     status_code: int | None = None
+    primary_status_code: int | None = None
+    primary_fetch_status: str | None = None
+    alternate_fetch_status: str | None = None
     title: str | None = None
     fetch_error: str | None = None
 

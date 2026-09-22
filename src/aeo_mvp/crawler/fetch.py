@@ -187,4 +187,8 @@ async def fetch_url(
 
 
 def default_headers() -> dict[str, str]:
-    return {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
+    # Include markdown so public .md alternates (e.g. Hashnode) are acceptable.
+    return {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,text/markdown,text/plain;q=0.9,*/*;q=0.8",
+    }
