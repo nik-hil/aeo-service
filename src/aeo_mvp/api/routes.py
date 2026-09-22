@@ -330,6 +330,10 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
                 content_representation=page_extras.get("content_representation"),
                 source_url=page_extras.get("source_url"),
                 canonical_url=page_extras.get("canonical_url"),
+                draft_paid=draft_paid,
+                llm_api_key=api_key,
+                llm_model=cfg.get("llm_model"),
+                llm_base_url=cfg.get("llm_base_url"),
             )
         except OptimizationRequestError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

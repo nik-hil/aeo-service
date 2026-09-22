@@ -1,16 +1,19 @@
-"""Deterministic MVP change-plan diagnosis (Architect design lock).
+"""MVP change-plan diagnosis (Architect + Content Optimizer design lock).
 
 Locked ready apply kinds:
 - rewrite_introduction (PR #44 path)
 - metadata_seo_description (metadata_only; not a body edit)
 - add_faq_from_existing_qa (≥N existing on-page Q&A pairs)
 - add_howto_from_existing_steps (≥3 existing numbered / Step N lines)
+- rewrite_section (primary grounded LLM; draft_paid + key)
+- add_explanation (secondary grounded LLM; draft_paid + key)
 
-Everything else → needs_author_input / unsupported. Never invent facts, Q/A,
-steps, URLs, schema, or ranking claims.
+clarify_relationship remains deferred. Never invent facts, Q/A, steps, URLs,
+schema, or ranking claims. Prefer 1–2 strong grounded section ops.
 
 Ownership: content optimization layer. Hashnode MD generator consumes
-``status=ready`` ops only (apply/validate); it must not invent ``proposed``.
+``status=ready`` ops only (apply/validate); it must not invent ``proposed``
+and must never call the LLM.
 """
 
 from __future__ import annotations
@@ -19,6 +22,13 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from aeo_mvp.content.grounded_synth import (
+    MAX_GROUNDED_BODY_OPS,
+    OpenAICompatibleChat,
+    select_section_for_query,
+    synthesize_add_explanation,
+    synthesize_rewrite_section,
+)
 from aeo_mvp.content.models import (
     DEFERRED_OP_KINDS,
     FAQ_MIN_EXISTING_QA_PAIRS,
@@ -48,6 +58,12 @@ _BENEFIT: dict[str, str] = {
     "add_howto_from_existing_steps": (
         "Surfaces already-present numbered steps as a scannable Steps section."
     ),
+    "rewrite_section": (
+        "Rewrites a bounded section using only in-section evidence for probe overlap."
+    ),
+    "add_explanation": (
+        "Inserts a short clarifying explanation grounded in on-page evidence."
+    ),
     "author_input_required": (
         "No safe automatic edit; author must supply missing on-page facts before publish."
     ),
@@ -75,6 +91,8 @@ class SubstantiveChangeItem:
     query_text: str | None = None
     apply_mode: ApplyMode = "author_input_required"
     status: OpStatus = "needs_author_input"
+    claims: list[dict[str, str]] = field(default_factory=list)
+    llm_used: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -95,6 +113,8 @@ class SubstantiveChangeItem:
             "query_text": self.query_text,
             "apply_mode": self.apply_mode,
             "status": self.status,
+            "claims": list(self.claims),
+            "llm_used": self.llm_used,
         }
 
     def to_operation(self) -> ContentChangeOperation:
@@ -105,6 +125,7 @@ class SubstantiveChangeItem:
             original=self.original,
             proposed=self.proposed_content,
             evidence=list(self.evidence),
+            claims=list(self.claims),
             related_gap_ids=list(self.related_gap_ids),
             related_query_ids=list(self.related_query_ids),
             reason=self.reason,
@@ -112,6 +133,7 @@ class SubstantiveChangeItem:
             status=self.status,
             op_kind=self.op_kind,
             expected_aeo_benefit=self.expected_aeo_benefit,
+            disposition=self.disposition,
             op_id=f"mvp_{self.op_kind}_{self.target or self.target_kind}"[:80],
         )
 
@@ -522,10 +544,17 @@ def build_substantive_change_plan(
     existing_ops: list[dict[str, Any]] | None = None,
     h1: str | None = None,
     brief: dict[str, Any] | None = None,
+    draft_paid: bool = False,
+    llm_api_key: str | None = None,
+    llm_model: str | None = None,
+    llm_base_url: str | None = None,
+    grounded_client: OpenAICompatibleChat | None = None,
 ) -> SubstantiveChangePlan:
-    """Diagnose MVP change plan: intro / SEO / FAQ promote / HowTo promote only.
+    """Diagnose MVP change plan: intro / SEO / FAQ / HowTo + grounded section ops.
 
-    Never forces a fixed number of edits. Deferred kinds → needs_author_input.
+    Never forces a fixed number of edits. Grounded LLM body ops require
+    ``draft_paid`` + API key (or an injected ``grounded_client``). Deferred
+    kinds → needs_author_input / research_required. Prefer ≤2 grounded body ops.
     """
     warnings: list[str] = []
     items: list[SubstantiveChangeItem] = []
@@ -537,6 +566,18 @@ def build_substantive_change_plan(
         m = re.search(r"^#\s+(.+)$", source_markdown or "", re.M)
         if m:
             resolved_h1 = m.group(1).strip()
+
+    # Resolve grounded synth client (fail closed when draft_paid=false / no key).
+    synth_client = grounded_client
+    if synth_client is None and draft_paid and (llm_api_key or "").strip():
+        from aeo_mvp.content.grounded_synth import resolve_openai_compatible_client
+
+        synth_client = resolve_openai_compatible_client(
+            draft_paid=True,
+            api_key=llm_api_key,
+            model=llm_model,
+            base_url=llm_base_url,
+        )
 
     # --- 1) rewrite_introduction (PR #44) ---
     needs_intro = False
@@ -730,10 +771,12 @@ def build_substantive_change_plan(
             )
         )
 
-    # --- 5) Deferred / unsupported gaps → author_input_required (no invent) ---
+    # --- 5) Grounded rewrite_section / add_explanation (≤ MAX_GROUNDED_BODY_OPS)
+    # Secondary promote kinds already handled above. Prefer strong section ops.
     covered_gap_ids = {
         gid for it in items for gid in (it.related_gap_ids or []) if gid
     }
+    grounded_budget = MAX_GROUNDED_BODY_OPS
     for g in gap_rows:
         gid = str(g.get("gap_id") or g.get("id") or "")
         if gid and gid in covered_gap_ids:
@@ -741,7 +784,7 @@ def build_substantive_change_plan(
         gt = str(g.get("gap_type") or "").lower()
         kind = str(g.get("kind") or "").lower()
         qtext = _query_text_for_gap(g, coverage)
-        # Schema / JSON-LD invent, cross-page, free-form section, freshness, entity, cite
+        # Schema / JSON-LD invent, cross-page, freshness, entity, cite — never synth
         if gt in {
             "schema_gap",
             "false_coverage_nav",
@@ -757,14 +800,14 @@ def build_substantive_change_plan(
                     query_text=qtext,
                     reason=(
                         f"Deferred/non-MVP gap_type={gt or kind}: no automatic invent "
-                        "(schema/JSON-LD, cross-page URLs, free-form section rewrite, "
-                        "freshness/entity/cite). Author input required."
+                        "(schema/JSON-LD, cross-page URLs, freshness/entity/cite). "
+                        "Author input required."
                     ),
                     op_kind="author_input_required",
                 )
             )
             continue
-        # Thin/absent coverage without MVP promote path
+        # Thin/absent coverage → attempt grounded section synth when opted in.
         if g.get("page_coverage") in {"absent", "thin", "mismatched"} or gt in {
             "thin_coverage",
             "missing_page",
@@ -774,18 +817,155 @@ def build_substantive_change_plan(
         }:
             if not (g.get("query_id") or g.get("query_ids") or qtext):
                 continue
+            # Intro gaps already handled by rewrite_introduction — skip duplicate.
+            if kind in {"missing_answer", "no_answer_first"} or (
+                gid and "answer_first" in gid
+            ):
+                if any(
+                    it.op_kind == "rewrite_introduction" for it in items
+                ):
+                    continue
+            qids = [str(x) for x in (g.get("query_ids") or [])]
+            if g.get("query_id"):
+                qids.append(str(g["query_id"]))
+            qids = list(dict.fromkeys(qids))
+            gap_ids = [gid] if gid else []
+
+            if grounded_budget <= 0 or synth_client is None:
+                items.append(
+                    _author_input_for_deferred(
+                        gap=g,
+                        query_text=qtext,
+                        reason=(
+                            "rewrite_section / add_explanation require draft_paid + "
+                            "API key (fail closed) or grounded budget exhausted; "
+                            "author input required — never invent content."
+                            if synth_client is None
+                            else (
+                                "Grounded body-op budget exhausted (prefer 1–2 strong "
+                                "section ops); author input required — never invent."
+                            )
+                        ),
+                        op_kind="rewrite_section",
+                    )
+                )
+                continue
+
+            picked = select_section_for_query(
+                source_markdown,
+                query_text=qtext or "",
+                h1=resolved_h1,
+            )
+            if picked is None:
+                # No safe rewrite span → try add_explanation on first H2, else research.
+                from aeo_mvp.content.grounded_synth import list_section_bodies
+
+                sections = list_section_bodies(source_markdown)
+                anchor = None
+                for heading, _body, _lvl in sections:
+                    if resolved_h1 and heading.strip().lower() == resolved_h1.lower():
+                        continue
+                    anchor = heading
+                    break
+                if anchor is None:
+                    items.append(
+                        SubstantiveChangeItem(
+                            content_gap=str(
+                                g.get("rationale")
+                                or g.get("explanation")
+                                or "Insufficient on-page section corpus"
+                            ),
+                            proposed_action="research_required",
+                            reason=(
+                                "Corpus insufficient for rewrite_section / "
+                                "add_explanation (research_required); never invent."
+                            ),
+                            expected_aeo_benefit=_benefit("author_input_required"),
+                            op_kind="rewrite_section",
+                            disposition="research_required",
+                            related_gap_ids=gap_ids,
+                            related_query_ids=qids,
+                            target="section:unknown",
+                            target_kind="section",
+                            action="rewrite",
+                            query_text=qtext,
+                            apply_mode="author_input_required",
+                            status="needs_author_input",
+                        )
+                    )
+                    continue
+                result = synthesize_add_explanation(
+                    client=synth_client,
+                    source_markdown=source_markdown,
+                    query_text=qtext or "",
+                    anchor_heading=anchor,
+                    h1=resolved_h1,
+                    related_gap_ids=gap_ids,
+                    related_query_ids=qids,
+                )
+            else:
+                heading, body = picked
+                result = synthesize_rewrite_section(
+                    client=synth_client,
+                    source_markdown=source_markdown,
+                    query_text=qtext or "",
+                    h1=resolved_h1,
+                    related_gap_ids=gap_ids,
+                    related_query_ids=qids,
+                    section_heading=heading,
+                    section_body=body,
+                )
+                # If rewrite blocked but page has evidence, try add_explanation once.
+                if (
+                    result.disposition != "actionable"
+                    and result.disposition != "research_required"
+                ):
+                    alt = synthesize_add_explanation(
+                        client=synth_client,
+                        source_markdown=source_markdown,
+                        query_text=qtext or "",
+                        anchor_heading=heading,
+                        h1=resolved_h1,
+                        related_gap_ids=gap_ids,
+                        related_query_ids=qids,
+                    )
+                    if alt.disposition == "actionable":
+                        result = alt
+
+            warnings.extend(result.warnings)
             items.append(
-                _author_input_for_deferred(
-                    gap=g,
-                    query_text=qtext,
-                    reason=(
-                        "No MVP-ready promote path (intro/FAQ/HowTo/SEO) for this probe; "
-                        "free-form section rewrite deferred — author input required, "
-                        "never invent content."
+                SubstantiveChangeItem(
+                    content_gap=str(
+                        g.get("rationale")
+                        or g.get("explanation")
+                        or f"Thin coverage for query: {qtext or gid}"
                     ),
-                    op_kind="rewrite_section",
+                    evidence=list(result.evidence),
+                    proposed_action=str(result.op_kind),
+                    proposed_content=result.proposed,
+                    reason=result.reason,
+                    expected_aeo_benefit=_benefit(str(result.op_kind)),
+                    op_kind=result.op_kind,  # type: ignore[arg-type]
+                    disposition=result.disposition,  # type: ignore[arg-type]
+                    related_gap_ids=list(result.related_gap_ids or gap_ids),
+                    related_query_ids=list(result.related_query_ids or qids),
+                    target=result.target,
+                    target_kind=result.target_kind,
+                    action=result.action,
+                    original=result.original,
+                    query_text=result.query_text or qtext,
+                    apply_mode=result.apply_mode  # type: ignore[arg-type]
+                    if result.disposition == "actionable"
+                    else "author_input_required",
+                    status=result.status,  # type: ignore[arg-type]
+                    claims=[c.to_dict() for c in result.claims],
+                    llm_used=result.llm_used,
                 )
             )
+            if result.disposition == "actionable":
+                grounded_budget -= 1
+                if gid:
+                    covered_gap_ids.add(gid)
 
     # Deduplicate: prefer ready over needs_author_input for same op_kind+target
     deduped: list[SubstantiveChangeItem] = []
@@ -803,12 +983,15 @@ def build_substantive_change_plan(
         key = f"{it.status}|{it.op_kind}|{it.target.lower()}|{(it.content_gap or '')[:40]}"
         if key in seen:
             continue
-        # Do not drop FAQ/HowTo/SEO author_input just because intro cites other gaps.
+        # Do not drop FAQ/HowTo/SEO/intro/section author_input just because
+        # another ready op cites other gaps.
         if it.op_kind not in {
             "add_faq_from_existing_qa",
             "add_howto_from_existing_steps",
             "metadata_seo_description",
             "rewrite_introduction",
+            "rewrite_section",
+            "add_explanation",
         }:
             if it.related_gap_ids and any(
                 gid in (a.related_gap_ids or [])
@@ -873,11 +1056,12 @@ def merge_plan_into_ops(
             if it.status == "needs_author_input":
                 k = it.target.lower()
                 if k in by_target:
-                    by_target[k]["disposition"] = "author_input_required"
+                    by_target[k]["disposition"] = it.disposition
                     by_target[k]["status"] = "needs_author_input"
                     by_target[k]["apply_mode"] = "author_input_required"
                     by_target[k]["op_kind"] = it.op_kind
                     by_target[k]["proposed"] = None
+                    by_target[k]["claims"] = list(it.claims)
                     by_target[k]["reason"] = it.reason
                 elif not any(
                     str(op.get("op_kind") or "") == str(it.op_kind)
@@ -915,12 +1099,18 @@ def merge_plan_into_ops(
             matched["original"] = it.original
             matched["proposed"] = it.proposed_content
             matched["evidence"] = list(it.evidence)
+            matched["claims"] = list(it.claims)
             matched["op_kind"] = it.op_kind
-            matched["disposition"] = "actionable"
-            matched["status"] = "ready"
+            matched["disposition"] = (
+                "actionable"
+                if it.status == "ready"
+                else it.disposition
+            )
+            matched["status"] = it.status
             matched["apply_mode"] = it.apply_mode
             matched["target_kind"] = it.target_kind
             matched["expected_aeo_benefit"] = it.expected_aeo_benefit
+            matched["llm_used"] = it.llm_used
             if it.reason and not matched.get("reason"):
                 matched["reason"] = it.reason
             if it.related_gap_ids and not matched.get("related_gap_ids"):

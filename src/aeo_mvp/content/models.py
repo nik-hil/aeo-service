@@ -66,8 +66,10 @@ OpKind = Literal[
     "metadata_seo_description",
     "add_faq_from_existing_qa",
     "add_howto_from_existing_steps",
-    # Deferred / non-MVP — emit as needs_author_input or unsupported only.
+    # Grounded LLM body ops (draft_paid + api_key; claim-validated).
     "rewrite_section",
+    "add_explanation",
+    # Deferred / non-MVP — emit as needs_author_input or unsupported only.
     "add_definition",
     "add_answer_first",
     "add_process_summary",
@@ -90,7 +92,12 @@ ApplyMode = Literal[
 OpStatus = Literal["ready", "needs_author_input", "unsupported"]
 
 # Disposition of a gap or edit op after evidence diagnosis.
-GapDisposition = Literal["actionable", "author_input_required", "deferred"]
+GapDisposition = Literal[
+    "actionable",
+    "author_input_required",
+    "research_required",
+    "deferred",
+]
 
 # Op kinds with a safe apply path in this MVP slice.
 IMPLEMENTED_OP_KINDS: frozenset[str] = frozenset(
@@ -99,13 +106,14 @@ IMPLEMENTED_OP_KINDS: frozenset[str] = frozenset(
         "metadata_seo_description",
         "add_faq_from_existing_qa",
         "add_howto_from_existing_steps",
+        "rewrite_section",
+        "add_explanation",
     }
 )
 
 # Contract-only — never invent; surface as needs_author_input / unsupported.
 DEFERRED_OP_KINDS: frozenset[str] = frozenset(
     {
-        "rewrite_section",
         "add_definition",
         "add_answer_first",
         "add_process_summary",
@@ -739,6 +747,8 @@ class ContentChangeOperation:
     original: str | None = None
     proposed: str | None = None
     evidence: list[str] = field(default_factory=list)
+    # Claim-level grounding for LLM body ops: [{claim, evidence_quote}, ...].
+    claims: list[dict[str, str]] = field(default_factory=list)
     related_gap_ids: list[str] = field(default_factory=list)
     related_query_ids: list[str] = field(default_factory=list)
     reason: str = ""
@@ -747,6 +757,8 @@ class ContentChangeOperation:
     op_kind: OpKind | str | None = None
     expected_aeo_benefit: str = ""
     op_id: str = ""
+    # Explicit disposition (research_required vs author_input_required).
+    disposition: GapDisposition | None = None
     # Optional platform hint (never required for apply).
     platform_hint: str | None = None
 
@@ -755,13 +767,14 @@ class ContentChangeOperation:
 
     def to_edit_op_dict(self) -> dict[str, Any]:
         """Wire shape compatible with EditOp / MD generator consumers."""
-        disposition: GapDisposition | None = None
-        if self.status == "ready":
-            disposition = "actionable"
-        elif self.status == "needs_author_input":
-            disposition = "author_input_required"
-        elif self.status == "unsupported":
-            disposition = "deferred"
+        disposition: GapDisposition | None = self.disposition
+        if disposition is None:
+            if self.status == "ready":
+                disposition = "actionable"
+            elif self.status == "needs_author_input":
+                disposition = "author_input_required"
+            elif self.status == "unsupported":
+                disposition = "deferred"
         return {
             "action": self.action,
             "target": self.target_locator or self.target_kind,
@@ -773,6 +786,7 @@ class ContentChangeOperation:
             "original": self.original,
             "proposed": self.proposed,
             "evidence": list(self.evidence),
+            "claims": list(self.claims),
             "related_gap_ids": list(self.related_gap_ids),
             "related_query_ids": list(self.related_query_ids),
             "op_kind": self.op_kind or self.target_kind,

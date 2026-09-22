@@ -497,9 +497,11 @@ def test_contract_mvp_op_kinds():
             "metadata_seo_description",
             "add_faq_from_existing_qa",
             "add_howto_from_existing_steps",
+            "rewrite_section",
+            "add_explanation",
         }
     )
-    assert "rewrite_section" in DEFERRED_OP_KINDS
+    assert "rewrite_section" not in DEFERRED_OP_KINDS
     assert "clarify_relationship" in DEFERRED_OP_KINDS
     assert FAQ_MIN_EXISTING_QA_PAIRS >= 2
     assert HOWTO_MIN_EXISTING_STEPS >= 3

@@ -604,6 +604,11 @@ def enrich_ops_with_rewrite_proposals(
     gaps: list[dict[str, Any]] | None = None,
     coverage_by_query: list[dict[str, Any]] | None = None,
     brief: dict[str, Any] | None = None,
+    draft_paid: bool = False,
+    llm_api_key: str | None = None,
+    llm_model: str | None = None,
+    llm_base_url: str | None = None,
+    grounded_client: Any = None,
 ) -> tuple[list[dict[str, Any]], RewriteProposal | None, list[str]]:
     """Content-optimization layer: generate + attach rewrite proposals onto ops.
 
@@ -612,8 +617,9 @@ def enrich_ops_with_rewrite_proposals(
     not call this (or ``propose_introduction_rewrite``) to invent copy.
 
     MVP ready kinds: rewrite_introduction, metadata_seo_description,
-    add_faq_from_existing_qa, add_howto_from_existing_steps. All other gaps
-    become needs_author_input / unsupported (never invent).
+    add_faq_from_existing_qa, add_howto_from_existing_steps, rewrite_section,
+    add_explanation (latter two require draft_paid + key). All other gaps
+    become needs_author_input / research_required / unsupported (never invent).
 
     Returns (enriched_ops, primary_intro_proposal_or_none, warnings).
     """
@@ -760,7 +766,7 @@ def enrich_ops_with_rewrite_proposals(
 
         enriched.append(op)
 
-    # --- Pass 2: MVP substantive plan (intro/SEO/FAQ/HowTo + deferred author_input) ---
+    # --- Pass 2: MVP substantive plan (intro/SEO/FAQ/HowTo + grounded section) ---
     plan = build_substantive_change_plan(
         source_markdown=source_markdown,
         gaps=gaps,
@@ -769,6 +775,11 @@ def enrich_ops_with_rewrite_proposals(
         existing_ops=enriched or seed_ops,
         h1=resolved_h1,
         brief=brief,
+        draft_paid=draft_paid,
+        llm_api_key=llm_api_key,
+        llm_model=llm_model,
+        llm_base_url=llm_base_url,
+        grounded_client=grounded_client,
     )
     warnings.extend(plan.warnings)
     merged = merge_plan_into_ops(enriched or seed_ops, plan)

@@ -125,6 +125,10 @@ def _attach_hashnode_recommended_markdown(
     content_representation: str | None = None,
     source_url: str | None = None,
     canonical_url: str | None = None,
+    draft_paid: bool | None = None,
+    llm_api_key: str | None = None,
+    llm_model: str | None = None,
+    llm_base_url: str | None = None,
 ) -> dict[str, Any]:
     """Attach Hashnode recommended Markdown + provenance onto an opt wire dict.
 
@@ -201,6 +205,23 @@ def _attach_hashnode_recommended_markdown(
             for item in brief_wire.get("work_queue") or []:
                 if isinstance(item, dict):
                     ops_seed.append(item)
+        paid_flag = (
+            bool(draft_paid)
+            if draft_paid is not None
+            else bool(
+                wire.get("draft_paid")
+                or (wire.get("config") or {}).get("draft_paid")
+                or brief_wire.get("draft_paid")
+            )
+        )
+        key = llm_api_key
+        if key is None:
+            key = wire.get("llm_api_key") or (wire.get("config") or {}).get(
+                "llm_api_key"
+            )
+        # Fail closed: never pass key when draft_paid is false.
+        if not paid_flag:
+            key = None
         enriched_ops, _proposal, enrich_warnings = enrich_ops_with_rewrite_proposals(
             ops_seed,
             source_markdown=source_markdown,
@@ -209,6 +230,14 @@ def _attach_hashnode_recommended_markdown(
             gaps=gap_flat,
             coverage_by_query=coverage_by_query,
             brief=brief_wire,
+            draft_paid=paid_flag,
+            llm_api_key=key if isinstance(key, str) else None,
+            llm_model=llm_model
+            or wire.get("llm_model")
+            or (wire.get("config") or {}).get("llm_model"),
+            llm_base_url=llm_base_url
+            or wire.get("llm_base_url")
+            or (wire.get("config") or {}).get("llm_base_url"),
         )
         # Extract substantive change-plan metadata (not applied to MD body).
         substantive_plan: dict[str, Any] | None = None
@@ -588,6 +617,10 @@ def optimize_job_pages(
             content_representation=getattr(page, "content_representation", None),
             source_url=getattr(page, "source_url", None),
             canonical_url=getattr(page, "canonical_url", None) or page.url,
+            draft_paid=draft_paid,
+            llm_api_key=api_key,
+            llm_model=opts.get("llm_model") or cfg.get("llm_model"),
+            llm_base_url=opts.get("llm_base_url") or cfg.get("llm_base_url"),
         )
         intel = dict(wire.get("page_intelligence") or {})
 

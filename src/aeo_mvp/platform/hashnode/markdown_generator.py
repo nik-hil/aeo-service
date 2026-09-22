@@ -509,7 +509,7 @@ def _is_ready_mvp_body_op(op: dict[str, Any], *, h1: str | None) -> bool:
     disposition = str(op.get("disposition") or "").strip()
     if status == "needs_author_input" or apply_mode == "author_input_required":
         return False
-    if disposition == "author_input_required":
+    if disposition in {"author_input_required", "research_required"}:
         return False
     if status and status not in {"ready", ""}:
         # unsupported / deferred → never apply
@@ -521,7 +521,6 @@ def _is_ready_mvp_body_op(op: dict[str, Any], *, h1: str | None) -> bool:
     if op_kind in {
         "_substantive_change_plan",
         "author_input_required",
-        "rewrite_section",
         "add_definition",
         "add_answer_first",
         "add_process_summary",
@@ -537,8 +536,13 @@ def _is_ready_mvp_body_op(op: dict[str, Any], *, h1: str | None) -> bool:
     proposed = op.get("proposed")
     if not isinstance(proposed, str) or not proposed.strip():
         return False
-    # FAQ / HowTo promote-only kinds
-    if op_kind in {"add_faq_from_existing_qa", "add_howto_from_existing_steps"}:
+    # FAQ / HowTo promote-only + grounded section body kinds
+    if op_kind in {
+        "add_faq_from_existing_qa",
+        "add_howto_from_existing_steps",
+        "rewrite_section",
+        "add_explanation",
+    }:
         return status in {"ready", ""} or disposition == "actionable"
     return False
 
@@ -1019,6 +1023,83 @@ def generate_recommended_markdown(
                 warnings.append("howto_op_applied_from_proposed")
             else:
                 warnings.append("howto_op_idempotent_no_change")
+        elif op_kind == "rewrite_section":
+            heading = _section_heading_from_target(
+                str(op.get("target") or op.get("target_locator") or "")
+            )
+            if not heading:
+                warnings.append("rewrite_section_missing_heading")
+                continue
+            # Apply-only safety: reject invented URLs / HTML; never call LLM.
+            hard = []
+            if re.search(r"<[a-zA-Z!/?]", proposed_text):
+                hard.append("proposed_html_injection")
+            src_urls = {
+                u.rstrip(".,);") for u in re.findall(
+                    r"https?://[^\s)\]>\"']+", body or ""
+                )
+            }
+            for url in re.findall(r"https?://[^\s)\]>\"']+", proposed_text):
+                if url.rstrip(".,);") not in src_urls:
+                    hard.append("proposed_invented_url")
+                    break
+            if hard:
+                warnings.extend(hard)
+                warnings.append("rewrite_section_rejected_validation")
+                continue
+            # Prefer original match when provided (bounded replace).
+            original_text = str(op.get("original") or "").strip()
+            if original_text and original_text not in body and original_text.strip() not in body:
+                # Still attempt heading-based replace when original drifted.
+                warnings.append("rewrite_section_original_not_found_using_heading")
+            body, did = _apply_proposed_section_rewrite(body, heading, proposed_text)
+            if did:
+                body_op_applied = True
+                if op.get("op_id"):
+                    applied_ops.append(str(op["op_id"]))
+                applied_ops.append("evidence_grounded_rewrite_section")
+                warnings.append("rewrite_section_applied_from_proposed")
+            else:
+                warnings.append("rewrite_section_idempotent_or_miss")
+        elif op_kind == "add_explanation":
+            heading = _section_heading_from_target(
+                str(
+                    op.get("target")
+                    or op.get("target_locator")
+                    or op.get("anchor_locator")
+                    or ""
+                )
+            )
+            if not heading:
+                warnings.append("add_explanation_missing_anchor")
+                continue
+            if re.search(r"<[a-zA-Z!/?]", proposed_text):
+                warnings.append("proposed_html_injection")
+                warnings.append("add_explanation_rejected_validation")
+                continue
+            src_urls = {
+                u.rstrip(".,);") for u in re.findall(
+                    r"https?://[^\s)\]>\"']+", body or ""
+                )
+            }
+            invented = False
+            for url in re.findall(r"https?://[^\s)\]>\"']+", proposed_text):
+                if url.rstrip(".,);") not in src_urls:
+                    invented = True
+                    break
+            if invented:
+                warnings.append("proposed_invented_url")
+                warnings.append("add_explanation_rejected_validation")
+                continue
+            body, did = _apply_insert_after_heading(body, heading, proposed_text)
+            if did:
+                body_op_applied = True
+                if op.get("op_id"):
+                    applied_ops.append(str(op["op_id"]))
+                applied_ops.append("evidence_grounded_add_explanation")
+                warnings.append("add_explanation_applied_from_proposed")
+            else:
+                warnings.append("add_explanation_idempotent_no_change")
 
     # Author-input-required / deferred ops: never invent; record warning only.
     for op in ops:
@@ -1027,13 +1108,17 @@ def generate_recommended_markdown(
         apply_mode = str(op.get("apply_mode") or "")
         if (
             status == "needs_author_input"
-            or disposition == "author_input_required"
+            or disposition in {"author_input_required", "research_required"}
             or apply_mode == "author_input_required"
             or str(op.get("op_kind") or "") == "author_input_required"
         ):
+            prefix = (
+                "research_required:"
+                if disposition == "research_required"
+                else "author_input_required:"
+            )
             warnings.append(
-                "author_input_required:"
-                + str(op.get("target") or op.get("op_id") or "unknown")
+                prefix + str(op.get("target") or op.get("op_id") or "unknown")
             )
 
     # FAQ / HowTo body changes: ready ContentChangeOperation only.
