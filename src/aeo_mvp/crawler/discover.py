@@ -247,16 +247,23 @@ async def crawl_live(
 
             seen.add(norm)
             outcome = await fetch_page_with_alternate(client, norm, timeout_s=timeout_s)
+            # Logical/canonical article URL (strips one .md for direct Markdown URLs).
+            logical_url = outcome.canonical_url or norm
+            if logical_url != norm:
+                seen.add(logical_url)
             title = robots_meta = canonical = None
             if outcome.html and outcome.representation == "html":
                 title, robots_meta, canonical = extract_title_meta(outcome.html)
             if not title and outcome.title:
                 title = outcome.title
+            # For Markdown pages, persist logical article URL as same-host canonical.
+            if outcome.representation == "markdown" and not canonical:
+                canonical = logical_url
             page = Page(
                 id=new_id(),
                 job_id=job_id,
-                url=norm,
-                final_url=outcome.source_url or norm,
+                url=logical_url,
+                final_url=outcome.source_url or logical_url,
                 source_url=outcome.source_url,
                 content_representation=outcome.representation if outcome.html else None,
                 depth=depth,
@@ -267,6 +274,7 @@ async def crawl_live(
                 content_type=outcome.content_type,
                 fetched_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
                 html=outcome.html,
+                source_markdown=outcome.source_markdown,
                 title=title,
                 robots_meta=robots_meta,
                 canonical_url=canonical,

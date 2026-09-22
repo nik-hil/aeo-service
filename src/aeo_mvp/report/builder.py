@@ -295,6 +295,36 @@ def build_report(session: Session, job: Job) -> dict[str, Any]:
             }
         )
 
+    # Hashnode Markdown applicability: suppress platform-managed HTML/infra SEO
+    # as actionable; remap remaining copy to Hashnode editor fields.
+    from aeo_mvp.platform.hashnode.applicability import (
+        apply_hashnode_recommendation_filter,
+        is_hashnode_markdown_context,
+    )
+
+    job_pages = session.query(Page).filter(Page.job_id == job.id).all()
+    hashnode_md_page = next(
+        (
+            p
+            for p in job_pages
+            if is_hashnode_markdown_context(
+                url=p.url,
+                content_representation=getattr(p, "content_representation", None),
+                source_url=getattr(p, "source_url", None),
+            )
+        ),
+        None,
+    )
+    if hashnode_md_page is not None:
+        rec_payloads = apply_hashnode_recommendation_filter(
+            rec_payloads,
+            url=hashnode_md_page.url,
+            content_representation=getattr(
+                hashnode_md_page, "content_representation", None
+            ),
+            source_url=getattr(hashnode_md_page, "source_url", None),
+        )
+
     page_findings = _page_findings(session, job.id, evidence)
     executive_summary = _build_executive_summary(
         scores_block,

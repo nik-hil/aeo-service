@@ -2,11 +2,13 @@
 
 Flow:
 1. Fetch the user/canonical URL via the normal SSRF + IP-pin path.
-2. If primary is usable 2xx HTML → keep it; do not request an alternate.
-3. Only when primary is explicitly blocked/unavailable **and** a supported
+2. If the response is Markdown (Content-Type / direct ``.md`` URL) → normalize,
+   preserve raw Markdown, set logical URL by stripping one ``.md`` suffix.
+3. If primary is usable 2xx HTML → keep it; do not request an alternate.
+4. Only when primary is explicitly blocked/unavailable **and** a supported
    alternate exists → fetch the alternate through the **same** fetch path.
-4. Markdown alternates are normalized to analyzable HTML; HTML discovery is
-   never driven from Markdown links.
+5. Markdown alternates are normalized to analyzable HTML; HTML discovery is
+   never driven from Markdown links. Raw Markdown is preserved separately.
 """
 
 from __future__ import annotations
@@ -21,6 +23,8 @@ from aeo_mvp.crawler.alternate import (
     get_supported_alternate_url,
     is_primary_blocked,
     is_primary_usable,
+    looks_like_markdown_payload,
+    strip_one_md_suffix,
 )
 from aeo_mvp.crawler.fetch import FetchResult, fetch_url
 from aeo_mvp.crawler.markdown_normalize import markdown_to_analyzable_html
@@ -52,6 +56,8 @@ class PageFetchOutcome:
     alternate: AlternateRepresentation | None = None
     # True only when analyzable body came from real HTML (safe for link discovery).
     html_discovery_ok: bool = False
+    # Exact fetched Markdown when representation=markdown; never reconstructed from HTML.
+    source_markdown: str | None = None
 
 
 def _primary_status(result: FetchResult) -> PrimaryFetchStatus:
@@ -86,6 +92,39 @@ def _diagnose_unavailable(
     return "; ".join(parts)
 
 
+def _markdown_outcome(
+    *,
+    logical_url: str,
+    source_url: str,
+    result: FetchResult,
+    raw_markdown: str,
+    primary_status_code: int | None,
+    primary_fetch_status: PrimaryFetchStatus,
+    alternate_fetch_status: AlternateFetchStatus,
+    primary_error: str | None = None,
+    alternate: AlternateRepresentation | None = None,
+) -> PageFetchOutcome:
+    normalized = markdown_to_analyzable_html(raw_markdown)
+    return PageFetchOutcome(
+        canonical_url=logical_url,
+        source_url=source_url,
+        representation="markdown",
+        status_code=result.status_code,
+        content_type=result.content_type or "text/markdown",
+        html=normalized.html,
+        title=normalized.title,
+        fetch_error=None,
+        primary_status_code=primary_status_code,
+        primary_fetch_status=primary_fetch_status,
+        alternate_fetch_status=alternate_fetch_status,
+        primary_error=primary_error,
+        alternate_error=None,
+        alternate=alternate,
+        html_discovery_ok=False,
+        source_markdown=raw_markdown,
+    )
+
+
 async def fetch_page_with_alternate(
     client: httpx.AsyncClient,
     url: str,
@@ -96,6 +135,28 @@ async def fetch_page_with_alternate(
     primary = await fetch_url(client, url, timeout_s=timeout_s)
     alt_meta = get_supported_alternate_url(url)
     primary_status = _primary_status(primary)
+
+    # Direct Markdown URL / Markdown Content-Type success (Hashnode .md twin, etc.).
+    # Detect representation from payload — never treat Markdown as HTML merely for 200.
+    if primary_status == "success" and looks_like_markdown_payload(
+        url=url,
+        content_type=primary.content_type,
+        text=primary.text,
+    ):
+        md_source = primary.final_url or url
+        logical = strip_one_md_suffix(url)
+        return _markdown_outcome(
+            logical_url=logical,
+            source_url=md_source,
+            result=primary,
+            raw_markdown=primary.text or "",
+            primary_status_code=primary.status_code,
+            primary_fetch_status="success",
+            alternate_fetch_status=(
+                "not_applicable" if alt_meta is None else "not_attempted"
+            ),
+            alternate=alt_meta,
+        )
 
     if primary_status == "success":
         return PageFetchOutcome(
@@ -115,6 +176,7 @@ async def fetch_page_with_alternate(
             primary_error=None,
             alternate=alt_meta,
             html_discovery_ok=True,
+            source_markdown=None,
         )
 
     # Only attempt alternate on explicit blocked/unavailable + supported twin.
@@ -146,6 +208,7 @@ async def fetch_page_with_alternate(
             primary_error=primary.error,
             alternate=alt_meta,
             html_discovery_ok=False,
+            source_markdown=None,
         )
 
     logger.info(
@@ -181,27 +244,20 @@ async def fetch_page_with_alternate(
             alternate_error=alternate.error,
             alternate=alt_meta,
             html_discovery_ok=False,
+            source_markdown=None,
         )
 
     if alt_meta.representation == "markdown":
-        normalized = markdown_to_analyzable_html(alternate.text or "")
-        return PageFetchOutcome(
-            canonical_url=url,
+        return _markdown_outcome(
+            logical_url=url,
             source_url=alternate.final_url or alt_meta.url,
-            representation="markdown",
-            status_code=alternate.status_code,
-            content_type=alternate.content_type or "text/markdown",
-            html=normalized.html,
-            title=normalized.title,
-            fetch_error=None,
+            result=alternate,
+            raw_markdown=alternate.text or "",
             primary_status_code=primary.status_code,
             primary_fetch_status="blocked",
             alternate_fetch_status="success",
             primary_error=primary.error,
-            alternate_error=None,
             alternate=alt_meta,
-            # Markdown is content-only — do not drive HTML link discovery.
-            html_discovery_ok=False,
         )
 
     # Future non-markdown adapters could land here.
@@ -220,4 +276,5 @@ async def fetch_page_with_alternate(
         primary_error=primary.error,
         alternate=alt_meta,
         html_discovery_ok=False,
+        source_markdown=None,
     )

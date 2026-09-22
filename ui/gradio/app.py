@@ -43,14 +43,12 @@ from services.adapters import (
     UI_MULTI_MAX_PAGES,
     AnalysisState,
     adapt_before,
-    adapt_brief,
-    adapt_draft,
     adapt_evidence,
-    adapt_gaps,
     adapt_overview,
     adapt_pages,
     adapt_recommendations,
-    comparison_markdown,
+    adapt_recommended_markdown,
+    comparison_html,
     enrichment_error_markdown,
     loading_enrichment_markdown,
     merge_page_opt_into_report,
@@ -96,12 +94,16 @@ STAGE_LABELS = {
 EMPTY_OVERVIEW = "_Run an analysis to see AEO Health, gaps, and recommendations._"
 EMPTY_DETAIL = (
     "_Select a page (multi-page) or run analysis (single-page) to inspect "
-    "CURRENT (observed) → Recommendations → Brief & Draft → Evidence._"
+    "CURRENT → RECOMMENDED MARKDOWN → CURRENT vs RECOMMENDED → Evidence → WHY THESE CHANGES._"
 )
-EMPTY_RECS = "_No recommendations yet._"
-EMPTY_BRIEF = "_No brief/draft yet._"
+EMPTY_RECS = "_No recommendation detail yet._"
+EMPTY_BRIEF = "_No recommended Markdown yet._"
 EMPTY_EVIDENCE = "_No evidence yet._"
-EMPTY_COMPARE = "_Run analysis and select a page to compare CURRENT vs RECOMMENDED._"
+EMPTY_COMPARE = (
+    '<div class="aeo-md-compare">'
+    "<p>Run analysis and select a page to compare CURRENT vs RECOMMENDED Markdown.</p>"
+    "</div>"
+)
 EMPTY_HEADER = ""
 OPP_HEADERS = ["#", "Kind", "Title", "Summary", "Page", "Signal"]
 PAGE_HEADERS = ["Title", "URL", "Depth", "Status", "Error"]
@@ -165,24 +167,32 @@ def report_for_display(
     return report
 
 
-def detail_panels(report: dict[str, Any], page_url: str | None) -> tuple[str, str, str, str]:
-    before = adapt_before(report, page_url=page_url)
-    gaps_md = adapt_gaps(report, page_url=page_url)
-    brief = adapt_brief(report, page_url=page_url)
-    draft = adapt_draft(report, page_url=page_url)
+def detail_panels(
+    report: dict[str, Any],
+    page_url: str | None,
+    *,
+    pages_payload: dict[str, Any] | None = None,
+) -> tuple[str, str, str, str]:
+    """Return (CURRENT, WHY THESE CHANGES, RECOMMENDED MARKDOWN, Evidence)."""
+    before = adapt_before(report, page_url=page_url, pages_payload=pages_payload)
     recs = adapt_recommendations(report, page_url=page_url)
+    recommended = adapt_recommended_markdown(report, page_url=page_url)
     evidence = adapt_evidence(report, page_url=page_url)
-    brief_md = brief.markdown if brief else "_No optimization brief for this page._"
-    draft_md = (
-        draft.body_markdown
-        if draft
-        else (
-            "_No content draft returned. When enabled, drafts are deterministic skeletons "
-            "or generated suggestions — never a final optimized page._"
-        )
+    return (
+        before.markdown,
+        recommendations_markdown(recs),
+        recommended,
+        evidence.markdown,
     )
-    brief_draft_md = gaps_md + "\n\n---\n\n" + brief_md + "\n\n---\n\n" + draft_md
-    return before.markdown, recommendations_markdown(recs), brief_draft_md, evidence.markdown
+
+
+def _compare_panel(
+    report: dict[str, Any],
+    page_url: str | None,
+    *,
+    pages_payload: dict[str, Any] | None = None,
+) -> str:
+    return comparison_html(report, page_url, pages_payload=pages_payload)
 
 
 def _blank_ui(state: AnalysisState, status: str, *, kind: str = "err") -> AnalysisOutput:
@@ -209,15 +219,22 @@ def _blank_ui(state: AnalysisState, status: str, *, kind: str = "err") -> Analys
 def _loading_detail(state: AnalysisState, page_url: str) -> DetailOutput:
     base = state.report or {}
     header = page_header(base, state.pages, page_url)
-    before_obs = adapt_before(base, page_url=page_url).markdown
+    before_obs = adapt_before(
+        base, page_url=page_url, pages_payload=state.pages
+    ).markdown
     return (
         state,
         header.html,
         before_obs,
-        loading_enrichment_markdown("Recommendations"),
-        loading_enrichment_markdown("Brief & Draft"),
+        loading_enrichment_markdown("WHY THESE CHANGES"),
+        loading_enrichment_markdown("RECOMMENDED MARKDOWN"),
         loading_enrichment_markdown("Evidence"),
-        loading_enrichment_markdown("CURRENT vs RECOMMENDED"),
+        (
+            '<div class="aeo-md-compare"><p>'
+            "Additional optimization analysis loading… "
+            "Observed CURRENT Markdown stays visible while this loads."
+            "</p></div>"
+        ),
     )
 
 
@@ -226,23 +243,30 @@ def _terminal_detail(
 ) -> DetailOutput:
     base = state.report or {}
     header = page_header(base, state.pages, page_url)
-    before_obs = adapt_before(base, page_url=page_url).markdown
+    before_obs = adapt_before(
+        base, page_url=page_url, pages_payload=state.pages
+    ).markdown
     if entry.status == EnrichmentStatus.SUCCESS and entry.payload:
         display = merge_page_opt_into_report(base, entry.payload)
-        before, recs_md, after_md, evidence_md = detail_panels(display, page_url)
-        compare = comparison_markdown(display, page_url)
+        before, recs_md, after_md, evidence_md = detail_panels(
+            display, page_url, pages_payload=state.pages
+        )
+        compare = _compare_panel(display, page_url, pages_payload=state.pages)
         header = page_header(display, state.pages, page_url)
         return state, header.html, before, recs_md, after_md, evidence_md, compare
     err = entry.error_message or "Optimization analysis unavailable."
-    before, _, _, _ = detail_panels(base, page_url)
+    before, _, _, _ = detail_panels(base, page_url, pages_payload=state.pages)
     return (
         state,
         header.html,
         before or before_obs,
-        enrichment_error_markdown("Recommendations", err),
-        enrichment_error_markdown("Brief & Draft", err),
+        enrichment_error_markdown("WHY THESE CHANGES", err),
+        enrichment_error_markdown("RECOMMENDED MARKDOWN", err),
         enrichment_error_markdown("Evidence", err),
-        enrichment_error_markdown("CURRENT vs RECOMMENDED", err),
+        (
+            f'<div class="aeo-md-compare"><p><strong>Could not load CURRENT vs RECOMMENDED:</strong> '
+            f"{escape_text(err)}</p></div>"
+        ),
     )
 
 
@@ -382,7 +406,9 @@ def run_analysis(
         header = page_header(report, pages, selected)
         if not will_enrich or not first_page_id or not captured_job:
             display = report_for_display(state, selected, first_page_id)
-            before, recs_md, after_md, evidence_md = detail_panels(display, selected)
+            before, recs_md, after_md, evidence_md = detail_panels(
+                display, selected, pages_payload=pages
+            )
             yield _analysis_output(
                 state,
                 status_msg=status_msg,
@@ -395,14 +421,14 @@ def run_analysis(
                 recs_md=recs_md,
                 after_md=after_md,
                 evidence_md=evidence_md,
-                compare=comparison_markdown(display, selected),
+                compare=_compare_panel(display, selected, pages_payload=pages),
                 page_choices=page_choices,
                 selected=selected,
             )
             return
 
         role, token = state.enrichment_cache.claim(captured_job, first_page_id)
-        before_obs = adapt_before(report, page_url=selected).markdown
+        before_obs = adapt_before(report, page_url=selected, pages_payload=pages).markdown
         loading = _loading_detail(state, selected)
         yield _analysis_output(
             state,
@@ -461,12 +487,12 @@ def run_analysis(
             return
         if entry.status == EnrichmentStatus.SUCCESS and entry.payload:
             display = merge_page_opt_into_report(report, entry.payload)
-            before, recs_md, after_md, evidence_md = detail_panels(display, selected)
+            before, recs_md, after_md, evidence_md = detail_panels(display, selected, pages_payload=pages)
             header = page_header(display, pages, selected)
-            compare = comparison_markdown(display, selected)
+            compare = _compare_panel(display, selected, pages_payload=pages)
         else:
             err = entry.error_message or "Optimization analysis unavailable."
-            before, _, _, _ = detail_panels(report, selected)
+            before, _, _, _ = detail_panels(report, selected, pages_payload=pages)
             before = before or before_obs
             recs_md = enrichment_error_markdown("Recommendations", err)
             after_md = enrichment_error_markdown("Brief & Draft", err)
@@ -575,8 +601,8 @@ async def on_select_page(
 
     if cached and cached.status == EnrichmentStatus.SUCCESS and cached.payload:
         display = merge_page_opt_into_report(base, cached.payload)
-        before, recs_md, after_md, evidence_md = detail_panels(display, page_url)
-        compare = comparison_markdown(display, page_url)
+        before, recs_md, after_md, evidence_md = detail_panels(display, page_url, pages_payload=state.pages)
+        compare = _compare_panel(display, page_url, pages_payload=state.pages)
         header = page_header(display, state.pages, page_url)
         yield state, header.html, before, recs_md, after_md, evidence_md, compare
         return
@@ -588,8 +614,8 @@ async def on_select_page(
 
     needs = needs_page_enrichment(base, page_url=page_url, page_id=page_id)
     if not needs or not state.job_id or not page_id:
-        before, recs_md, after_md, evidence_md = detail_panels(base, page_url)
-        compare = comparison_markdown(base, page_url)
+        before, recs_md, after_md, evidence_md = detail_panels(base, page_url, pages_payload=state.pages)
+        compare = _compare_panel(base, page_url, pages_payload=state.pages)
         yield state, header.html, before, recs_md, after_md, evidence_md, compare
         return
 
@@ -600,8 +626,8 @@ async def on_select_page(
         if settled is not None:
             yield _terminal_detail(state, page_url, settled)
         else:
-            before, recs_md, after_md, evidence_md = detail_panels(base, page_url)
-            compare = comparison_markdown(base, page_url)
+            before, recs_md, after_md, evidence_md = detail_panels(base, page_url, pages_payload=state.pages)
+            compare = _compare_panel(base, page_url, pages_payload=state.pages)
             yield state, header.html, before, recs_md, after_md, evidence_md, compare
         return
 
@@ -790,33 +816,39 @@ def build_app():
                 page_select = gr.Dropdown(
                     choices=[],
                     label="Inspect page",
-                    info="Select a page for CURRENT / Recommendations / Brief & Draft / Evidence.",
+                    info=(
+                        "Select a page for CURRENT / RECOMMENDED MARKDOWN / "
+                        "CURRENT vs RECOMMENDED / Evidence / WHY THESE CHANGES."
+                    ),
                 )
             with gr.Column(scale=2, elem_classes=["aeo-panel"]):
                 page_header_html = gr.HTML(value=EMPTY_HEADER)
                 with gr.Tabs():
-                    with gr.Tab("CURRENT (observed)"):
+                    with gr.Tab("CURRENT"):
                         gr.Markdown(
-                            "_Observed page signals — not a live browser render._"
+                            "_Fetched Markdown or observed page signals — not a live browser render._"
                         )
                         before_md = gr.Markdown(EMPTY_DETAIL)
-                    with gr.Tab("Recommendations"):
-                        recs_md = gr.Markdown(EMPTY_RECS)
-                    with gr.Tab("Brief & Draft"):
+                    with gr.Tab("RECOMMENDED MARKDOWN"):
                         gr.Markdown(
-                            "_Brief & Draft = content gaps + optimization brief "
-                            "+ recommended content/draft when provided. "
-                            "Skeleton drafts are labeled honestly — never a final optimized page._"
+                            "_Complete suggested Markdown for Hashnode editor / GitHub publish / "
+                            "bulk import. Never a final or guaranteed AEO article._"
                         )
                         after_md = gr.Markdown(EMPTY_BRIEF)
                     with gr.Tab("CURRENT vs RECOMMENDED"):
                         gr.Markdown(
-                            "_Side-by-side: observed signals vs brief/structure/draft. "
-                            "Honest labels only — never a final optimized page._"
+                            "_Side-by-side complete documents with independent scroll — "
+                            "not a Git diff. Recommended draft is a suggestion only._"
                         )
-                        compare_md = gr.Markdown(EMPTY_COMPARE)
+                        compare_md = gr.HTML(value=EMPTY_COMPARE)
                     with gr.Tab("Evidence"):
                         evidence_md = gr.Markdown(EMPTY_EVIDENCE)
+                    with gr.Tab("WHY THESE CHANGES"):
+                        gr.Markdown(
+                            "_Recommendation detail (problem, why, action, effort, impact) — "
+                            "audit / explanation, visually secondary._"
+                        )
+                        recs_md = gr.Markdown(EMPTY_RECS)
 
         outputs = [
             state,

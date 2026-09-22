@@ -42,15 +42,18 @@ def test_guide_and_info_icons_copy():
 
 
 def test_detail_panels_tabs_content():
-    before, recs, brief_draft, evidence = detail_panels(SAMPLE_REPORT, "https://demo.example/")
+    before, recs, recommended, evidence = detail_panels(
+        SAMPLE_REPORT, "https://demo.example/"
+    )
     assert "CURRENT" in before or "observed" in before.lower()
-    assert "Recommendations" in recs or "answer-first" in recs.lower()
-    assert "Content gaps" in brief_draft
-    assert "brief" in brief_draft.lower() or "RECOMMENDED" in brief_draft
-    assert "skeleton" in brief_draft.lower() or "Draft" in brief_draft
-    assert "```markdown" in brief_draft
-    assert "Evidence" in evidence
-    assert "Optimized Page" not in brief_draft
+    assert "WHY THESE CHANGES" in recs or "answer-first" in recs.lower()
+    assert (
+        "RECOMMENDED" in recommended
+        or "draft" in recommended.lower()
+        or "Markdown" in recommended
+    )
+    assert "Evidence" in evidence or "evidence" in evidence.lower()
+    assert "Optimized Page" not in recommended
 
 
 @pytest.mark.asyncio
