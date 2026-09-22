@@ -295,7 +295,6 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
         if site_profile is None and job is not None:
             site_profile = load_site_profile(session, job)
 
-        settings = get_settings()
         draft_paid = bool(body.draft_paid or body.paid_llm_opt_in)
         content_draft = bool(body.content_draft or body.generate_draft)
         generate_draft = content_draft
@@ -324,7 +323,6 @@ async def content_optimization(body: ContentOptimizationRequest) -> dict[str, An
             cfg.setdefault("llm_model", llm_model)
         if llm_base_url:
             cfg.setdefault("llm_base_url", llm_base_url)
-        _ = settings  # settings used for auth elsewhere in request lifecycle
 
         try:
             from aeo_mvp.content.service import _attach_hashnode_recommended_markdown
