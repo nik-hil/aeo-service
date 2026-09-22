@@ -1052,6 +1052,21 @@ def generate_recommended_markdown(
             if original_text and original_text not in body and original_text.strip() not in body:
                 # Still attempt heading-based replace when original drifted.
                 warnings.append("rewrite_section_original_not_found_using_heading")
+            # Locality guard: the op's ``original`` must describe the span this
+            # generator will replace. A much larger ``original`` means the
+            # upstream corpus was mis-bounded (e.g. swallowed later sections)
+            # and the proposal may summarise downstream content — refuse.
+            span = _find_section_span(body, heading)
+            if original_text and span is not None:
+                _hi, b_start, b_end, _hl = span
+                span_text = re.sub(
+                    r"\s+", " ", "\n".join(body.splitlines()[b_start:b_end])
+                ).strip()
+                orig_norm = re.sub(r"\s+", " ", original_text).strip()
+                if span_text and len(orig_norm) > 2 * len(span_text):
+                    warnings.append("rewrite_section_original_span_mismatch")
+                    warnings.append("rewrite_section_rejected_validation")
+                    continue
             body, did = _apply_proposed_section_rewrite(body, heading, proposed_text)
             if did:
                 body_op_applied = True

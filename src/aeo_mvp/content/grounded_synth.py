@@ -37,7 +37,20 @@ _URL_RE = re.compile(r"https?://[^\s)\]>\"']+")
 _NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)?%?\b")
 _PROPER_NAME_RE = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b")
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-]{2,}")
-_HEADING_RE = re.compile(r"^(#{2,6})\s+(.+)$", re.M)
+# All ATX heading levels. Articles (e.g. Hashnode exports) frequently use ``#``
+# for body sections; matching only H2–H6 made those sections invisible and let
+# a single ``###`` swallow the rest of the article as its "body".
+_HEADING_LINE_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+
+# Query tokens that carry no topical signal for section selection.
+_QUERY_STOPWORDS = frozenset(
+    {
+        "what", "the", "and", "for", "how", "why", "does", "are", "with", "this",
+        "that", "from", "into", "when", "where", "which", "who", "can", "you",
+        "your", "there", "here", "about", "explain", "describe", "mean", "means",
+        "work", "works", "use", "used", "using",
+    }
+)
 
 _SYNTH_SYSTEM = (
     "You rewrite or clarify web article Markdown using ONLY the provided "
@@ -54,6 +67,16 @@ _ENTAIL_SYSTEM = (
 MAX_GROUNDED_BODY_OPS = 2
 # Soft token-overlap prefilter (never sufficient alone for accept).
 MIN_TOKEN_OVERLAP_RATIO = 0.35
+# rewrite_section must stay local: refuse to hand the LLM a "section" larger
+# than this (chars). Oversized spans mean the section boundary is wrong or the
+# section is really a whole article — never summarise that under one heading.
+MAX_REWRITE_SECTION_CORPUS_CHARS = 4000
+# Size band that earns a small selection bonus (readable, locally rewritable).
+PREFERRED_SECTION_MIN_CHARS = 40
+PREFERRED_SECTION_MAX_CHARS = 2500
+# Deterministic synth: same corpus + query ⇒ same candidate across jobs
+# (HTML twin and .md twin of one Hashnode article share one proposal).
+SYNTH_TEMPERATURE = 0.0
 
 
 @dataclass
@@ -522,38 +545,68 @@ def _claims_from_payload(data: dict[str, Any]) -> list[GroundedClaim]:
 
 
 def list_section_bodies(source_markdown: str) -> list[tuple[str, str, str]]:
-    """Return [(heading, body, level_marker), ...] for H2–H6 sections."""
-    md = source_markdown or ""
-    matches = list(_HEADING_RE.finditer(md))
+    """Return [(heading, body, level_marker), ...] for every ATX section (H1–H6).
+
+    Section body = lines after the heading up to the next heading whose level
+    is the same or higher (fewer ``#``), or EOF. Headings inside fenced code
+    blocks are ignored. This is the same boundary rule the Hashnode Markdown
+    generator uses to *replace* a section, so the corpus the LLM rewrites is
+    exactly the span that will be swapped in.
+    """
+    lines = (source_markdown or "").splitlines()
+    heads: list[tuple[int, int, str]] = []  # (line_idx, level, heading)
+    in_fence = False
+    for i, ln in enumerate(lines):
+        if ln.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = _HEADING_LINE_RE.match(ln)
+        if m:
+            heads.append((i, len(m.group(1)), m.group(2).strip()))
     sections: list[tuple[str, str, str]] = []
-    for i, m in enumerate(matches):
-        heading = m.group(2).strip()
-        start = m.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(md)
-        # Only cut at same-or-higher level.
-        level = len(m.group(1))
-        body_end = end
-        for j in range(i + 1, len(matches)):
-            if len(matches[j].group(1)) <= level:
-                body_end = matches[j].start()
+    for k, (idx, level, heading) in enumerate(heads):
+        end = len(lines)
+        for j, lvl2, _h in heads[k + 1 :]:
+            if lvl2 <= level:
+                end = j
                 break
-        else:
-            body_end = len(md)
-        body = md[start:body_end].strip("\n")
-        sections.append((heading, body, m.group(1)))
+        body = "\n".join(lines[idx + 1 : end]).strip("\n")
+        sections.append((heading, body, "#" * level))
     return sections
 
 
+def _query_tokens(query: str) -> set[str]:
+    """Topical tokens of a query (stopwords removed; falls back to all tokens)."""
+    all_tokens = _tokens(query)
+    topical = {t for t in all_tokens if t not in _QUERY_STOPWORDS}
+    return topical or all_tokens
+
+
 def _score_section_for_query(heading: str, body: str, query: str) -> float:
-    q_tokens = _tokens(query)
+    """Heading-weighted locality score.
+
+    Heading overlap counts double: a query glossed from a heading ("What is
+    The complete flow?") must land on *that* section, not on whichever body
+    happens to contain the most common words. Oversized bodies are penalised
+    so a mis-bounded mega-section can never win on vocabulary coverage alone.
+    """
+    q_tokens = _query_tokens(query)
     if not q_tokens:
         return 0.0
-    blob = f"{heading}\n{body}".lower()
-    hit = sum(1 for t in q_tokens if t in blob)
-    dens = hit / max(len(q_tokens), 1)
-    # Prefer sections with some prose but not empty.
-    length_bonus = 0.2 if 40 <= len(body) <= 4000 else 0.0
-    return dens + length_bonus
+    h_tokens = _tokens(heading)
+    b_tokens = _tokens(body)
+    heading_hit = len(q_tokens & h_tokens) / len(q_tokens)
+    body_hit = len(q_tokens & b_tokens) / len(q_tokens)
+    n = len(body)
+    if PREFERRED_SECTION_MIN_CHARS <= n <= PREFERRED_SECTION_MAX_CHARS:
+        size_adj = 0.1
+    elif n > MAX_REWRITE_SECTION_CORPUS_CHARS:
+        size_adj = -0.5
+    else:
+        size_adj = 0.0
+    return 2.0 * heading_hit + body_hit + size_adj
 
 
 def select_section_for_query(
@@ -561,18 +614,34 @@ def select_section_for_query(
     *,
     query_text: str,
     h1: str | None = None,
+    exclude_headings: set[str] | frozenset[str] | None = None,
 ) -> tuple[str, str] | None:
-    """Pick best non-H1 section for rewrite; None if nothing suitable."""
+    """Pick the best local section for a grounded rewrite; None if none suitable.
+
+    Skips: the article H1 / intro (by title *and* by position), empty bodies,
+    FAQ/Steps promote targets, headings already targeted in this plan
+    (``exclude_headings``), and bodies larger than
+    ``MAX_REWRITE_SECTION_CORPUS_CHARS`` (not locally rewritable).
+    """
     sections = list_section_bodies(source_markdown)
     scored: list[tuple[float, str, str]] = []
     h1_l = (h1 or "").strip().lower()
-    for heading, body, _lvl in sections:
-        if h1_l and heading.strip().lower() == h1_l:
+    excluded = {str(x).strip().lower() for x in (exclude_headings or set()) if x}
+    for idx, (heading, body, lvl) in enumerate(sections):
+        h_l = heading.strip().lower()
+        if idx == 0 and lvl == "#":
+            # Leading H1 = article title / introduction (PR #44 owns intro).
+            continue
+        if h1_l and h_l == h1_l:
+            continue
+        if h_l in excluded:
             continue
         if not body.strip():
             continue
+        if len(body) > MAX_REWRITE_SECTION_CORPUS_CHARS:
+            continue
         # Skip FAQ/Steps promote targets — separate ops.
-        if heading.strip().lower() in {"faq", "steps", "how to", "howto"}:
+        if h_l in {"faq", "steps", "how to", "howto"}:
             continue
         score = _score_section_for_query(heading, body, query_text)
         if score <= 0:
@@ -847,6 +916,27 @@ def synthesize_rewrite_section(
     evidence = [body.strip()[:500]] if body.strip() else []
     target = f"section:{heading}"
 
+    # Locality guard: a rewrite_section corpus must be a bounded section, not
+    # half the article. Fail closed before spending an LLM call.
+    if len(body) > MAX_REWRITE_SECTION_CORPUS_CHARS:
+        return _reject(
+            op_kind="rewrite_section",
+            disposition="author_input_required",
+            reason=(
+                f"Section body is {len(body)} chars (> "
+                f"{MAX_REWRITE_SECTION_CORPUS_CHARS}); not locally rewritable "
+                "without summarising downstream sections — author input required."
+            ),
+            original=body,
+            evidence=evidence,
+            target=target,
+            warnings=[f"rewrite_section_corpus_oversized:{len(body)}"],
+            related_gap_ids=gap_ids,
+            related_query_ids=qids,
+            query_text=q or None,
+            llm_used=False,
+        )
+
     user = (
         f"Query the section should answer better:\n{q}\n\n"
         f"Section heading:\n{heading}\n\n"
@@ -856,7 +946,9 @@ def synthesize_rewrite_section(
         '  "claims": [{"claim": "...", "evidence_quote": "verbatim substring"}]\n'
         "Rules: every claim needs a verbatim evidence_quote from the corpus; "
         "do not add URLs/numbers/names absent from the corpus; keep NEW wording "
-        "that is still entailed by the corpus."
+        "that is still entailed by the corpus; preserve the section's structure "
+        "(keep bullet/numbered lists as lists, keep code blocks verbatim); stay "
+        "focused on this section only."
     )
     try:
         raw = client.chat(
@@ -864,7 +956,7 @@ def synthesize_rewrite_section(
                 {"role": "system", "content": _SYNTH_SYSTEM},
                 {"role": "user", "content": user},
             ],
-            temperature=0.2,
+            temperature=SYNTH_TEMPERATURE,
         )
     except Exception as exc:  # noqa: BLE001
         return _reject(
@@ -1008,7 +1100,7 @@ def synthesize_add_explanation(
                 {"role": "system", "content": _SYNTH_SYSTEM},
                 {"role": "user", "content": user},
             ],
-            temperature=0.2,
+            temperature=SYNTH_TEMPERATURE,
         )
     except Exception as exc:  # noqa: BLE001
         return _reject(

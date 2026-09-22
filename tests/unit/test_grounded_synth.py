@@ -684,3 +684,374 @@ def test_llm_used_preserved_on_grounded_edit_ops():
     ]
     assert section_ops
     assert section_ops[0].get("llm_used") is True
+
+
+# ---------------------------------------------------------------------------
+# Multi-H1 article regression (live Agents post shape: 16× ``#`` sections,
+# 4× ``##``/``###``). Root cause of "always the same rewrite_section" +
+# "later-section dumping": H1 sections were invisible to section parsing.
+# ---------------------------------------------------------------------------
+
+MULTI_H1_MD = f"""# {ARTICLE_H1}
+
+Building an AI agent sounds deceptively simple.
+
+Our first milestone is an LLM that can call a Python tool and decide when it is finished.
+
+## What exactly are we building?
+
+The project is called Agents Zero 2 Hero. The idea is deliberately incremental.
+
+# The agent loop
+
+The most important concept in the entire project is the agent loop.
+
+```python
+while True:
+    response = client.chat.completions.create(messages=messages, tools=TOOL_SCHEMAS)
+    # not a heading
+```
+
+The model decides what should happen. The harness controls how it happens.
+
+# Implementing execute\\_code
+
+The implementation is intentionally small.
+
+### The model does not execute code directly
+
+The LLM produces structured arguments.
+
+The harness executes the actual function.
+
+That separation creates a control point where we can later add:
+
+*   permissions
+
+*   sandboxing
+
+*   logging
+
+That is why the harness matters.
+
+# The finish tool
+
+The second tool is even simpler. It gives the harness an explicit completion signal.
+
+# Why the message history matters
+
+The model does not remember tool executions automatically. The harness maintains the conversation state.
+
+# The complete flow
+
+Imagine the user asks for FizzBuzz up to 15.
+
+The important observation is that the LLM is not itself the agent.
+
+The combination is LLM plus tool definitions plus execution engine plus state plus control loop.
+
+# There is already a security problem
+
+Our tool can execute arbitrary Python code. At this stage there are essentially no meaningful security boundaries.
+
+## v0.2 — Giving the agent a filesystem
+
+In the next article we'll add three tools.
+
+## Repository
+
+The point of this series is not to build another agent framework.
+"""
+
+_MULTI_H1_BODY_HEADINGS = [
+    "What exactly are we building?",
+    "The agent loop",
+    "Implementing execute\\_code",
+    "The model does not execute code directly",
+    "The finish tool",
+    "Why the message history matters",
+    "The complete flow",
+    "There is already a security problem",
+    "v0.2 — Giving the agent a filesystem",
+    "Repository",
+]
+
+
+def _section_of(md: str, heading: str) -> str:
+    from aeo_mvp.content.grounded_synth import list_section_bodies
+
+    for h, b, _ in list_section_bodies(md):
+        if h == heading:
+            return b
+    raise AssertionError(f"section {heading!r} not found")
+
+
+def _make_corpus_echo_chat(seen: dict):
+    """Mock LLM: grounds proposal on the corpus it was handed; records corpus size."""
+
+    def _chat(messages, temperature=0.0):
+        user = ""
+        for m in messages:
+            if m.get("role") == "user":
+                user = m.get("content") or ""
+        if "Is the claim fully entailed" in user or "ENTAILED or NOT_ENTAILED" in user:
+            return "ENTAILED"
+        marker = "Original section body (corpus — rewrite using only this):\n"
+        corpus = user.split(marker, 1)[1].split("\n\nReturn JSON", 1)[0]
+        seen["corpus"] = corpus
+        seen["temperature"] = temperature
+        first = next(
+            ln.strip()
+            for ln in corpus.splitlines()
+            if ln.strip() and not ln.strip().startswith(("```", "*", "#"))
+        )
+        return json.dumps(
+            {
+                "proposed": f"In short: {first}\n\n{corpus.strip()}",
+                "claims": [{"claim": first, "evidence_quote": first}],
+            }
+        )
+
+    return _chat
+
+
+def test_list_section_bodies_multi_h1_article_bounds_each_section():
+    from aeo_mvp.content.grounded_synth import list_section_bodies
+
+    sections = list_section_bodies(MULTI_H1_MD)
+    headings = [h for h, _, _ in sections]
+    # Leading H1 (article title) + every body heading regardless of level.
+    assert headings == [ARTICLE_H1, *_MULTI_H1_BODY_HEADINGS]
+    # A ``###`` body must stop at the next ``#`` — never swallow later sections.
+    h3_body = _section_of(MULTI_H1_MD, "The model does not execute code directly")
+    assert "That is why the harness matters." in h3_body
+    assert "Imagine the user asks" not in h3_body
+    assert "The finish tool" not in h3_body
+    assert len(h3_body) < 400
+    # Headings inside fenced code are not sections.
+    assert "not a heading" not in headings
+    assert "# not a heading" not in headings
+    # ``##`` body stops at the next ``#`` too.
+    assert "agent loop" not in _section_of(MULTI_H1_MD, "What exactly are we building?")
+
+
+def test_list_section_bodies_matches_generator_replace_span():
+    """Corpus the LLM sees == span the Hashnode generator replaces."""
+    import re as _re
+
+    from aeo_mvp.platform.hashnode.markdown_generator import _find_section_span
+
+    lines = MULTI_H1_MD.splitlines()
+    for heading in _MULTI_H1_BODY_HEADINGS:
+        span = _find_section_span(MULTI_H1_MD, heading)
+        assert span is not None, heading
+        _h, b_start, b_end, _hl = span
+        gen_body = "\n".join(lines[b_start:b_end])
+        synth_body = _section_of(MULTI_H1_MD, heading)
+        assert _re.sub(r"\s+", " ", gen_body).strip() == _re.sub(
+            r"\s+", " ", synth_body
+        ).strip(), heading
+
+
+def test_select_section_prefers_heading_match_over_mega_section():
+    from aeo_mvp.content.grounded_synth import select_section_for_query
+
+    expectations = {
+        "What is The complete flow?": "The complete flow",
+        "How does the finish tool work?": "The finish tool",
+        "Why does message history matter?": "Why the message history matters",
+        "What is the agent loop?": "The agent loop",
+        "Is there a security problem?": "There is already a security problem",
+    }
+    picked = {}
+    for q, want in expectations.items():
+        got = select_section_for_query(MULTI_H1_MD, query_text=q, h1=ARTICLE_H1)
+        assert got is not None, q
+        assert got[0] == want, (q, got[0])
+        picked[q] = got[0]
+    # Different queries → different sections (no single-section convergence).
+    assert len(set(picked.values())) == len(expectations)
+
+
+def test_select_section_never_returns_intro_h1():
+    from aeo_mvp.content.grounded_synth import select_section_for_query
+
+    got = select_section_for_query(
+        MULTI_H1_MD, query_text="building an AI agent from scratch", h1=None
+    )
+    assert got is not None
+    assert got[0] != ARTICLE_H1
+
+
+def test_select_section_excludes_already_targeted_headings():
+    from aeo_mvp.content.grounded_synth import select_section_for_query
+
+    first = select_section_for_query(
+        MULTI_H1_MD, query_text="What is The complete flow?", h1=ARTICLE_H1
+    )
+    assert first and first[0] == "The complete flow"
+    second = select_section_for_query(
+        MULTI_H1_MD,
+        query_text="What is The complete flow?",
+        h1=ARTICLE_H1,
+        exclude_headings={"the complete flow"},
+    )
+    assert second is not None
+    assert second[0] != "The complete flow"
+
+
+def test_rewrite_section_refuses_oversized_corpus():
+    from aeo_mvp.content.grounded_synth import MAX_REWRITE_SECTION_CORPUS_CHARS
+
+    calls = {"n": 0}
+
+    def _chat(messages, temperature=0.0):
+        calls["n"] += 1
+        return "{}"
+
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_chat)
+    huge = ("The harness executes the actual function. " * 200).strip()
+    assert len(huge) > MAX_REWRITE_SECTION_CORPUS_CHARS
+    result = synthesize_rewrite_section(
+        client=client,
+        source_markdown=MULTI_H1_MD,
+        query_text="What is The complete flow?",
+        h1=ARTICLE_H1,
+        section_heading="The model does not execute code directly",
+        section_body=huge,
+    )
+    assert result.disposition == "author_input_required"
+    assert result.status == "needs_author_input"
+    assert result.proposed is None
+    assert result.llm_used is False
+    assert any(w.startswith("rewrite_section_corpus_oversized") for w in result.warnings)
+    assert calls["n"] == 0  # fail closed before spending an LLM call
+
+
+def test_rewrite_section_corpus_is_local_and_applies_to_same_span():
+    """End-to-end: plan on a multi-H1 article → local corpus → local replace."""
+    seen: dict = {}
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_make_corpus_echo_chat(seen))
+    gaps = [
+        {
+            "gap_id": "gap_cite_miss_flow",
+            "gap_type": "cite_miss",
+            "kind": "missing_answer",
+            "query_id": "q_flow",
+            "query_ids": ["q_flow"],
+            "page_coverage": "full",
+            "rationale": "probed but not cited",
+        }
+    ]
+    coverage = [
+        {"query_id": "q_flow", "query_text": "What is The complete flow?", "page_coverage": "full"}
+    ]
+    plan = build_substantive_change_plan(
+        source_markdown=MULTI_H1_MD,
+        gaps=gaps,
+        coverage_by_query=coverage,
+        page_intelligence={"h1": ARTICLE_H1, "answerability_signals": {"answer_first_heuristic": True}},
+        h1=ARTICLE_H1,
+        draft_paid=True,
+        llm_api_key="mock",
+        grounded_client=client,
+    )
+    ready = [i for i in plan.items if i.status == "ready" and i.op_kind == "rewrite_section"]
+    assert ready, [i.to_dict() for i in plan.items]
+    item = ready[0]
+    assert item.target == "section:The complete flow"
+    flow_body = _section_of(MULTI_H1_MD, "The complete flow")
+    assert item.original == flow_body
+    # LLM corpus was the local section only — no downstream/upstream sections.
+    assert seen["corpus"].strip() == flow_body.strip()
+    assert "security" not in seen["corpus"].lower()
+    assert seen["temperature"] == 0.0
+
+    # Generator applies the proposal to exactly that section; neighbours intact.
+    result = generate_recommended_markdown(
+        source_markdown=MULTI_H1_MD,
+        page_intelligence={"h1": ARTICLE_H1},
+        edit_ops=[item.to_edit_op_dict()],
+    )
+    assert result.changed is True
+    assert "evidence_grounded_rewrite_section" in result.applied_ops
+    assert "rewrite_section_original_span_mismatch" not in result.warnings
+    after_flow = result.body.split("# The complete flow", 1)[1].split(
+        "# There is already a security problem", 1
+    )[0]
+    assert after_flow.strip().startswith("In short:")
+    for heading in _MULTI_H1_BODY_HEADINGS:
+        if heading == "The complete flow":
+            continue
+        assert _section_of(result.body, heading) == _section_of(MULTI_H1_MD, heading), heading
+
+
+def test_md_generator_rejects_original_span_mismatch():
+    """Apply-only guard: ``original`` far larger than the heading span ⇒ refuse."""
+    h3_body = _section_of(MULTI_H1_MD, "The model does not execute code directly")
+    mis_bounded_original = MULTI_H1_MD.split("### The model does not execute code directly", 1)[1]
+    assert len(mis_bounded_original) > 2 * len(h3_body)
+    op = {
+        "op_id": "op_dump",
+        "action": "rewrite",
+        "op_kind": "rewrite_section",
+        "target": "section:The model does not execute code directly",
+        "status": "ready",
+        "disposition": "actionable",
+        "apply_mode": "replace_region",
+        "original": mis_bounded_original,
+        "proposed": "The LLM produces structured arguments while the harness executes them.",
+        "evidence": [h3_body[:200]],
+        "claims": [{"claim": "x", "evidence_quote": "The LLM produces structured arguments."}],
+    }
+    result = generate_recommended_markdown(
+        source_markdown=MULTI_H1_MD,
+        page_intelligence={"h1": ARTICLE_H1},
+        edit_ops=[op],
+    )
+    assert result.changed is False
+    assert "rewrite_section_original_span_mismatch" in result.warnings
+    assert "evidence_grounded_rewrite_section" not in result.applied_ops
+
+
+def test_plan_two_gaps_target_two_distinct_sections():
+    seen: dict = {}
+    client = OpenAICompatibleChat(api_key="mock", chat_fn=_make_corpus_echo_chat(seen))
+    gaps = [
+        {
+            "gap_id": "gap_cite_miss_flow",
+            "gap_type": "cite_miss",
+            "kind": "missing_answer",
+            "query_id": "q_flow",
+            "page_coverage": "full",
+            "rationale": "probed but not cited",
+        },
+        {
+            "gap_id": "gap_cite_miss_finish",
+            "gap_type": "cite_miss",
+            "kind": "missing_answer",
+            "query_id": "q_finish",
+            "page_coverage": "full",
+            "rationale": "probed but not cited",
+        },
+    ]
+    coverage = [
+        {"query_id": "q_flow", "query_text": "What is The complete flow?", "page_coverage": "full"},
+        {"query_id": "q_finish", "query_text": "How does the finish tool work?", "page_coverage": "full"},
+    ]
+    plan = build_substantive_change_plan(
+        source_markdown=MULTI_H1_MD,
+        gaps=gaps,
+        coverage_by_query=coverage,
+        page_intelligence={"h1": ARTICLE_H1, "answerability_signals": {"answer_first_heuristic": True}},
+        h1=ARTICLE_H1,
+        draft_paid=True,
+        llm_api_key="mock",
+        grounded_client=client,
+    )
+    targets = sorted(
+        i.target for i in plan.items if i.status == "ready" and i.op_kind == "rewrite_section"
+    )
+    assert targets == ["section:The complete flow", "section:The finish tool"], [
+        i.to_dict() for i in plan.items
+    ]

@@ -938,19 +938,33 @@ def build_substantive_change_plan(
                 if is_cite_miss_full
                 else ""
             )
+            # Never converge every gap onto one section: headings already
+            # targeted by a section op in this plan are excluded.
+            targeted_headings = {
+                it.target.split(":", 1)[1].strip().lower()
+                for it in items
+                if it.op_kind in {"rewrite_section", "add_explanation"}
+                and it.target.lower().startswith("section:")
+            }
             picked = select_section_for_query(
                 source_markdown,
                 query_text=qtext or "",
                 h1=resolved_h1,
+                exclude_headings=targeted_headings,
             )
             if picked is None:
-                # No safe rewrite span → try add_explanation on first H2, else research.
+                # No safe rewrite span → try add_explanation on first body
+                # heading (skip the leading article H1), else research.
                 from aeo_mvp.content.grounded_synth import list_section_bodies
 
                 sections = list_section_bodies(source_markdown)
                 anchor = None
-                for heading, _body, _lvl in sections:
+                for s_idx, (heading, _body, lvl) in enumerate(sections):
+                    if s_idx == 0 and lvl == "#":
+                        continue
                     if resolved_h1 and heading.strip().lower() == resolved_h1.lower():
+                        continue
+                    if heading.strip().lower() in targeted_headings:
                         continue
                     anchor = heading
                     break
