@@ -156,8 +156,11 @@ def _attach_hashnode_recommended_markdown(
                     if isinstance(g, dict):
                         gap_flat.append(g)
         brief_wire = (wire.get("optimization_briefs") or [None])[0] or wire.get("brief") or {}
+        if not isinstance(brief_wire, dict):
+            brief_wire = {}
         rec_hints: list[dict[str, Any]] = []
-        for d in wire.get("content_drafts") or []:
+        draft_list_in = list(wire.get("content_drafts") or [])
+        for d in draft_list_in:
             if isinstance(d, dict) and isinstance(d.get("recommendations"), list):
                 rec_hints.extend(
                     r for r in d["recommendations"] if isinstance(r, dict)
@@ -167,12 +170,24 @@ def _attach_hashnode_recommended_markdown(
             for r in wire.get(key) or []:
                 if isinstance(r, dict):
                     rec_hints.append(r)
+        edit_ops_in: list[dict[str, Any]] = [
+            e for e in (brief_wire.get("edit_ops") or []) if isinstance(e, dict)
+        ]
+        change_plan_in: list[dict[str, Any]] = []
+        for d in draft_list_in:
+            if isinstance(d, dict):
+                change_plan_in.extend(
+                    c for c in (d.get("change_plan") or []) if isinstance(c, dict)
+                )
         recommended = generate_recommended_markdown(
             source_markdown=source_markdown,
             page_intelligence=intel,
-            brief=brief_wire if isinstance(brief_wire, dict) else {},
+            brief=brief_wire,
             gaps=gap_flat,
             recommendations=rec_hints or None,
+            edit_ops=edit_ops_in or None,
+            change_plan=change_plan_in or None,
+            content_drafts=[d for d in draft_list_in if isinstance(d, dict)] or None,
             title_hint=title,
             source_url=source_url,
         )
@@ -194,7 +209,14 @@ def _attach_hashnode_recommended_markdown(
             "changed": recommended.changed,
             "source_url": recommended.source_url,
             "title": recommended.title,
+            "applied_ops": list(recommended.applied_ops),
+            "llm_used": False,
+            "paid": False,
+            "paid_llm": False,
         }
+        if recommended.seo_description:
+            draft_entry["seo_description"] = recommended.seo_description
+            draft_entry["meta_description"] = recommended.seo_description
         draft_list = list(wire.get("content_drafts") or [])
         if draft_list:
             draft_list[0] = {**draft_list[0], **draft_entry}

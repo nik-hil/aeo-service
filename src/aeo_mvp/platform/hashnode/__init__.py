@@ -16,6 +16,7 @@ from aeo_mvp.platform.hashnode.markdown_generator import (
     RecommendedMarkdown,
     SUGGESTED_MARKDOWN_SUBTITLE,
     generate_recommended_markdown,
+    strip_legacy_recommended_chrome,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "filter_recommendations_page_scoped",
     "generate_recommended_markdown",
     "is_hashnode_markdown_context",
+    "strip_legacy_recommended_chrome",
 ]
