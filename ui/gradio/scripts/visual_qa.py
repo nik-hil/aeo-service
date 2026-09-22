@@ -187,10 +187,14 @@ def run() -> int:
                 "- Multi-page capped at 10 → UI request cap raised to 20.",
                 "- Silent enrichment failures → user-safe errors; observed signals remain.",
                 "- Markdown-only KPI soup → HTML KPI cards + executive glossary.",
+                "- Soft dark-mode near-white ink on light `.aeo-panel` fills → force light "
+                "color-scheme + dark ink (#0f1c2e) on glossary / empty states / helpers.",
                 "",
                 "## Extra notes",
+                "- Contrast check: with OS/browser dark preference enabled, glossary + empty "
+                "panels must stay dark ink on light fills (not white-on-grey).",
             ]
-            + ([f"- {n}" for n in notes] if notes else ["- None"])
+            + ([f"- {n}" for n in notes] if notes else [])
             + [""]
         ),
         encoding="utf-8",

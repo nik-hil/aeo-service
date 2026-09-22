@@ -693,7 +693,14 @@ def build_app():
 
     theme = build_theme()
 
-    with gr.Blocks(title="AEO Leadership Demo", theme=theme, css=CUSTOM_CSS) as demo:
+    # Lock light color-scheme so Soft's OS-dark preference cannot paint near-white
+    # ink onto our light ``.aeo-panel`` surfaces (glossary / empty states).
+    with gr.Blocks(
+        title="AEO Leadership Demo",
+        theme=theme,
+        css=CUSTOM_CSS,
+        head='<meta name="color-scheme" content="light">',
+    ) as demo:
         state = gr.State(AnalysisState())
 
         gr.HTML(
