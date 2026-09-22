@@ -175,18 +175,47 @@ def test_comparison_is_side_by_side_body_only_not_git_diff():
         _report(), HASHNODE_ARTICLE, pages_payload=_pages_payload()
     )
     assert "aeo-md-compare" in html
+    assert "aeo-md-compare-grid" in html
+    assert html.count("aeo-md-pane") >= 2
     assert "CURRENT" in html
     assert "RECOMMENDED" in html
     assert "RECOMMENDED MARKDOWN" not in html or html.count("RECOMMENDED") >= 1
     assert "aeo-md-scroll" in html
+    # Structural: two body panes — not a unified git/patch diff UI.
     assert "diff --git" not in html
     assert "@@" not in html
-    assert "Git diff" in html or "not a Git diff" in html
+    assert "<ins>" not in html
+    assert "<del>" not in html
     assert SOURCE_MD.splitlines()[0] in html
     assert "My Article" in html
     # Disclaimers must not appear inside either document pane body.
     assert "**RECOMMENDED MARKDOWN**" not in html
     assert "guaranteed" not in html.lower() or "review before publishing" in html.lower()
+
+
+def test_retired_compare_disclaimer_chrome_absent():
+    """Helper/disclaimer chrome must stay out of app compare tab + comparison HTML."""
+    from pathlib import Path
+
+    app_src = Path(__file__).resolve().parents[1] / "app.py"
+    app_text = app_src.read_text(encoding="utf-8")
+    html = comparison_html(
+        _report(), HASHNODE_ARTICLE, pages_payload=_pages_payload()
+    )
+    retired_everywhere = (
+        "Side-by-side complete documents with independent scroll",
+        "Recommended draft is a suggestion only",
+        "Independent scroll panes — not a Git diff",
+        "not a Git diff or patch view",
+        "aeo-compare-note",
+    )
+    for needle in retired_everywhere:
+        assert needle not in app_text, f"retired chrome still in app.py: {needle!r}"
+        assert needle not in html, f"retired chrome still in comparison_html: {needle!r}"
+    # Suggested-draft subtitle must not reappear as compare-pane chrome.
+    assert "Suggested Markdown draft — review before publishing." not in html
+    assert "aeo-md-compare-grid" in html
+    assert html.count("aeo-md-pane") >= 2
 
 
 def test_why_these_changes_structured_human_readable():

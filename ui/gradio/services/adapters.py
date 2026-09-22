@@ -928,10 +928,6 @@ def comparison_html(
     pages_payload: dict[str, Any] | None = None,
 ) -> str:
     """Diffchecker-like layout: two independent scroll panes (no Git unified diff)."""
-    from aeo_mvp.platform.hashnode.markdown_generator import (
-        SUGGESTED_MARKDOWN_SUBTITLE,
-    )
-
     current = _source_markdown_for(report, page_url, pages_payload) or ""
     recommended = _raw_recommended_body(report, page_url=page_url)
 
@@ -971,10 +967,6 @@ def comparison_html(
         f'<pre class="aeo-md-scroll">{escape_text(recommended) or "—"}</pre>'
         "</div>"
         "</div>"
-        f'<p class="aeo-compare-note">'
-        f"Independent scroll panes — not a Git diff or patch view. "
-        f"{escape_text(SUGGESTED_MARKDOWN_SUBTITLE)}"
-        f"</p>"
         "</div>"
     )
 

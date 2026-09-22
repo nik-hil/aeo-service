@@ -407,8 +407,11 @@ def test_comparison_honest_labels():
     assert "RECOMMENDED" in md
     assert "Optimized Page" not in md
     assert "aeo-md-compare" in md
-    assert "git diff" in md.lower() or "not a git diff" in md.lower()
-    assert "review before publishing" in md.lower() or "suggested markdown" in md.lower()
+    assert "aeo-md-compare-grid" in md
+    assert md.count("aeo-md-pane") >= 2
+    assert "diff --git" not in md
+    assert "aeo-compare-note" not in md
+    assert "Independent scroll panes" not in md
     assert "RECOMMENDED MARKDOWN" not in md or "pane-header\">RECOMMENDED<" in md.replace(" ", "")
 
 
