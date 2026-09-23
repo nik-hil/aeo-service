@@ -582,7 +582,7 @@ def analyze(markdown: str, target_article_url: str, dry_run: bool, skip_eval: bo
 
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(title="Hashnode AEO PoC") as demo:
+    with gr.Blocks(title="Hashnode AEO PoC", css=_CSS) as demo:
         with gr.Column(elem_classes=["aeo-wrap"]):
             gr.HTML(
                 "<h1>Hashnode AEO PoC</h1>"
@@ -668,7 +668,7 @@ def build_app() -> gr.Blocks:
 
 
 def main() -> None:
-    build_app().launch(server_name="127.0.0.1", server_port=7860, css=_CSS)
+    build_app().launch(server_name="127.0.0.1", server_port=7860)
 
 
 if __name__ == "__main__":
