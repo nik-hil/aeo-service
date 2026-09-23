@@ -626,6 +626,91 @@ OBSERVED VISIBILITY (API — diagnostic only; not a content source):
 """
 
 
+MAX_RECOMMENDATION_ATTEMPTS = 3
+
+_TRANSIENT_LLM_ERROR_MARKERS = (
+    "LLM request failed",
+    "LLM HTTP ",
+)
+
+
+def _is_transient_llm_error(exc: BaseException) -> bool:
+    """True for transport/API failures with no model output to repair against."""
+    if isinstance(exc, (TimeoutError, ConnectionError, OSError)):
+        return True
+    msg = str(exc)
+    return any(marker in msg for marker in _TRANSIENT_LLM_ERROR_MARKERS)
+
+
+def _with_repair_feedback(
+    base_prompt: str,
+    error: str,
+    *,
+    second_repair: bool,
+) -> str:
+    """Append targeted repair instructions; keep original CURRENT in base_prompt."""
+    note = (
+        "This is a second repair attempt. Fix only the latest failure below.\n\n"
+        if second_repair
+        else ""
+    )
+    # Do not use str.format on ``error`` — it may contain braces.
+    return (
+        f"{base_prompt.rstrip()}\n\n"
+        "REPAIR FEEDBACK:\n"
+        "The previous recommendation failed deterministic validation.\n\n"
+        "Validator error:\n"
+        f"{error}\n\n"
+        f"{note}"
+        "Repair this exact failure.\n"
+        "Do not make unrelated changes.\n"
+        "Re-evaluate the opportunity and recommended_markdown together.\n"
+        "If the opportunity is not justified, remove the opportunity instead of "
+        "forcing an edit.\n"
+        "If the opportunity is justified, apply the corresponding meaningful edit "
+        "in the correct existing section.\n"
+        "Return JSON ONLY using the required schema.\n"
+    )
+
+
+def _bundle_from_llm_raw(
+    raw: Any,
+    *,
+    article: Article,
+    model: str,
+) -> RecommendationBundle:
+    """Parse + validate one recommendation JSON response against ORIGINAL CURRENT."""
+    if not isinstance(raw, dict):
+        raise LLMError("Recommendations response must be a JSON object")
+
+    opportunities = _parse_opportunities(raw, article)
+    recommended = str(raw.get("recommended_markdown") or "").strip()
+    if not recommended:
+        raise LLMError("LLM did not return recommended_markdown")
+
+    explanations = [
+        str(x).strip()
+        for x in (raw.get("change_explanations") or [])
+        if str(x).strip()
+    ]
+
+    warnings = validate_recommended_markdown(
+        article.markdown,
+        recommended,
+        article=article,
+        opportunities=opportunities,
+    )
+
+    return RecommendationBundle(
+        opportunities=opportunities,
+        recommended_markdown=recommended,
+        change_explanations=explanations,
+        validation_warnings=warnings,
+        model=model,
+        source="llm_generated",
+    )
+
+
 def generate_recommendations(
     article: Article,
     queries: QuerySet | list[Query] | list[str],
@@ -633,7 +718,14 @@ def generate_recommendations(
     *,
     client: SupportsRespondJSON | None = None,
 ) -> RecommendationBundle:
-    """LLM full-document opportunities + complete recommended Markdown."""
+    """LLM full-document opportunities + complete recommended Markdown.
+
+    One LLM call per attempt. On deterministic validation / JSON-schema failure,
+    retry up to twice with the same base prompt plus targeted repair feedback
+    containing the exact error (max 3 attempts). Transient transport/API errors
+    retry the original prompt without repair feedback. Failed RECOMMENDED is never
+    used as CURRENT — every attempt reasons from the original article.
+    """
     llm: SupportsRespondJSON = client or LLMClient()
     if client is None and isinstance(llm, LLMClient) and not llm.available():
         raise LLMError("AEO_LLM_API_KEY required for recommendations (no template fallback)")
@@ -664,7 +756,8 @@ def generate_recommendations(
     else:
         vis_payload = visibility.to_dict()
 
-    prompt = _RECOMMEND_PROMPT.format(
+    # Base prompt always uses ORIGINAL CURRENT — never a failed RECOMMENDED.
+    base_prompt = _RECOMMEND_PROMPT.format(
         article=article.markdown,
         questions=json.dumps(
             {"questions": q_payload, "existing_headings": heading_inventory},
@@ -672,33 +765,36 @@ def generate_recommendations(
         ),
         visibility=json.dumps(vis_payload, indent=2)[:60000],
     )
-    raw = llm.respond_json(prompt, max_output_tokens=8192)
-    if not isinstance(raw, dict):
-        raise LLMError("Recommendations response must be a JSON object")
 
-    opportunities = _parse_opportunities(raw, article)
-    recommended = str(raw.get("recommended_markdown") or "").strip()
-    if not recommended:
-        raise LLMError("LLM did not return recommended_markdown")
+    next_repair_error: str | None = None
+    repairs_sent = 0
+    last_error: LLMError | None = None
+    model = getattr(llm, "model", "") or ""
 
-    explanations = [
-        str(x).strip()
-        for x in (raw.get("change_explanations") or [])
-        if str(x).strip()
-    ]
+    for attempt in range(1, MAX_RECOMMENDATION_ATTEMPTS + 1):
+        if next_repair_error is None:
+            prompt = base_prompt
+        else:
+            prompt = _with_repair_feedback(
+                base_prompt,
+                next_repair_error,
+                second_repair=repairs_sent >= 1,
+            )
+            repairs_sent += 1
 
-    warnings = validate_recommended_markdown(
-        article.markdown,
-        recommended,
-        article=article,
-        opportunities=opportunities,
-    )
+        try:
+            raw = llm.respond_json(prompt, max_output_tokens=8192)
+            return _bundle_from_llm_raw(raw, article=article, model=model)
+        except LLMError as exc:
+            last_error = exc
+            if attempt >= MAX_RECOMMENDATION_ATTEMPTS:
+                break
+            if _is_transient_llm_error(exc):
+                # Transport/API redraw — same original prompt, no repair block.
+                next_repair_error = None
+            else:
+                # JSON/schema or deterministic Markdown validation — targeted repair.
+                next_repair_error = str(exc)
 
-    return RecommendationBundle(
-        opportunities=opportunities,
-        recommended_markdown=recommended,
-        change_explanations=explanations,
-        validation_warnings=warnings,
-        model=getattr(llm, "model", "") or "",
-        source="llm_generated",
-    )
+    assert last_error is not None
+    raise last_error

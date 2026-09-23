@@ -7,6 +7,7 @@ from aeo_mvp.llm import LLMError, reset_execution_flags
 from aeo_mvp.queries import Query, QuerySet
 from aeo_mvp.markdown import parse_sections
 from aeo_mvp.recommendations import (
+    MAX_RECOMMENDATION_ATTEMPTS,
     Opportunity,
     evidence_quote_in_article,
     generate_recommendations,
@@ -47,6 +48,29 @@ class ScriptedLLM:
         self.calls += 1
         llm_mod._LLM_CALLS += 1
         return self.payload
+
+
+class SequencingLLM:
+    """Mock that returns/raises a scripted sequence of respond_json outcomes."""
+
+    def __init__(self, outcomes: list):
+        self.outcomes = list(outcomes)
+        self.model = "mock-model"
+        self.calls = 0
+        self.prompts: list[str] = []
+
+    def respond_json(self, prompt: str, *, max_output_tokens: int = 4096):
+        import aeo_mvp.llm as llm_mod
+
+        self.prompts.append(prompt)
+        self.calls += 1
+        llm_mod._LLM_CALLS += 1
+        if not self.outcomes:
+            raise LLMError("SequencingLLM exhausted scripted outcomes")
+        item = self.outcomes.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
 
 
 def _good_recommended(*, edit_loop: bool = True, edit_tools: bool = False) -> str:
@@ -736,4 +760,253 @@ Tool calling works by giving the model a schema of available functions.
     with pytest.raises(LLMError, match="order"):
         validate_recommended_markdown(
             ARTICLE, reordered, article=article, opportunities=[]
+        )
+
+
+def _valid_loop_payload() -> dict:
+    return {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Termination cue under-explained.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Add loop-continues-until-done clarification.",
+                "answerability": "weak",
+            }
+        ],
+        "recommended_markdown": _good_recommended(edit_loop=True, edit_tools=False),
+        "change_explanations": ["Clarified agent loop."],
+    }
+
+
+def _invalid_unchanged_target_payload() -> dict:
+    """Opportunity claims a section edit but RECOMMENDED leaves that body unchanged."""
+    return {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Needs clarification.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Clarify lead.",
+                "answerability": "weak",
+            }
+        ],
+        "recommended_markdown": ARTICLE,  # no applied edit
+        "change_explanations": ["noop"],
+    }
+
+
+def _article_block_from_prompt(prompt: str) -> str:
+    start = prompt.find("<<<ARTICLE\n")
+    end = prompt.find("\nARTICLE>>>")
+    assert start >= 0 and end > start
+    return prompt[start + len("<<<ARTICLE\n") : end]
+
+
+def test_recommend_success_first_attempt_is_single_llm_call():
+    """1. Successful first attempt → exactly one recommendation LLM call."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM([_valid_loop_payload()])
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 1
+    assert "REPAIR FEEDBACK" not in client.prompts[0]
+    assert bundle.opportunities[0].target_heading == "What is an agent loop?"
+
+
+def test_transient_llm_error_retries_original_prompt_without_repair():
+    """2. Transient LLM/API error → retry with original prompt, no repair feedback."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            LLMError("LLM request failed: connection reset"),
+            _valid_loop_payload(),
+        ]
+    )
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 2
+    assert "REPAIR FEEDBACK" not in client.prompts[0]
+    assert "REPAIR FEEDBACK" not in client.prompts[1]
+    assert _article_block_from_prompt(client.prompts[0]) == _article_block_from_prompt(
+        client.prompts[1]
+    )
+    assert bundle.opportunities
+
+
+def test_validator_failure_retry_includes_exact_error():
+    """3. Deterministic validator failure → next prompt contains exact error."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            _invalid_unchanged_target_payload(),
+            _valid_loop_payload(),
+        ]
+    )
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 2
+    repair = client.prompts[1]
+    assert "REPAIR FEEDBACK" in repair
+    assert "unchanged" in repair.lower() or "applied" in repair.lower()
+    assert "Validator error:" in repair
+    assert "Repair this exact failure." in repair
+    assert bundle.opportunities[0].target_heading == "What is an agent loop?"
+
+
+def test_repair_prompt_still_contains_pr49_recommendation_instructions():
+    """4. Retry prompt still contains original PR #49 recommendation instructions."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            _invalid_unchanged_target_payload(),
+            _valid_loop_payload(),
+        ]
+    )
+    generate_recommendations(article, qs, VisibilityReport(), client=client)
+    repair = client.prompts[1]
+    for marker in (
+        "CORE RULE",
+        "SOURCE PRIORITY",
+        "GROUNDING RULE",
+        "COUNTERFACTUAL TEST",
+        "APPLIED-CHANGE CONTRACT",
+        "content source of truth",
+    ):
+        assert marker in repair, f"missing in repair prompt: {marker}"
+
+
+def test_second_validation_failure_uses_latest_error_on_third_attempt():
+    """5. Second validation failure → further repair with latest error only."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    # Attempt1: unchanged target; Attempt2: missing recommended_markdown; Attempt3: ok
+    bad_empty_md = {
+        "opportunities": [],
+        "recommended_markdown": "",
+        "change_explanations": [],
+    }
+    client = SequencingLLM(
+        [
+            _invalid_unchanged_target_payload(),
+            bad_empty_md,
+            _valid_loop_payload(),
+        ]
+    )
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 3
+    assert "REPAIR FEEDBACK" in client.prompts[1]
+    assert "REPAIR FEEDBACK" in client.prompts[2]
+    assert "This is a second repair attempt" in client.prompts[2]
+    # Latest error only on attempt 3 (empty recommended_markdown), not unbounded history
+    assert "LLM did not return recommended_markdown" in client.prompts[2]
+    # First failure wording need not still be the sole focus of attempt 3
+    assert bundle.opportunities
+
+
+def test_recommendation_attempts_capped_at_three():
+    """6. No more than 3 recommendation attempts."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            _invalid_unchanged_target_payload(),
+            _invalid_unchanged_target_payload(),
+            _invalid_unchanged_target_payload(),
+            _valid_loop_payload(),  # must never be consumed
+        ]
+    )
+    with pytest.raises(LLMError, match="unchanged|applied"):
+        generate_recommendations(article, qs, VisibilityReport(), client=client)
+    assert client.calls == MAX_RECOMMENDATION_ATTEMPTS == 3
+    assert len(client.outcomes) == 1  # fourth payload unused
+
+
+def test_failed_recommended_never_becomes_current_on_retry():
+    """7. Failed RECOMMENDED is never used as CURRENT for the next attempt."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    failed = _invalid_unchanged_target_payload()
+    # Inject a unique phrase into the failed RECOMMENDED body that is NOT in CURRENT.
+    failed["recommended_markdown"] = ARTICLE.replace(
+        "Intro about agents and tool calling.",
+        "Intro about agents and tool calling.\n\nUNIQUE_FAILED_RECOMMENDED_MARKER_XYZ",
+        1,
+    )
+    # Still invalid for applied-change (opportunity target loop section unchanged)
+    client = SequencingLLM([failed, _valid_loop_payload()])
+    generate_recommendations(article, qs, VisibilityReport(), client=client)
+    assert client.calls == 2
+    # Wait - this failed payload actually DOES change intro, so reverse consistency
+    # may fail with "without matching opportunities" instead. Either way validation fails.
+    # Ensure the unique marker never appears inside the ARTICLE block of attempt 2.
+    assert "UNIQUE_FAILED_RECOMMENDED_MARKER_XYZ" not in _article_block_from_prompt(
+        client.prompts[1]
+    )
+    assert _article_block_from_prompt(client.prompts[0]) == article.markdown
+    assert _article_block_from_prompt(client.prompts[1]) == article.markdown
+
+
+def test_repaired_response_that_passes_is_returned():
+    """8. Repaired response that passes validation is returned normally."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            LLMError("Could not parse JSON from LLM response: ['Expecting value']"),
+            _valid_loop_payload(),
+        ]
+    )
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 2
+    assert "REPAIR FEEDBACK" in client.prompts[1]
+    assert "Could not parse JSON" in client.prompts[1]
+    assert bundle.source == "llm_generated"
+    assert "keeps calling tools until the task is done" in bundle.recommended_markdown
+
+
+def test_bidirectional_consistency_still_enforced_after_retry_path():
+    """9. PR #48 bidirectional opp ↔ RECOMMENDED consistency still enforced."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    # Existing forward/reverse checks remain hard failures
+    with pytest.raises(LLMError, match="unchanged|applied"):
+        validate_recommended_markdown(
+            ARTICLE,
+            ARTICLE,
+            article=article,
+            opportunities=[_loop_opp()],
+        )
+    with pytest.raises(LLMError, match="without matching opportunities"):
+        validate_recommended_markdown(
+            ARTICLE,
+            _good_recommended(edit_loop=True, edit_tools=False),
+            article=article,
+            opportunities=[],
         )
