@@ -1,0 +1,62 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -27,7 +27,6 @@
+ * * *
+ 
+ ## What exactly are we building?
+-
+ The project is called **Agents Zero 2 Hero**.
+ 
+ The idea is deliberately incremental:
+@@ -56,6 +55,8 @@
+ The harness provides the mechanism through which that intelligence can interact with the outside world.
+ 
+ * * *
++
++**Direct answer:** The idea is deliberately incremental:
+ 
+ # The agent loop
+ 
+@@ -227,7 +228,6 @@
+ There are already several interesting harness concepts hiding inside this tiny function.
+ 
+ ### The model does not execute code directly
+-
+ The LLM produces structured arguments.
+ 
+ The harness executes the actual function.
+@@ -252,6 +252,8 @@
+ That is why the harness matters.
+ 
+ * * *
++
++**Direct answer:** Building an AI agent sounds deceptively simple.
+ 
+ # The finish tool
+ 
+@@ -665,7 +667,6 @@
+ That leads directly to the next checkpoint.
+ 
+ ## v0.2 — Giving the agent a filesystem
+-
+ In the next article we'll add three tools:
+ 
+ ```text
+@@ -682,8 +683,9 @@
+ 
+ * * *
+ 
++**Direct answer:** In the next article we'll add three tools:
++
+ ## Repository
+-
+ https://github.com/nik-hil/agents-zero-2-hero
+ 
+ Tag:
+@@ -697,3 +699,6 @@
+ It is to understand what the frameworks are doing for us.
+ 
+ One Git tag at a time.
++
++**Direct answer:** The repository defines the idea roughly like this:
++
