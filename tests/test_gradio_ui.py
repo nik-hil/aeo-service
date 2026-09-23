@@ -132,6 +132,58 @@ def test_opportunities_card_not_raw_json():
     assert "CLARITY GAP" in html
     assert "llm_generated" not in html
     assert "Grounded" in html
+    assert "Validated" in html
+
+
+def test_opportunity_badge_validated_when_quality_passed():
+    html = gradio_app._opportunities_html(_report())
+    assert "Validated" in html
+    assert "Unvalidated" not in html
+    assert "Quality skipped" not in html
+
+
+def test_opportunity_badge_quality_skipped():
+    r = _report(quality_eval=None)
+    html = gradio_app._opportunities_html(r)
+    assert "Quality skipped" in html
+    assert "Validated" not in html
+    assert "Unvalidated" not in html
+
+
+def test_opportunity_badge_unvalidated_when_quality_failed():
+    r = _report()
+    r.quality_eval = SimpleNamespace(
+        passed=False,
+        summary="Needs work",
+        question_feedback=[],
+        recommendation_feedback=[],
+        unsupported_claims=[],
+        unnecessary_changes=[],
+        explanations=[],
+    )
+    html = gradio_app._opportunities_html(r)
+    assert "Unvalidated" in html
+    assert "Validated" not in html
+    assert "Quality skipped" not in html
+
+
+def test_kpi_glossary_on_visibility_and_summary():
+    summary = gradio_app._summary_html(_report())
+    visibility = gradio_app._visibility_html(_report())
+    for tip_fragment in (
+        "mention_rate",
+        "target_in_sources_rate",
+        "target_page_in_sources_rate",
+        "target_page_citation_rate",
+    ):
+        # Exact Page / Exact Citation appear in both; Mention/Domain only visibility
+        assert tip_fragment in visibility or tip_fragment in summary
+    assert 'title="' in visibility
+    assert "mention_rate" in visibility
+    assert "target_in_sources_rate" in visibility
+    assert "target_page_in_sources_rate" in summary
+    assert "target_page_citation_rate" in summary
+    assert "citation_rate is omitted" in visibility
 
 
 def test_analyze_empty_markdown_single_error():

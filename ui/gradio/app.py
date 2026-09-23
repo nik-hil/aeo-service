@@ -100,11 +100,28 @@ _CSS = """
   font-weight: 700;
   color: #111;
 }
+.aeo-help {
+  cursor: help;
+  color: #888;
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .aeo-muted {
   font-size: 13px;
   color: #555;
   margin: 0 0 8px 0;
 }
+.aeo-badge-row {
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
+}
+.aeo-badge-ok { color: #2a6b2a; }
+.aeo-badge-fail { color: #b00020; }
+.aeo-badge-neutral { color: #666; }
 .aeo-opp {
   border: 1px solid #e0e0e0;
   border-radius: 8px;
@@ -138,12 +155,6 @@ _CSS = """
 .aeo-opp .aeo-field-body {
   font-size: 14px;
   color: #222;
-}
-.aeo-opp .aeo-badges {
-  font-size: 12px;
-  font-weight: 500;
-  color: #2a6b2a;
-  margin-top: 8px;
 }
 .aeo-pass { color: #1a7a1a; font-weight: 600; }
 .aeo-fail { color: #b00020; font-weight: 600; }
@@ -201,6 +212,52 @@ def _gap_type_label(answerability: str | None) -> str:
     return (answerability or "GAP").upper()
 
 
+# Glossary for visibility KPIs — wording matches pipeline rate definitions.
+_KPI_GLOSSARY: dict[str, str] = {
+    "Mention": (
+        "Answer-engine mentioned the target site/brand in the answer text "
+        "(mention_rate)."
+    ),
+    "Domain": (
+        "Target domain appeared in sources "
+        "(target_in_sources_rate; domain-level)."
+    ),
+    "Exact Page": (
+        "Exact target page URL appeared in sources "
+        "(target_page_in_sources_rate)."
+    ),
+    "Exact Citation": (
+        "Exact target page was cited "
+        "(target_page_citation_rate)."
+    ),
+}
+
+
+def _label_with_glossary(label: str, *, css_class: str) -> str:
+    tip = _KPI_GLOSSARY.get(label)
+    if not tip:
+        return f'<div class="{css_class}">{_esc(label)}</div>'
+    return (
+        f'<div class="{css_class}">{_esc(label)}'
+        f'<span class="aeo-help" title="{_esc(tip)}">ⓘ</span></div>'
+    )
+
+
+def _validation_badge(report) -> tuple[str, str]:
+    """Return (label, css_class) from quality_eval only — no invented flags.
+
+    - passed → Validated
+    - failed → Unvalidated
+    - skipped (None) → Quality skipped (neutral)
+    """
+    qe = report.quality_eval
+    if qe is None:
+        return "Quality skipped", "aeo-badge-neutral"
+    if qe.passed:
+        return "✓ Validated", "aeo-badge-ok"
+    return "Unvalidated", "aeo-badge-fail"
+
+
 def _quality_label(report) -> str:
     qe = report.quality_eval
     if qe is None:
@@ -250,7 +307,7 @@ def _summary_html(report) -> str:
         extra = f" {item[2]}" if len(item) > 2 else ""
         parts.append(
             '<div class="aeo-metric">'
-            f'<div class="aeo-metric-label">{_esc(label)}</div>'
+            f'{_label_with_glossary(label, css_class="aeo-metric-label")}'
             f'<div class="aeo-metric-value{extra}">{_esc(value)}</div>'
             "</div>"
         )
@@ -270,7 +327,7 @@ def _visibility_html(report) -> str:
     for label, value in cards:
         parts.append(
             '<div class="aeo-card">'
-            f'<div class="aeo-card-label">{_esc(label)}</div>'
+            f'{_label_with_glossary(label, css_class="aeo-card-label")}'
             f'<div class="aeo-card-value">{_esc(value)}</div>'
             "</div>"
         )
@@ -285,6 +342,13 @@ def _visibility_html(report) -> str:
         parts.append(
             f'<p class="aeo-muted">{ok} / {total} queries successfully observed</p>'
         )
+    # Intentional: four-card set prefers PR #50 exact-page KPIs over
+    # domain-level citation_rate (still available via query details' cited).
+    parts.append(
+        '<p class="aeo-muted">Domain-level citation_rate is omitted from these '
+        "cards; see each observation&rsquo;s <code>cited</code> flag in Query "
+        "details.</p>"
+    )
     return "".join(parts)
 
 
@@ -318,14 +382,18 @@ def _opportunities_html(report) -> str:
     opps = report.recommendations.opportunities
     if not opps:
         return '<div class="aeo-info">No material opportunities found.</div>'
+    val_label, val_cls = _validation_badge(report)
     parts: list[str] = []
     for o in opps:
         grounded = bool((o.evidence_quote or "").strip())
-        badges = []
+        badge_bits: list[str] = []
         if grounded:
-            badges.append("Grounded")
-        badges.append("Validated")
-        badge_txt = " · ".join(f"✓ {b}" for b in badges)
+            badge_bits.append(
+                '<span class="aeo-badge-ok">✓ Grounded</span>'
+            )
+        badge_bits.append(
+            f'<span class="{val_cls}">{_esc(val_label)}</span>'
+        )
         parts.append(
             '<div class="aeo-opp">'
             f"<h3>{_esc(o.question)}</h3>"
@@ -346,7 +414,7 @@ def _opportunities_html(report) -> str:
             '<div class="aeo-field-label">Evidence</div>'
             f'<div class="aeo-field-body">{_esc(o.evidence_quote or "—")}</div>'
             "</div>"
-            f'<div class="aeo-badges">{_esc(badge_txt)}</div>'
+            f'<div class="aeo-badge-row">{" · ".join(badge_bits)}</div>'
             "</div>"
         )
     warnings = report.recommendations.validation_warnings or []
@@ -521,7 +589,8 @@ def build_app() -> gr.Blocks:
                 '<p class="aeo-subtitle">Analyze a Hashnode article for answer-engine '
                 "visibility and content gaps.</p>"
                 '<p class="aeo-legend">OBSERVED = search evidence · '
-                "LLM-GENERATED = questions/recommendations</p>"
+                "LLM-GENERATED = questions/recommendations. "
+                "<strong>Never auto-publishes.</strong></p>"
             )
 
             md_in = gr.Textbox(
