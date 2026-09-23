@@ -18,6 +18,7 @@ from typing import Any, Literal, Protocol
 from aeo_mvp.article import Article
 from aeo_mvp.llm import LLMClient, LLMError
 from aeo_mvp.markdown import (
+    Section,
     extract_title,
     find_section,
     parse_sections,
@@ -172,6 +173,12 @@ def _intro_heading(article: Article) -> str | None:
 
 
 def _body_for_heading(markdown: str, heading: str) -> str | None:
+    """First section body for ``heading`` (exact, case-insensitive).
+
+    Prefer ``_section_body_pairs_by_occurrence`` when comparing CURRENT vs
+    RECOMMENDED across all sections — first-match is wrong when headings repeat
+    (e.g. duplicate leading H1 title lines).
+    """
     want = (heading or "").strip().lower()
     for sec in parse_sections(markdown):
         if sec.heading.lower() == want:
@@ -179,11 +186,55 @@ def _body_for_heading(markdown: str, heading: str) -> str | None:
     return None
 
 
+def _heading_bodies(markdown: str, heading: str) -> list[str]:
+    """All section bodies for ``heading`` in document order (exact match)."""
+    want = (heading or "").strip().lower()
+    return [s.body for s in parse_sections(markdown) if s.heading.lower() == want]
+
+
 def _substantive_body_change(before: str | None, after: str | None) -> bool:
     """True when section bodies differ beyond whitespace/Markdown normalization."""
     if before is None or after is None:
         return False
     return _ws_canonical(before) != _ws_canonical(after)
+
+
+def _substantive_heading_change(
+    original: str, recommended: str, heading: str
+) -> bool:
+    """True when any occurrence of ``heading`` changed (occurrence-aligned)."""
+    befores = _heading_bodies(original, heading)
+    afters = _heading_bodies(recommended, heading)
+    if not befores and not afters:
+        return False
+    if len(befores) != len(afters):
+        return True
+    return any(_substantive_body_change(b, a) for b, a in zip(befores, afters))
+
+
+def _section_body_pairs_by_occurrence(
+    original: str, recommended: str
+) -> list[tuple[Section, Section | None]]:
+    """Pair each CURRENT section with the same heading occurrence in RECOMMENDED.
+
+    Uses occurrence index per heading so duplicate titles (e.g. repeated H1) are
+    compared to their counterparts — not always to the first match.
+    """
+    orig_secs = parse_sections(original)
+    new_secs = parse_sections(recommended)
+    new_occ: dict[str, list[Section]] = {}
+    for s in new_secs:
+        new_occ.setdefault(s.heading.lower(), []).append(s)
+    used: dict[str, int] = {}
+    pairs: list[tuple[Section, Section | None]] = []
+    for sec in orig_secs:
+        key = sec.heading.lower()
+        idx = used.get(key, 0)
+        used[key] = idx + 1
+        cands = new_occ.get(key) or []
+        after_sec = cands[idx] if idx < len(cands) else None
+        pairs.append((sec, after_sec))
+    return pairs
 
 
 def validate_recommended_markdown(
@@ -278,6 +329,7 @@ def validate_recommended_markdown(
 
     # Applied-change invariant (forward): every opportunity must land as a real
     # section body edit in RECOMMENDED. Whitespace-only diffs are not applied edits.
+    # Occurrence-aligned: any occurrence of the target heading may carry the edit.
     intro = _intro_heading(article)
     claimed: list[str] = []
     unchanged_targets: list[str] = []
@@ -286,9 +338,7 @@ def validate_recommended_markdown(
         if not canon:
             continue
         claimed.append(canon)
-        before = _body_for_heading(original, canon)
-        after = _body_for_heading(recommended, canon)
-        if not _substantive_body_change(before, after):
+        if not _substantive_heading_change(original, recommended, canon):
             unchanged_targets.append(canon)
     if unchanged_targets:
         unique_unchanged = list(dict.fromkeys(unchanged_targets))
@@ -300,12 +350,12 @@ def validate_recommended_markdown(
 
     # Applied-change invariant (reverse): every substantive section body change
     # must be attributable to ≥1 opportunity targeting that heading.
+    # Pair by heading occurrence so duplicate titles do not false-positive.
     claimed_lower = {h.lower() for h in claimed}
     unattributed: list[str] = []
-    for sec in orig_secs:
-        before = sec.body
-        after = _body_for_heading(recommended, sec.heading)
-        if not _substantive_body_change(before, after):
+    for sec, after_sec in _section_body_pairs_by_occurrence(original, recommended):
+        after = after_sec.body if after_sec is not None else None
+        if not _substantive_body_change(sec.body, after):
             continue
         if sec.heading.lower() not in claimed_lower:
             unattributed.append(sec.heading)
@@ -334,10 +384,14 @@ def validate_recommended_markdown(
                 "existing sections when the article has multiple sections."
             )
 
-    # Obvious duplicate consecutive paragraphs
+    # Obvious duplicate consecutive paragraphs (not ATX heading lines —
+    # duplicate leading H1 title lines are a document-structure issue, not
+    # duplicate prose additions).
     paras = [p.strip() for p in recommended.split("\n\n") if p.strip()]
     for i in range(1, len(paras)):
         if paras[i] == paras[i - 1] and len(paras[i]) > 40:
+            if _ATX_HEADING_LINE_RE.match(paras[i]):
+                continue
             raise LLMError("Obvious duplicate paragraph additions in recommended Markdown")
 
     return warnings
@@ -517,13 +571,20 @@ def _assert_assembly_matches_section_edits(
 ) -> None:
     """Post-apply integrity: every substantive body change must come from a section_edit.
 
-    Catches false-positive H1 mutations (assembly/normalization bugs) where no
-    intentional H1 section_edit was emitted — distinct from the opportunity contract.
+    Compares CURRENT vs RECOMMENDED section bodies by heading *occurrence* (not
+    first-match only). First-match lookup false-positives when the leading H1
+    title is duplicated as a second H1 — the classic z2h12 live failure mode.
+    Non-edited sections (including leading H1 without an H1 section_edit) must
+    keep an identical body under the shared whitespace-canonical contract.
     """
     edit_heads = {e.target_heading.lower() for e in edits}
     mutated_without_edit: list[str] = []
-    for sec in parse_sections(original):
-        after = _body_for_heading(recommended, sec.heading)
+    for sec, after_sec in _section_body_pairs_by_occurrence(original, recommended):
+        after = after_sec.body if after_sec is not None else None
+        if after_sec is None:
+            if sec.heading.lower() not in edit_heads:
+                mutated_without_edit.append(sec.heading)
+            continue
         if not _substantive_body_change(sec.body, after):
             continue
         if sec.heading.lower() not in edit_heads:

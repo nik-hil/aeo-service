@@ -1421,6 +1421,140 @@ def test_prompt_prefers_leaving_title_h1_unchanged():
     )
 
 
+Z2H12_LIKE = """# Agents Zero to Hero #12: Building AI Subagents with Context Isolation
+
+# Agents Zero to Hero #12: Building AI Subagents with Context Isolation
+
+So far, my AI coding agent has been doing everything itself. It can use tools
+and remember information across turns.
+
+## Building AI Subagents with Context Isolation
+
+Subagents need isolated context windows so tools do not leak state.
+
+## Why isolation matters
+
+Without isolation, one subagent can pollute another agent's memory.
+"""
+
+
+def test_z2h12_non_h1_edits_leave_leading_h1_bodies_byte_identical():
+    """Non-H1 section_edits must not alter either duplicate leading-H1 body."""
+    from aeo_mvp.recommendations import SectionEdit, _apply_section_edits
+
+    edits = [
+        SectionEdit(
+            target_heading="Building AI Subagents with Context Isolation",
+            replacement_body=(
+                "Subagents need isolated context windows so tools do not leak state.\n"
+                "Each child gets a fresh message history.\n"
+            ),
+        )
+    ]
+    recommended = _apply_section_edits(Z2H12_LIKE, edits)
+    orig_h1s = [s for s in parse_sections(Z2H12_LIKE) if s.level == 1]
+    new_h1s = [s for s in parse_sections(recommended) if s.level == 1]
+    assert len(orig_h1s) == 2 and len(new_h1s) == 2
+    for o, n in zip(orig_h1s, new_h1s):
+        assert o.heading == n.heading
+        assert o.body == n.body, (repr(o.body), repr(n.body))
+
+
+def test_assembly_check_no_false_positive_on_duplicate_leading_h1():
+    """Regression: duplicate H1 title must not trip assembly integrity (live B2)."""
+    from aeo_mvp.recommendations import (
+        SectionEdit,
+        _apply_section_edits,
+        _assert_assembly_matches_section_edits,
+    )
+
+    edits = [
+        SectionEdit(
+            target_heading="Building AI Subagents with Context Isolation",
+            replacement_body=(
+                "Subagents need isolated context windows so tools do not leak state.\n"
+                "Clarified isolation boundary.\n"
+            ),
+        )
+    ]
+    recommended = _apply_section_edits(Z2H12_LIKE, edits)
+    # Must not raise the live error about H1 mutation without section_edit.
+    _assert_assembly_matches_section_edits(Z2H12_LIKE, recommended, edits)
+
+
+def test_z2h12_duplicate_h1_h2_edit_passes_full_recommend_path():
+    """End-to-end: H2 edit + matching opp with duplicate leading H1 → success."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=Z2H12_LIKE)
+    qs = QuerySet(selected=[Query(text="What is context isolation for subagents?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "What is context isolation for subagents?",
+                "gap": "Isolation mechanism under-explained.",
+                "evidence_quote": (
+                    "Subagents need isolated context windows so tools do not leak state."
+                ),
+                "target_heading": "Building AI Subagents with Context Isolation",
+                "recommended_change": "Clarify fresh message history per child.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [
+            {
+                "target_heading": "Building AI Subagents with Context Isolation",
+                "replacement_body": (
+                    "Subagents need isolated context windows so tools do not leak state.\n"
+                    "Each child gets a fresh message history.\n"
+                ),
+            }
+        ],
+        "change_explanations": ["Clarified isolation."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert "fresh message history" in bundle.recommended_markdown
+    h1_heading = "Agents Zero to Hero #12: Building AI Subagents with Context Isolation"
+    assert bundle.opportunities[0].target_heading != h1_heading
+    orig_h1_bodies = [
+        s.body for s in parse_sections(Z2H12_LIKE) if s.heading == h1_heading
+    ]
+    new_h1_bodies = [
+        s.body
+        for s in parse_sections(bundle.recommended_markdown)
+        if s.heading == h1_heading
+    ]
+    assert orig_h1_bodies == new_h1_bodies
+
+
+def test_assembly_still_detects_real_h1_mutation_without_section_edit(monkeypatch):
+    """If apply truly mutates H1 without an H1 section_edit, assembly must still fail."""
+    from aeo_mvp.recommendations import (
+        SectionEdit,
+        _assert_assembly_matches_section_edits,
+    )
+
+    # Unique H1 (no duplicate) — simulate a corrupted recommended where H1 body changed.
+    original = ARTICLE
+    corrupted = ARTICLE.replace(
+        "Intro about agents and tool calling.",
+        "Intro about agents and tool calling.\nCorrupted H1 body.",
+        1,
+    )
+    edits = [
+        SectionEdit(
+            target_heading="What is an agent loop?",
+            replacement_body=_loop_body_edited(),
+        )
+    ]
+    with pytest.raises(
+        LLMError,
+        match=r"Assembly mutated section\(s\).*Agents Zero to Hero",
+    ):
+        _assert_assembly_matches_section_edits(original, corrupted, edits)
+
+
 def test_quality_evaluation_sees_complete_assembled_document():
     """13. Quality evaluation still sees complete document."""
     from aeo_mvp.evaluation import evaluate_quality
