@@ -335,7 +335,7 @@ def _prompt_from_generate() -> str:
 
 
 def test_recommend_prompt_embeds_eight_pass_material_procedure():
-    """Prompt contract: explicit 8-pass procedure + material improvement gate."""
+    """Prompt contract: 8-pass procedure + rebalanced materiality / stop rules."""
     prompt = _prompt_from_generate()
     for marker in (
         "PASS 1",
@@ -346,22 +346,29 @@ def test_recommend_prompt_embeds_eight_pass_material_procedure():
         "PASS 6",
         "PASS 7",
         "PASS 8",
-        "MATERIAL IMPROVEMENT TEST",
-        "STRONG / WEAK / MISSING",
-        "SMALLEST USEFUL EDIT",
+        "THE MOST IMPORTANT TEST",
+        "STRONG",
+        "NEEDS CLARIFICATION",
+        "NEEDS INFORMATION",
+        "MARGINAL ANSWER VALUE",
+        "STOPPING RULE",
+        "DO NOT OVER-CORRECT",
+        "CALIBRATED EXAMPLES",
         "APPLIED-CHANGE CONTRACT",
     ):
         assert marker in prompt, f"missing prompt marker: {marker}"
-    # Restatement ≠ opportunity; material relationship = opportunity
-    assert "restatement" in prompt.lower() or "RESTATEMENT" in prompt
     assert "tool_call_id" in prompt
     assert "NOT EVERY QUESTION NEEDS A CHANGE" in prompt
-    # Heading inventory is navigation only (semantics stay with LLM)
     assert "navigation" in prompt.lower()
+    # Exact removal test wording from materiality rebalance
+    assert (
+        "If this sentence or paragraph were removed, would the AI's answer"
+        in prompt
+    )
 
 
 def test_strong_already_sufficient_allows_empty_opportunities():
-    """Strong/already-sufficient → no opportunity required (empty ops + CURRENT ok)."""
+    """Already-sufficient → no opportunity required (empty ops + CURRENT ok)."""
     article = load_hashnode_markdown(text=ARTICLE)
     qs = QuerySet(
         selected=[
@@ -369,7 +376,6 @@ def test_strong_already_sufficient_allows_empty_opportunities():
             Query(text="How do tool schemas drive function calls?"),
         ]
     )
-    # LLM judged both STRONG: no ops, RECOMMENDED == CURRENT
     payload = {
         "opportunities": [],
         "recommended_markdown": ARTICLE,
@@ -383,17 +389,65 @@ def test_strong_already_sufficient_allows_empty_opportunities():
 
 
 def test_prompt_rejects_mere_restatement_as_meaningful_change():
-    """Mere restatement ≠ meaningful recommendation (documented in prompt contract)."""
+    """Pure paraphrase / restatement ≠ meaningful recommendation (prompt contract)."""
     prompt = _prompt_from_generate()
-    assert "restatement ≠ opportunity" in prompt.lower() or "restatement" in prompt.lower()
-    assert "if removing the new sentence would NOT materially reduce answerability" in prompt
-    assert "paraphrasing" in prompt.lower() or "rewording without new info" in prompt.lower()
+    assert "BAD paraphrase" in prompt or "paraphrase" in prompt.lower()
+    assert "BAD restatement" in prompt or "restatement" in prompt.lower()
+    assert "If this sentence or paragraph were removed" in prompt
+    assert "rewording the same meaning is not an opportunity" in prompt.lower() or (
+        "rewording the same meaning" in prompt
+    )
+
+
+def test_prompt_rejects_visible_code_restatement():
+    """Narrating visible code / messages.append already present → reject (prompt)."""
+    prompt = _prompt_from_generate()
+    assert "messages.append" in prompt
+    assert "narrating visible code" in prompt.lower() or "visible code" in prompt
+    assert "sends the result" in prompt or "sends result" in prompt
+    assert "BAD restatement" in prompt
+
+
+def test_prompt_keeps_missing_relationship_as_opportunity():
+    """Missing relationship (e.g. tool_call_id why) → KEEP opportunity (prompt)."""
+    prompt = _prompt_from_generate()
+    assert "GOOD missing relationship" in prompt
+    assert "tool_call_id" in prompt
+    assert "links the result to the original tool request" in prompt
+
+
+def test_prompt_keeps_distinction_constraint_and_fact_connection():
+    """Important distinction/constraint and connecting existing facts → KEEP."""
+    prompt = _prompt_from_generate()
+    assert "GOOD boundary / distinction" in prompt or "execution boundary" in prompt
+    assert "GOOD connecting existing facts" in prompt
+    assert "enables retry" in prompt
+    assert "NEW INFORMATION" in prompt
+    assert "relationship between existing facts" in prompt
+
+
+def test_prompt_partial_answer_clarification_still_qualifies():
+    """Partial answer needing clarification still qualifies — do not over-correct."""
+    prompt = _prompt_from_generate()
+    assert "DO NOT OVER-CORRECT" in prompt
+    assert "only edit when the article has zero information" in prompt
+    assert "NEEDS CLARIFICATION" in prompt
+    assert "partial-answer" in prompt.lower() or "Partial answers" in prompt
+
+
+def test_prompt_stop_after_sufficiency_no_redundant_second_edit():
+    """After one useful clarification, redundant second paragraph → STOP."""
+    prompt = _prompt_from_generate()
+    assert "STOP after sufficiency" in prompt or "STOPPING RULE" in prompt
+    assert "second paragraph restating" in prompt or "No polish edits" in prompt
+    assert "sufficiently answerable → STOP" in prompt or (
+        "now sufficiently answerable → STOP" in prompt
+    )
 
 
 def test_implicit_gap_targets_existing_local_section():
-    """Real implicit gap → targeted local improvement in the owning section."""
+    """Partial-answer / implicit gap → targeted local improvement in owning section."""
     article = load_hashnode_markdown(text=ARTICLE)
-    # Host observation step is understated under "How tool calling works"
     recommended = _good_recommended(edit_loop=False, edit_tools=True)
     warnings = validate_recommended_markdown(
         ARTICLE,
@@ -402,13 +456,12 @@ def test_implicit_gap_targets_existing_local_section():
         opportunities=[_tools_opp()],
     )
     assert isinstance(warnings, list)
-    # Edit must land in the tools section, not intro-only
     assert "returns the observation" in recommended
     assert recommended.startswith("# Agents Zero to Hero\n\nIntro about agents")
 
 
 def test_missing_grounded_element_allows_local_addition():
-    """Genuinely missing grounded element → local addition under correct heading."""
+    """NEEDS INFORMATION / missing grounded element → local addition under heading."""
     article = load_hashnode_markdown(text=ARTICLE)
     qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
     payload = {
@@ -442,8 +495,85 @@ def test_missing_grounded_element_allows_local_addition():
     assert "keeps calling tools until the task is done" in bundle.recommended_markdown
 
 
+def test_partial_clarification_opportunity_maps_to_weak():
+    """NEEDS CLARIFICATION partial gap → weak opportunity + local section edit."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="How do tool schemas drive function calls?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "How do tool schemas drive function calls?",
+                "gap": (
+                    "Schemas are mentioned but the host observation handoff is "
+                    "under-explained — partial answer needs that relationship."
+                ),
+                "evidence_quote": (
+                    "Tool calling works by giving the model a schema of available functions."
+                ),
+                "target_heading": "How tool calling works",
+                "recommended_change": (
+                    "Clarify that the host executes the named function and returns "
+                    "the observation to the model."
+                ),
+                "answerability": "weak",
+            }
+        ],
+        "recommended_markdown": _good_recommended(edit_loop=False, edit_tools=True),
+        "change_explanations": ["Clarified host observation handoff under tool calling."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert len(bundle.opportunities) == 1
+    assert bundle.opportunities[0].answerability == "weak"
+    assert bundle.opportunities[0].target_heading == "How tool calling works"
+
+
+def test_second_redundant_edit_after_sufficiency_not_required():
+    """After sufficiency, empty additional ops for other strong Qs remain valid."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    # One material fix applied; second selected question judged STRONG → one opp only
+    qs = QuerySet(
+        selected=[
+            Query(text="What is an agent loop in tool-calling systems?"),
+            Query(text="How do tool schemas drive function calls?"),
+        ]
+    )
+    payload = {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Termination cue under-explained.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Add loop-continues-until-done clarification.",
+                "answerability": "weak",
+            }
+        ],
+        "recommended_markdown": _good_recommended(edit_loop=True, edit_tools=False),
+        "change_explanations": ["One clarification; stopped after sufficiency."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert len(bundle.opportunities) == 1
+    # Tools section left unchanged (no redundant second edit)
+    tools_before = next(
+        s.body for s in article.sections if s.heading == "How tool calling works"
+    )
+    tools_after = next(
+        s.body
+        for s in parse_sections(bundle.recommended_markdown)
+        if s.heading == "How tool calling works"
+    )
+    assert tools_before.strip() == tools_after.strip()
+
+
 def test_meaningful_ops_can_modify_multiple_sections():
-    """Meaningful opportunities may still edit multiple non-intro sections."""
+    """Multiple meaningful gaps → multi-section edits still allowed."""
     article = load_hashnode_markdown(text=ARTICLE)
     recommended = _good_recommended(edit_loop=True, edit_tools=True)
     warnings = validate_recommended_markdown(
