@@ -51,17 +51,17 @@ The repository defines the idea roughly like this:
 harness = tools + knowledge + observation + action + permissions
 ```
 
-The LLM supplies the intelligence: it interprets the task and proposes tool calls or text.
+The LLM supplies the intelligence.
 
-The AI agent is the complete task-solving system: the LLM working through repeated decisions, actions, observations, and completion.
-
-The harness provides the mechanism through which that intelligence can interact with the outside world. It supplies the tools, executes them, maintains state, and controls the loop.
+The harness provides the mechanism through which that intelligence can interact with the outside world.
 
 * * *
 
 # The agent loop
 
 The most important concept in the entire project is the agent loop.
+
+A minimal tool-calling agent combines the model request, tool schemas the model can see, Python implementations for those tools, a harness that executes the requested tool, and a message loop that returns the result to the model. It continues until the agent signals completion or there is no further tool call to process.
 
 At a high level:
 
@@ -79,8 +79,6 @@ while True:
         result = TOOLS[call.name](**call.args)
         messages.append(tool_result(call, result))
 ```
-
-The harness repeatedly sends the conversation and available tool schemas to the model, executes any requested Python tool, and feeds the result back for the next decision. In this simplified loop, it breaks when there are no tool calls; the example also exposes `finish` as an explicit completion action.
 
 Conceptually:
 
@@ -171,6 +169,8 @@ For example:
 ```
 
 This schema is effectively the contract between the model and the harness.
+
+The schema describes the available function and its arguments; it does not execute the Python function by itself. The harness must handle the model's returned tool name and arguments and map them to the actual callable.
 
 The model sees:
 
@@ -270,7 +270,7 @@ def finish(answer: str):
 
 Why make finishing a tool instead of simply accepting a normal assistant response?
 
-Because it gives the harness an explicit completion signal. The simplified loop can break when the model returns no tool calls, but `finish` makes completion a deliberate, machine-readable tool action rather than relying only on that absence of a tool call.
+Because it gives the harness an explicit completion signal. A `finish` call makes completion a structured event that the harness can recognize, rather than requiring it to infer from ordinary assistant text that the task is complete.
 
 The model can say:
 
@@ -392,8 +392,6 @@ The model gives us:
 tool name + arguments
 ```
 
-The harness parses the structured arguments, uses the tool name to select the corresponding Python callable in the `TOOLS` registry, and invokes it.
-
 The harness performs:
 
 ```text
@@ -417,6 +415,8 @@ messages.append(
     }
 )
 ```
+
+Executing the Python function is not enough on its own: the harness must serialize and append the result to the conversation so that the model can use it in the next iteration.
 
 Now the model can observe what happened.
 
@@ -471,7 +471,7 @@ tool result
 ...
 ```
 
-Previous messages preserve the original task, instructions, and earlier decisions. Tool results provide the external observations the model needs for its next decision: it can finish after a successful result or try again after an error.
+The harness sends this accumulated history with subsequent model requests, allowing the model to use prior tool calls and results when choosing whether to retry, call another tool, or finish.
 
 The message history is therefore a critical part of the harness.
 
@@ -527,7 +527,7 @@ FINAL ANSWER
 
 The important observation is that the LLM is not itself the agent.
 
-The combination is:
+The LLM supplies the decisions, while the harness connects those decisions to tools, execution, state, and control flow:
 
 ```text
 LLM + tool definitions + execution engine + state + control loop
@@ -550,9 +550,9 @@ subprocess.run(
 )
 ```
 
-At this stage there are essentially no meaningful security boundaries.
+The code string selected by the model is passed to the harness and executed in its environment. Because the prototype has essentially no meaningful security boundaries, it must not be treated as a safe sandbox; execution has the permissions available to that environment.
 
-That means this v0.1 tool is a learning example, not a safe boundary for arbitrary model-generated code. The missing controls include the permissions, sandboxing, validation, logging, and policy checks that the harness is intended to provide later.
+At this stage there are essentially no meaningful security boundaries.
 
 That is intentional.
 

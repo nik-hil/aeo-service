@@ -1,105 +1,85 @@
-# Live AEO acceptance: Astra vs Luna (2026-09-23 IST)
+# Astra vs Luna — PR #48 paid live acceptance
 
-Paid live runs on Grok Bot box against fixture `fixtures/agents-z2h-live.md` (domain `nik-hil.hashnode.dev`). Tip: `7c8add7328050f5b69356108ad27fd437551491a` (full-document recommendation engine).
+**Date:** 2026-09-23 (Asia/Calcutta)  
+**Tip:** `baf4e6d` (`/workspace/pr48-aeo`)  
+**Fixture:** `fixtures/agents-z2h-live.md`  
+**Domain:** `nik-hil.hashnode.dev`  
+**Base URL:** `https://inference.do-ai.run/v1`  
+**Paid retrieval:** `AEO_PAID_RETRIEVAL_OPT_IN=1`  
+**auto_publish:** false (both; no Hashnode publish)
 
 | | Astra | Luna |
 |---|---|---|
+| Out dir | `docs/live-astra-20260923-040706/` | `docs/live-luna-20260923-045101/` |
 | Model | `openai-gpt-6-astra` | `openai-gpt-5.6-luna` |
-| Out dir | `docs/live-astra-20260923-033044/` | `docs/live-luna-20260923-034021/` |
-| llm_used / retrieval_used / auto_publish | true / true / false | true / true / false |
-| Questions | 8 | 9 |
-| Opportunities | 6 | 5 |
-| Unique `target_heading`s | 6 | 5 |
-| Multi-section (non-intro) edits | yes | yes |
-| quality_eval.passed | true | true |
-| Unsupported claims (quality_eval) | 2 (metadata only; not in RECOMMENDED) | 0 |
-| RECOMMENDED leading/trailing `---` | none | none |
-| Direct-answer spam | 0 | 0 |
-| First-attempt success | yes | no (validation fail; retry OK) |
+| `llm_used` | true | true |
+| `retrieval_used` | true | true |
+| `auto_publish` | false | false |
+| Questions | 9 | 8 |
+| Opportunities | 7 | 7 |
+| Recommended chars | 14014 | 13558 |
+| CURRENT bytes | 12577 | 12577 |
+| RECOMMENDED bytes | 14496 | 14040 |
+| Visibility mention_rate | 1.0 | 1.0 |
+| Visibility citation_rate | 1.0 | 1.0 |
+| Visibility target_in_sources_rate | 1.0 | 1.0 |
+| Visibility query_coverage | 1.0 | 1.0 |
+| Visibility provider | digitalocean_web_search | digitalocean_web_search |
+| `quality_eval.passed` | true | true |
 
-Luna first attempt (`docs/live-luna-20260923-033623` not written) raised:
+## Consistency invariants
 
-`LLMError: Opportunities target non-intro sections but RECOMMENDED bodies are unchanged for: ['Implementing execute\_code']. Full-document question→section edits required.`
+Checked programmatically against CURRENT.md / RECOMMENDED.md / opportunities:
 
-Retry succeeded and is the artifact used below.
+| Invariant | Astra | Luna |
+|---|---|---|
+| **Forward:** every opportunity `target_heading` body differs CURRENT vs RECOMMENDED | **HELD** (7/7) | **HELD** (7/7) |
+| **Reverse:** every substantive section change has an opportunity | **HELD** (7/7) | **HELD** (7/7) |
+| Multi-section (not intro-only) | yes (7 distinct body sections) | yes (7 distinct body sections) |
+| No horizontal rule `---` lines | yes | yes |
+| No Direct-answer spam | yes (0 matches) | yes (0 matches) |
+| `quality_eval` pass | yes | yes |
+| `auto_publish` false | yes | yes |
 
-## Question quality
+### Astra opportunity targets
+Implementing execute\_code; The finish tool; Calling the model; Feeding the result back to the model; Why the message history matters; There is already a security problem; Running the project.
 
-Both models produced 5–10 **article-specific** questions (not heading transforms like “What is Repository?”).
+### Luna opportunity targets
+The agent loop; The complete flow; Tool schemas; Feeding the result back to the model; The finish tool; There is already a security problem; Why the message history matters.
 
-**Astra samples**
+## Qualitative comparison
 
-1. How can I build a minimal AI agent in Python that calls tools without using an agent framework?
-2. What does an agent harness do that an LLM alone cannot?
-3. How do I turn an LLM tool call into a Python function invocation?
-4. How should I send tool results back to an LLM so it can decide what to do next?
-5. Why give an AI agent a finish tool instead of treating a normal assistant response as completion?
+**Shared strengths.** Both runs produce grounded, multi-section edits that clarify harness vs model, tool-result feedback, finish signaling, message history, and security. Neither invents citations/stats; both preserve structure and code blocks. Paid retrieval visibility is saturated (1.0) for both on this domain/fixture.
 
-**Luna samples**
+**Astra edges.**
+- Broader question set (9 vs 8), including `tool_choice="auto"` and a more concrete execute_code/timeout question.
+- Edits tend to be more operational: timeout/output fields, `tool_call_id` matching, preserve-assistant-tool-call guidance, naming `v0.1-basic-tool` in Running the project.
+- `quality_eval.unnecessary_changes` empty.
 
-1. How do you build a minimal AI agent that can call Python tools and decide when to stop?
-2. What is the difference between an LLM, an AI agent, and an agent harness?
-3. How does tool calling connect an LLM's structured response to an actual Python function?
-4. Why does an AI agent need to send tool results and previous messages back to the model?
-5. Why use an explicit finish tool instead of ending when the model returns a normal assistant response?
+**Luna edges / gaps.**
+- Cleaner conceptual framing of agent-loop / schema-as-contract / LLM-as-decision-maker (good teaching prose).
+- Slightly leaner RECOMMENDED (+~1.5k vs Astra +~1.9k chars).
+- Quality eval flagged minor security-section repetition and some sentences that could be shorter.
+- Dropped the `tool_choice="auto"` and execute_code/timeout angles that Astra covered.
 
-Verdict: **tie / slight Astra edge** on operational specificity (security, execute_code output contract, local run). Luna equally natural and distinct.
-
-## Opportunity section distribution
-
-Schema for both: `question` / `gap` / `target_heading` / `recommended_change` / `evidence_quote`. All `target_heading` values matched real article headings; `evidence_quote` values were substrings of CURRENT.
-
-**Astra unique target_headings (6)**
-
-- The agent loop
-- Feeding the result back to the model
-- The finish tool
-- There is already a security problem
-- Implementing execute\_code
-- Running the project
-
-**Luna unique target_headings (5)**
-
-- The agent loop
-- What exactly are we building?
-- Handling a tool call
-- The finish tool
-- Why the message history matters
-
-Neither run concentrated all opportunities on the intro/first section. Astra spread into mid/late sections (security, execute_code, running the project). Luna included one early section (“What exactly are we building?”) plus mid-article tooling/history sections.
-
-## Recommended change quality
-
-- **Astra**: Stronger on protocol precision (tool_call_id / message ordering), security boundaries vs sandboxing, and execute_code return contract. Added a local-setup summary that quality_eval flagged as mildly repetitive (still grounded). Diff ~4.0 KB; RECOMMENDED ~14801 chars.
-- **Luna**: Clean conceptual distinctions (LLM vs agent vs harness), dispatch path, finish vs no-tool-call break, history purpose. Smaller, tighter diff (~2.7 KB; RECOMMENDED ~13505 chars). Change explanations also mention a security strengthening even though no dedicated security opportunity row was listed.
-
-Both preserved title/structure; no Direct-answer spam; no leading/trailing YAML `---`.
-
-## Multi-section vs intro-only
-
-**Both multi-section.** Astra: 6/6 targets non-intro. Luna: 4/5 non-intro (one early conceptual section). Full-document question→section behavior confirmed on tip.
-
-## Readability
-
-Luna’s recommended prose is slightly more compact. Astra’s additions are denser/technical but remain readable; quality_eval noted modest repetition only in the setup summary.
-
-## Hallucination / unsupported flags
-
-- **Astra**: quality_eval PASS overall, but flagged 2 unsupported claims in **opportunity metadata** about observed API answers (not present in RECOMMENDED.md). Minor metadata hygiene issue.
-- **Luna**: quality_eval PASS with **empty** `unsupported_claims`.
-
-## Reliability note
-
-Luna required a **retry** after failing deterministic full-document validation (opportunity claimed a section edit that RECOMMENDED did not apply). Astra passed on first attempt.
+**Astra quality note.** One opportunity justification mentioned an "observed API answer failed to recover" without evidence in the report; quality_eval flagged that as unsupported *justification* only — recommended Markdown itself was not blamed. Does not break the pass.
 
 ## Default recommendation
 
-**Keep `openai-gpt-6-astra` as default.**
+**Keep `openai-gpt-6-astra` as the default model.**
 
-Rationale: broader multi-section coverage on this fixture (security + execution contract + run instructions), first-attempt validation success, and question set aligned with practical AEO gaps. Luna was cleaner on unsupported-claim hygiene and slightly more readable, but not clearly better overall on this run, and one validation failure lowers confidence for unattended paid acceptance.
+Rationale: Luna is not clearly better. Consistency and quality pass on both; visibility ties. Astra’s question coverage and opportunity specificity (timeouts, tool_choice, run instructions) are slightly stronger for this fixture, and Luna’s quality notes call out avoidable repetition. Switch only if a future fixture shows Luna systematically better on answerability without repetition.
 
-## Artifacts to commit (no keys)
+## Artifacts
 
-- `docs/live-astra-20260923-033044/` (`CURRENT.md`, `RECOMMENDED.md`, `DIFF.patch`, `report.json`)
-- `docs/live-luna-20260923-034021/` (same)
-- `docs/live-astra-vs-luna-20260923.md` (this file)
+- Astra: `docs/live-astra-20260923-040706/{CURRENT,RECOMMENDED,DIFF.patch,report.json}`
+- Luna: `docs/live-luna-20260923-045101/{CURRENT,RECOMMENDED,DIFF.patch,report.json}`
+- This compare: `docs/live-astra-vs-luna-20260923.md`
+- Pack: `/workspace/pr48-live-consistency-20260923.tar.gz`
+
+## Non-actions (explicit)
+
+- Did **not** merge PR #48
+- Did **not** Hashnode-publish
+- Did **not** push (gh unauthed; CoS cloud-agent will push)
+- Did **not** log or commit API keys

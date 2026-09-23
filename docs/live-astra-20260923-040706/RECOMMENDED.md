@@ -61,9 +61,7 @@ The harness provides the mechanism through which that intelligence can interact 
 
 The most important concept in the entire project is the agent loop.
 
-To build it in Python without an agent framework, we combine a model API client, tool schemas, a registry of Python functions, conversation history, and a control loop. The loop asks the model what to do, executes requested tools, and returns their results for the next decision.
-
-At a high level, the following is a conceptual sketch, not the complete runnable implementation. The sections below explain tool-call messages, result handling, and explicit completion through `finish`.
+At a high level:
 
 ```python
 while True:
@@ -226,9 +224,7 @@ def execute_code(code: str):
         }
 ```
 
-Here, `capture_output=True` captures stdout and stderr, `text=True` makes them strings, and `timeout=10` sets a ten-second timeout. On a zero return code, the tool returns stripped stdout in `output` and `None` in `error`. On a nonzero return code, it returns stripped stderr in `error` and `None` in `output`; it does not preserve stdout from that failed run. Exceptions, including a timeout, become an `error` string.
-
-Returning these fields to the model lets it inspect a failure and decide whether to call `execute_code` again with revised code. The tool itself does not implement an automatic retry policy.
+The tool writes the supplied Python to `temp.py`, captures stdout and stderr as text, and sets a 10-second execution timeout. On success, it returns stripped stdout in `output` with `error: None`. A nonzero exit returns stripped stderr in `error` with `output: None`. A timeout or another exception reaches the exception handler, which returns the exception text in `error` with `output: None`.
 
 There are already several interesting harness concepts hiding inside this tiny function.
 
@@ -286,9 +282,9 @@ by calling:
 finish(...)
 ```
 
-The harness then knows it can terminate the loop. The function only returns `final_answer`; the harness must recognize the completion signal and stop, rather than treat it as another observation requiring a model call.
+The harness then knows it can terminate the loop.
 
-The earlier high-level sketch exits when there are no tool calls. That is different from the explicit completion protocol used here: the system prompt asks the model to call `finish` exactly once when the task is complete. The benefit is a structured completion signal instead of inferring completion from ordinary assistant text.
+The earlier high-level loop stops when a response has no tool calls. Using `finish` makes completion explicit instead: it returns the answer under `final_answer`, and the harness must recognize that completion signal and stop. The function itself only returns data; it does not terminate the loop on its own.
 
 This becomes very useful as the agent starts performing multi-step work.
 
@@ -365,7 +361,7 @@ And:
 tool_choice="auto"
 ```
 
-lets the model decide whether it needs a tool.
+lets the model decide whether it needs a tool. Tool use is optional: the model can request a tool or respond without any tool calls. This setting does not itself enforce the system message's instruction to call `finish` when the task is complete.
 
 * * *
 
@@ -408,7 +404,7 @@ through the `TOOLS` registry.
 
 # Feeding the result back to the model
 
-First, preserve the assistant message containing the tool calls in the conversation history. After executing a tool, append its result as a `role: "tool"` message, with the matching `tool_call_id` and JSON-serialized content:
+After executing the tool, the harness sends its result back:
 
 ```python
 messages.append(
@@ -420,9 +416,7 @@ messages.append(
 )
 ```
 
-The `tool_call_id` links the result to the model's request. For a continuing step such as `execute_code`, send the updated `messages` and `TOOL_SCHEMAS` in the next model call. Appending the result alone does not invoke the model.
-
-Now the model can observe what happened.
+The `tool_call_id` links this result to the model's specific tool request, while `json.dumps(result)` serializes the Python result as JSON text. The next model request includes the updated `messages`, so the model can observe what happened.
 
 For example:
 
@@ -474,6 +468,8 @@ tool result
       ↓
 ...
 ```
+
+In practice, keep the system and user messages, append the assistant message containing its tool calls, and then append the corresponding tool results. Preserve the tool calls, not just the assistant's text, and send the updated history on each iteration. Keep returned errors in that history too: they let the model inspect a failed attempt and decide whether to revise the code and call `execute_code` again.
 
 The message history is therefore a critical part of the harness.
 
@@ -552,9 +548,9 @@ subprocess.run(
 )
 ```
 
-At this stage there are essentially no meaningful security boundaries. Running LLM-generated Python with `subprocess` is not safe by itself: a separate process is not a sandbox, and the ten-second timeout limits duration rather than what the code can do.
+At this stage there are essentially no meaningful security boundaries.
 
-Security checks belong in the harness that controls execution. Permissions, argument validation, and policy checks belong before the function invocation; sandboxing belongs around the execution environment. Those safeguards are not implemented in this checkpoint.
+Running the code in a subprocess with a timeout does not make it a security sandbox. Permissions, sandboxing, validation, and policy checks belong in the harness that controls tool execution; they are not protections this first version already provides.
 
 That is intentional.
 
@@ -626,8 +622,6 @@ policy
 
 # Running the project
 
-To run the Agents Zero 2 Hero basic tool-calling example locally, use the `v0.1-basic-tool` tag, install `requirements.txt` in a virtual environment, configure your LLM provider using the repository instructions, then run `python client.py` followed by `python coding_agent.py`.
-
 Clone the repository:
 
 ```bash
@@ -635,7 +629,7 @@ git clone https://github.com/nik-hil/agents-zero-2-hero.git
 cd agents-zero-2-hero
 ```
 
-Checkout the first lesson:
+Check out `v0.1-basic-tool` to match this first lesson's tool-calling example:
 
 ```bash
 git checkout v0.1-basic-tool
@@ -651,7 +645,7 @@ pip install -r requirements.txt
 
 Configure your LLM provider according to the repository instructions.
 
-Then:
+With dependencies installed and the provider configured, run `client.py` and then `coding_agent.py`:
 
 ```bash
 python client.py

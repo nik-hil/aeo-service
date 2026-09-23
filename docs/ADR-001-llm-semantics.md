@@ -27,6 +27,13 @@ should touch different sections when evidence supports it. Opportunities carry:
 `RECOMMENDED.md` is the complete improved article only (no frontmatter / trailing
 `---`, no Direct-answer templates, no invented facts).
 
+**Applied-change consistency:** Opportunities are records of edits actually applied
+in `recommended_markdown`, not brainstormed gaps. Python rejects (existing
+validator/`LLMError` path) when an opportunity’s `target_heading` body is unchanged
+vs CURRENT, or when a substantive section body change in RECOMMENDED lacks a
+matching opportunity. Whitespace-only Markdown normalization is not substantive
+and must not invent opportunity rows.
+
 Python performs only:
 
 - Deterministic fence-aware Markdown parse
@@ -34,8 +41,8 @@ Python performs only:
 - DigitalOcean Responses + `web_search` **plumbing** (mention/citation/target-domain rates)
 - Safety checks (title preserved; headings not deleted; **section order preserved**;
   evidence quotes in CURRENT; headings exist; no frontmatter/`---`; no duplicate
-  Direct-answer blocks; lightweight anti-intro-concentration when opportunities
-  claim non-intro sections; DIFF)
+  Direct-answer blocks; **opportunity ↔ applied RECOMMENDED section edit**;
+  lightweight anti-intro-concentration; DIFF)
 - Artifacts + Gradio labels (**OBSERVED** vs **LLM-GENERATED**)
 
 ## Rejected approaches

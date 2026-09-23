@@ -1,0 +1,71 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -60,6 +60,8 @@
+ # The agent loop
+ 
+ The most important concept in the entire project is the agent loop.
++
++A minimal tool-calling agent combines the model request, tool schemas the model can see, Python implementations for those tools, a harness that executes the requested tool, and a message loop that returns the result to the model. It continues until the agent signals completion or there is no further tool call to process.
+ 
+ At a high level:
+ 
+@@ -168,6 +170,8 @@
+ 
+ This schema is effectively the contract between the model and the harness.
+ 
++The schema describes the available function and its arguments; it does not execute the Python function by itself. The harness must handle the model's returned tool name and arguments and map them to the actual callable.
++
+ The model sees:
+ 
+ ```text
+@@ -266,7 +270,7 @@
+ 
+ Why make finishing a tool instead of simply accepting a normal assistant response?
+ 
+-Because it gives the harness an explicit completion signal.
++Because it gives the harness an explicit completion signal. A `finish` call makes completion a structured event that the harness can recognize, rather than requiring it to infer from ordinary assistant text that the task is complete.
+ 
+ The model can say:
+ 
+@@ -411,6 +415,8 @@
+     }
+ )
+ ```
++
++Executing the Python function is not enough on its own: the harness must serialize and append the result to the conversation so that the model can use it in the next iteration.
+ 
+ Now the model can observe what happened.
+ 
+@@ -464,6 +470,8 @@
+       ↓
+ ...
+ ```
++
++The harness sends this accumulated history with subsequent model requests, allowing the model to use prior tool calls and results when choosing whether to retry, call another tool, or finish.
+ 
+ The message history is therefore a critical part of the harness.
+ 
+@@ -519,7 +527,7 @@
+ 
+ The important observation is that the LLM is not itself the agent.
+ 
+-The combination is:
++The LLM supplies the decisions, while the harness connects those decisions to tools, execution, state, and control flow:
+ 
+ ```text
+ LLM + tool definitions + execution engine + state + control loop
+@@ -541,6 +549,8 @@
+     ...
+ )
+ ```
++
++The code string selected by the model is passed to the harness and executed in its environment. Because the prototype has essentially no meaningful security boundaries, it must not be treated as a safe sandbox; execution has the permissions available to that environment.
+ 
+ At this stage there are essentially no meaningful security boundaries.
+ 
+@@ -696,4 +706,4 @@
+ 
+ It is to understand what the frameworks are doing for us.
+ 
+-One Git tag at a time.
++One Git tag at a time.
