@@ -1,0 +1,17 @@
+{
+  "model": "openai-gpt-6-astra",
+  "questions": 9,
+  "opportunities": 1,
+  "opp_targets": [
+    "What is shared and what is isolated?"
+  ],
+  "quality_eval_passed": true,
+  "unsupported_claims": [],
+  "validation_warnings": [],
+  "llm_used": true,
+  "retrieval_used": true,
+  "auto_publish": false,
+  "current_bytes": 28933,
+  "recommended_bytes": 28995,
+  "diff_bytes": 511
+}

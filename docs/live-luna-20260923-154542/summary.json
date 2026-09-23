@@ -1,0 +1,22 @@
+{
+  "model": "openai-gpt-5.6-luna",
+  "questions": 9,
+  "opportunities": 0,
+  "opp_targets": [],
+  "quality_eval_passed": false,
+  "unsupported_claims": [
+    "The claims that the child receives the same permissions, hooks, memory object, model, MCP connections, and tools depend on implementation details that are described but not demonstrated with supporting code.",
+    "The claim that the repository includes tests/test_subagents.py and that the tests make exactly three fake-model calls is implementation-specific and is not independently supported within the draft.",
+    "The statement that unknown-tool handling previously caused lookup failures and now returns a specific error object is asserted without showing the relevant implementation or test.",
+    "The claim that a child can use skills and MCP tools is qualified in places but is presented elsewhere as a general capability; the exact inheritance behavior should be stated more carefully.",
+    "The phrase \"parallelization potential\" is potentially misleading because the described implementation shows delegation but does not establish concurrent execution.",
+    "The statement that the architecture is becoming a \"multi-agent or agent-swarm architecture\" is interpretive and stronger than the demonstrated single-level parent-child delegation primitive."
+  ],
+  "validation_warnings": [],
+  "llm_used": true,
+  "retrieval_used": true,
+  "auto_publish": false,
+  "current_bytes": 28933,
+  "recommended_bytes": 28933,
+  "diff_bytes": 0
+}
