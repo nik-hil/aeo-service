@@ -409,13 +409,15 @@ def apply_recommendations(markdown: str, recommendations: list[Recommendation]) 
     """Produce RECOMMENDED.md by appending grounded snippets under target headings.
 
     Does not auto-publish. Skips recommendations that would target H1 when H2+
-    exist. Caps edits per heading to avoid dumping everything on one section.
+    exist. At most **one** ``**Direct answer:**`` block per heading (no duplicate
+    label stacking). Caps total edits per heading at 2 for non-quote additions.
     """
     sections = parse_sections(markdown)
     h1 = next((s for s in sections if s.level == 1), None)
     has_h2 = any(s.level >= 2 for s in sections)
     out = markdown
     per_heading: dict[str, int] = {}
+    direct_answer_headings: set[str] = set()
 
     for rec in recommendations:
         heading = rec.target_heading
@@ -423,13 +425,28 @@ def apply_recommendations(markdown: str, recommendations: list[Recommendation]) 
             continue
         if per_heading.get(heading, 0) >= 2:
             continue
-        if find_section(parse_sections(out), heading) is None:
+        sec = find_section(parse_sections(out), heading)
+        if sec is None:
             continue
-        snippet = rec.proposed_change.strip()
-        if not snippet:
-            continue
-        # Apply a short lead addition derived from the proposal, not the whole essay.
-        lead = snippet.split("\n\n")[0].strip()
-        out = append_under_heading(out, heading, lead)
+
+        # Prefer a single grounded quote lead — never stack "**Direct answer:**".
+        quote = (rec.evidence_quote or "").strip()
+        if quote:
+            if heading in direct_answer_headings or "**Direct answer:**" in (sec.body or ""):
+                continue
+            addition = f"**Direct answer:** {quote}"
+            direct_answer_headings.add(heading)
+        else:
+            snippet = rec.proposed_change.strip()
+            if not snippet:
+                continue
+            # Instructional proposals without evidence: one short line, no Direct-answer label.
+            addition = snippet.split("\n\n")[0].strip()
+            if addition.lower().startswith("**direct answer:**"):
+                if heading in direct_answer_headings or "**Direct answer:**" in (sec.body or ""):
+                    continue
+                direct_answer_headings.add(heading)
+
+        out = append_under_heading(out, heading, addition)
         per_heading[heading] = per_heading.get(heading, 0) + 1
     return out

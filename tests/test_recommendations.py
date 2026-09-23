@@ -116,3 +116,30 @@ def test_apply_skips_h1_and_never_publishes():
     assert out  # still markdown
     # Structure preserved: H2 headings remain.
     assert "## What is an agent loop?" in out
+
+
+def test_apply_no_duplicate_direct_answer_label():
+    """Regression: two recs on one heading must not stack **Direct answer:**."""
+    from aeo_mvp.recommendations import Recommendation
+
+    md = ARTICLE
+    recs = [
+        Recommendation(
+            question="What is an agent loop?",
+            answerability="weak",
+            target_heading="What is an agent loop?",
+            evidence_quote="The agent loop lets a model call tools, see results, and decide whether to continue.",
+            problem="partial",
+            proposed_change="**Direct answer:** The agent loop lets a model call tools, see results, and decide whether to continue.\n\nMore text.",
+        ),
+        Recommendation(
+            question="How does the agent loop work?",
+            answerability="weak",
+            target_heading="What is an agent loop?",
+            evidence_quote="The agent loop lets a model call tools, see results, and decide whether to continue.",
+            problem="partial",
+            proposed_change="**Direct answer:** The agent loop lets a model call tools, see results, and decide whether to continue.\n\nMore text.",
+        ),
+    ]
+    out = apply_recommendations(md, recs)
+    assert out.count("**Direct answer:**") == 1
