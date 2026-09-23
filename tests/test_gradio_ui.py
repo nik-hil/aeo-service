@@ -197,14 +197,17 @@ def test_analyze_empty_markdown_single_error():
 
 
 def test_build_app_returns_blocks_with_css():
-    """CSS must be on Blocks, not launch — older Gradio rejects launch(css=...)."""
+    """CSS must be on Blocks, not launch — Gradio 5 rejects launch(css=...)."""
     import inspect
 
     import gradio as gr
 
     demo = gradio_app.build_app()
     assert isinstance(demo, gr.Blocks)
+    assert "aeo-wrap" in (demo.css or "")
     assert "css" in inspect.signature(gr.Blocks.__init__).parameters
     assert "css" not in inspect.signature(gr.Blocks.launch).parameters
-    # Custom styles are attached at construction time
-    assert getattr(demo, "css", None) or "aeo-wrap" in (gradio_app._CSS or "")
+    # main() must not pass css= to launch
+    src = inspect.getsource(gradio_app.main)
+    assert "css=" not in src
+    assert "server_name=" in src and "server_port=" in src
