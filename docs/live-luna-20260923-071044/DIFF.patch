@@ -1,0 +1,17 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -465,6 +465,8 @@
+ ...
+ ```
+ 
++The history must preserve the assistant's tool-call message together with the corresponding tool result. The `tool_call_id` associates a result with the specific request that produced it, so the model can interpret the observation in the context of the action it previously requested.
++
+ The message history is therefore a critical part of the harness.
+ 
+ Later, this will evolve into a much larger problem:
+@@ -696,4 +698,4 @@
+ 
+ It is to understand what the frameworks are doing for us.
+ 
+-One Git tag at a time.
++One Git tag at a time.
