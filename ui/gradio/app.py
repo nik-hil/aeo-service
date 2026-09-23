@@ -3,19 +3,169 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 import gradio as gr
+import httpx
 
 from aeo_mvp.llm import LLMError
 from aeo_mvp.pipeline import run_pipeline
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "examples" / "sample_article.md"
 
+_FETCH_TIMEOUT_S = 30.0
+
+STATUS_URL_IGNORES_PASTE = "Using target URL (Markdown paste ignored)."
+STATUS_URL = "Using target URL."
+STATUS_MARKDOWN = "Using Hashnode Markdown paste."
+STATUS_DOMAIN_AND_MARKDOWN = (
+    "Using Hashnode Markdown paste; target domain used for visibility only."
+)
+
+_CSS = """
+/* Fixed-height CURRENT / RECOMMENDED / DIFF panes with vertical scroll */
+.aeo-md-scroll textarea {
+  max-height: 28rem !important;
+  overflow-y: auto !important;
+}
+.aeo-md-scroll .cm-editor,
+.aeo-md-scroll .cm-scroller {
+  max-height: 28rem !important;
+  overflow-y: auto !important;
+}
+.aeo-md-scroll .cm-content {
+  overflow-wrap: anywhere;
+}
+"""
+
 
 def load_example() -> str:
     if _EXAMPLE.is_file():
         return _EXAMPLE.read_text(encoding="utf-8")
     return "# Example\n\nPaste Hashnode Markdown here.\n"
+
+
+def _is_absolute_http_url(value: str) -> bool:
+    return value.startswith(("http://", "https://"))
+
+
+def _canonical_article_url(url: str) -> str:
+    """Strip a trailing ``.md`` so visibility identity matches the HTML article."""
+    cleaned = url.strip()
+    parsed = urlparse(cleaned)
+    path = parsed.path or ""
+    if path.endswith(".md"):
+        path = path[: -len(".md")] or "/"
+        cleaned = parsed._replace(path=path).geturl()
+    return cleaned
+
+
+def fetch_markdown_from_url(
+    url: str,
+    *,
+    client: httpx.Client | None = None,
+) -> str:
+    """Fetch Hashnode / supported article Markdown from an absolute http(s) URL.
+
+    Tries, in order:
+    1. URL as-is when it already ends with ``.md``
+    2. Same URL with ``Accept: text/markdown``
+    3. URL with ``.md`` appended to the path
+    """
+    cleaned = url.strip()
+    if not _is_absolute_http_url(cleaned):
+        raise ValueError("Target must be an absolute http(s) URL to fetch Markdown.")
+
+    own_client = client is None
+    http = client or httpx.Client(timeout=_FETCH_TIMEOUT_S, follow_redirects=True)
+    try:
+        candidates: list[tuple[str, dict[str, str]]] = []
+        if cleaned.lower().endswith(".md"):
+            candidates.append((cleaned, {}))
+        else:
+            candidates.append((cleaned, {"Accept": "text/markdown"}))
+            parsed = urlparse(cleaned)
+            md_path = (parsed.path or "").rstrip("/") + ".md"
+            candidates.append((parsed._replace(path=md_path).geturl(), {}))
+
+        last_error = "Could not fetch Markdown from target URL."
+        for candidate, headers in candidates:
+            try:
+                resp = http.get(candidate, headers=headers)
+            except httpx.HTTPError as exc:
+                last_error = f"Failed to fetch target URL: {exc}"
+                continue
+            if resp.status_code >= 400:
+                last_error = (
+                    f"Failed to fetch target URL "
+                    f"({resp.status_code} for {candidate})."
+                )
+                continue
+            text = (resp.text or "").strip()
+            if not text:
+                last_error = f"Target URL returned empty Markdown ({candidate})."
+                continue
+            content_type = (resp.headers.get("content-type") or "").lower()
+            # Prefer explicit markdown / plain text; reject obvious HTML shells.
+            if "html" in content_type and "markdown" not in content_type:
+                if text.lstrip().lower().startswith(
+                    ("<!doctype", "<html", "<head", "<body")
+                ):
+                    last_error = (
+                        "Target URL returned HTML, not Markdown. "
+                        "Use a Hashnode article URL or …/slug.md."
+                    )
+                    continue
+            return text
+        raise ValueError(last_error)
+    finally:
+        if own_client:
+            http.close()
+
+
+def resolve_content_source(
+    markdown: str,
+    target: str,
+    *,
+    fetch_fn=None,
+) -> tuple[str, str | None, str]:
+    """Resolve exclusive content source for Analyze.
+
+    Rules:
+    - Absolute http(s) **target URL** → fetch Markdown; **ignore** paste;
+      pass URL through as ``target_domain`` (hostname extracted in pipeline).
+    - Non-empty **bare domain** (no scheme) → use paste (required) for content;
+      domain is visibility identity only.
+    - Empty target → use Hashnode Markdown paste.
+    - Both empty → ``ValueError``.
+    """
+    md = (markdown or "").strip()
+    tgt = (target or "").strip()
+    fetcher = fetch_fn or fetch_markdown_from_url
+
+    if tgt and _is_absolute_http_url(tgt):
+        fetched = fetcher(tgt).strip()
+        if not fetched:
+            raise ValueError("Target URL returned empty Markdown.")
+        note = STATUS_URL_IGNORES_PASTE if md else STATUS_URL
+        return fetched, _canonical_article_url(tgt), note
+
+    if tgt:
+        # Bare domain / non-URL token: visibility identity only (legacy).
+        if not md:
+            raise ValueError(
+                "Provide Hashnode Markdown, or a full article URL "
+                "(https://…/slug or …/slug.md)."
+            )
+        return md, tgt, STATUS_DOMAIN_AND_MARKDOWN
+
+    if md:
+        return md, None, STATUS_MARKDOWN
+
+    raise ValueError(
+        "Provide Hashnode Markdown or a target article URL "
+        "(https://…/slug or …/slug.md)."
+    )
 
 
 def _article_md(report) -> str:
@@ -137,22 +287,44 @@ def _quality_md(report) -> str:
     return "\n".join(lines)
 
 
-def analyze(markdown: str, target_domain: str, dry_run: bool, skip_eval: bool):
-    md = (markdown or "").strip()
-    if not md:
-        empty = "Provide Hashnode Markdown."
-        return empty, empty, empty, empty, "", "", "", empty
+def _error_outputs(message: str):
+    err = f"**Error:** {message}"
+    return err, err, err, err, err, "", "", "", err
+
+
+def analyze(
+    markdown: str,
+    target: str,
+    dry_run: bool,
+    skip_eval: bool,
+    *,
+    fetch_fn=None,
+    pipeline_fn=None,
+):
+    """Run pipeline with URL-vs-paste exclusivity.
+
+    Absolute target URLs are fetched and used as Markdown; paste is ignored for
+    that run. Bare domains keep legacy paste + visibility identity behavior.
+    """
     try:
-        result = run_pipeline(
+        md, target_domain, status = resolve_content_source(
+            markdown, target, fetch_fn=fetch_fn
+        )
+    except ValueError as exc:
+        return _error_outputs(str(exc))
+
+    run = pipeline_fn or run_pipeline
+    try:
+        result = run(
             text=md,
-            target_domain=target_domain.strip() or None,
+            target_domain=target_domain,
             dry_run=dry_run,
             skip_quality_eval=skip_eval,
         )
     except LLMError as exc:
-        err = f"**Error:** {exc}"
-        return err, err, err, err, "", "", "", err
+        return _error_outputs(str(exc))
     return (
+        status,
         _article_md(result),
         _visibility_md(result),
         _questions_md(result),
@@ -165,24 +337,33 @@ def analyze(markdown: str, target_domain: str, dry_run: bool, skip_eval: bool):
 
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(title="Hashnode AEO PoC") as demo:
+    with gr.Blocks(title="Hashnode AEO PoC", css=_CSS) as demo:
         gr.Markdown(
             "# Hashnode AEO PoC\n"
             "LLM owns question/opportunity/recommendation semantics. "
             "Python owns Markdown parsing, validation, DIFF, and DO web_search plumbing. "
             "**Never auto-publishes.** "
-            "Labels: **OBSERVED** (API visibility) vs **LLM-GENERATED**."
+            "Labels: **OBSERVED** (API visibility) vs **LLM-GENERATED**.\n\n"
+            "**Input rule:** a full target article URL is fetched and used as the "
+            "content source (Markdown paste ignored). If the URL field is empty, "
+            "pasted Hashnode Markdown is used. A bare domain alone is visibility "
+            "identity only and still needs Markdown paste."
         )
         with gr.Row():
             md_in = gr.Textbox(label="Hashnode Markdown", lines=20, value=load_example())
             with gr.Column():
-                domain = gr.Textbox(label="Target domain (optional)", placeholder="example.com")
+                target_in = gr.Textbox(
+                    label="Target article URL / domain (optional)",
+                    placeholder="https://example.hashnode.dev/my-article or example.com",
+                    lines=1,
+                )
                 dry = gr.Checkbox(
                     label="Dry run (skip paid DO web_search; LLM still required)",
                     value=True,
                 )
                 skip_eval = gr.Checkbox(label="Skip quality evaluation", value=False)
                 run_btn = gr.Button("Analyze", variant="primary")
+                status_out = gr.Markdown()
 
         gr.Markdown("## ARTICLE")
         article_out = gr.Markdown()
@@ -194,17 +375,36 @@ def build_app() -> gr.Blocks:
         opp_out = gr.Markdown()
         gr.Markdown("## CURRENT vs RECOMMENDED")
         with gr.Row():
-            current_out = gr.Code(label="CURRENT.md", language="markdown")
-            recommended_out = gr.Code(label="RECOMMENDED.md", language="markdown")
+            current_out = gr.Code(
+                label="CURRENT.md",
+                language="markdown",
+                lines=20,
+                max_lines=20,
+                elem_classes=["aeo-md-scroll"],
+            )
+            recommended_out = gr.Code(
+                label="RECOMMENDED.md",
+                language="markdown",
+                lines=20,
+                max_lines=20,
+                elem_classes=["aeo-md-scroll"],
+            )
         gr.Markdown("## DIFF")
-        diff_out = gr.Code(label="DIFF", language="markdown")
+        diff_out = gr.Code(
+            label="DIFF",
+            language="markdown",
+            lines=16,
+            max_lines=16,
+            elem_classes=["aeo-md-scroll"],
+        )
         gr.Markdown("## QUALITY EVALUATION *(LLM-GENERATED)*")
         qual_out = gr.Markdown()
 
         run_btn.click(
             fn=analyze,
-            inputs=[md_in, domain, dry, skip_eval],
+            inputs=[md_in, target_in, dry, skip_eval],
             outputs=[
+                status_out,
                 article_out,
                 vis_out,
                 q_out,
