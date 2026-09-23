@@ -1,0 +1,676 @@
+{
+  "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+  "source_path": "fixtures/agents-z2h-live.md",
+  "section_headings": [
+    "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+    "What exactly are we building?",
+    "The agent loop",
+    "Our first two tools",
+    "Tool schemas",
+    "Implementing execute\\_code",
+    "The model does not execute code directly",
+    "The finish tool",
+    "Running the agent",
+    "Calling the model",
+    "Handling a tool call",
+    "Feeding the result back to the model",
+    "Why the message history matters",
+    "The complete flow",
+    "There is already a security problem",
+    "What I learned from v0.1",
+    "Running the project",
+    "What comes next?",
+    "v0.2 \u2014 Giving the agent a filesystem",
+    "Repository"
+  ],
+  "model": "openai-gpt-6-astra",
+  "questions": [
+    {
+      "question": "How can I build a basic AI agent in Python that calls tools without using an agent framework?",
+      "importance": "high",
+      "reason": "Natural, high-value implementation query matching the article's central tutorial and framework-free approach.",
+      "article_topics_or_evidence": "The agent loop, execute_code and finish tools, function schemas, TOOLS registry, and run_agent function provide the core architecture.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "What makes an LLM with tool calling an agent rather than just a chatbot?",
+      "importance": "high",
+      "reason": "Addresses a common conceptual question, distinct from the implementation details.",
+      "article_topics_or_evidence": "The article describes an agent as an LLM combined with tool definitions, an execution engine, state, and a control loop that supports actions and observation.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How do I turn an LLM tool call into a Python function call and send the result back to the model?",
+      "importance": "high",
+      "reason": "Specific, directly answerable integration question covering the essential bridge between model decisions and tool execution.",
+      "article_topics_or_evidence": "The harness parses JSON arguments, dispatches through TOOLS[tool_name](**args), and appends a tool-role message with tool_call_id and the serialized result.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How do I define a Python execution tool schema and let the model decide when to call it?",
+      "importance": "high",
+      "reason": "Targets tool configuration rather than execution, making it a distinct and useful developer query.",
+      "article_topics_or_evidence": "The execute_code schema declares a required code string; model requests include tools=TOOL_SCHEMAS and tool_choice=\"auto\".",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How should I maintain conversation history so an AI agent can use tool results and retry failed code?",
+      "importance": "high",
+      "reason": "Practical state-management question supported by the article's message sequence and error-feedback explanation.",
+      "article_topics_or_evidence": "History preserves system and user messages, assistant tool calls, tool results, and subsequent decisions. Returned errors allow the model to decide whether to try again.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "Why use a finish tool to stop an AI agent instead of accepting a normal assistant response?",
+      "importance": "medium",
+      "reason": "Realistic architectural question about explicit completion signals, though narrower than the core tool-calling queries.",
+      "article_topics_or_evidence": "finish returns final_answer and signals completion to the harness; system instructions require calling it exactly once when the task is complete.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How can I execute model-generated Python code, capture its output and errors, and enforce a timeout?",
+      "importance": "medium",
+      "reason": "Concrete execution question that complements tool dispatch without duplicating it.",
+      "article_topics_or_evidence": "execute_code writes temp.py, invokes subprocess.run with capture_output=True, text=True, and timeout=10, and returns structured output or error fields.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "Is running AI-generated Python in a subprocess safe, and where should an agent enforce security controls?",
+      "importance": "high",
+      "reason": "Important safety query directly addressed by the example's limitations; the article identifies control points but does not implement production safeguards.",
+      "article_topics_or_evidence": "The article warns that v0.1 has no meaningful security boundaries and identifies the harness as the place for permissions, sandboxing, validation, and policy checks.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How do I run the v0.1 basic tool-calling example from the Agents Zero 2 Hero repository?",
+      "importance": "medium",
+      "reason": "Specific navigational and setup query for readers reproducing the tutorial.",
+      "article_topics_or_evidence": "Instructions cover cloning the repository, checking out v0.1-basic-tool, creating a virtual environment, installing requirements, and running client.py and coding_agent.py. Provider configuration is delegated to repository instructions.",
+      "source": "llm_generated"
+    }
+  ],
+  "queries_selected": [
+    "How can I build a basic AI agent in Python that calls tools without using an agent framework?",
+    "What makes an LLM with tool calling an agent rather than just a chatbot?",
+    "How do I turn an LLM tool call into a Python function call and send the result back to the model?",
+    "How do I define a Python execution tool schema and let the model decide when to call it?",
+    "How should I maintain conversation history so an AI agent can use tool results and retry failed code?",
+    "Why use a finish tool to stop an AI agent instead of accepting a normal assistant response?",
+    "How can I execute model-generated Python code, capture its output and errors, and enforce a timeout?",
+    "Is running AI-generated Python in a subprocess safe, and where should an agent enforce security controls?",
+    "How do I run the v0.1 basic tool-calling example from the Agents Zero 2 Hero repository?"
+  ],
+  "queries_candidate_count": 9,
+  "query_quality_notes": "All nine candidates are realistic, relevant, specific, and sufficiently distinct to retain. Implementation questions cover separate stages of the workflow rather than near-duplicates. Security guidance is conceptual, and provider setup requires the linked repository; neither should be presented as fully implemented in the article.",
+  "visibility": {
+    "provider": "digitalocean_web_search",
+    "model": "openai-gpt-6-astra",
+    "notes": "OBSERVED via DigitalOcean Inference Responses API + web_search. API observation only \u2014 does NOT measure consumer ChatGPT/Gemini/Perplexity UI.",
+    "mention_rate": 1.0,
+    "citation_rate": 1.0,
+    "target_in_sources_rate": 1.0,
+    "query_coverage": 1.0,
+    "observations": [
+      {
+        "query": "How can I build a basic AI agent in Python that calls tools without using an agent framework?",
+        "answer": "You don\u2019t need an agent framework. You need **a model that supports tool calling, some Python functions, and a loop that connects them**.\n\nThe article [*Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling*](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling) describes this distinction well: **the model decides what action to request; your code controls whether and how it runs.**\n\n## 1. Understand the loop\n\n```text\nUser request \u2192 Model \u2192 Tool request \u2192 Python function\n                 \u2191                         |\n                 \u2514\u2500\u2500\u2500\u2500\u2500\u2500 Tool result \u2500\u2500\u2500\u2500\u2500\u2500\u2518\n                 |\n                 \u2514\u2500\u2500 Final answer\n```\n\nA tool-calling API does **not** execute your Python functions. It returns a tool name and arguments; your program executes the function and sends the result back. This is also how [OpenAI\u2019s function-calling documentation](https://developers.openai.com/api/docs/guides/function-calling) describes the workflow.\n\n## 2. Install the API client\n\nThe following uses the OpenAI SDK\u2014not an agent framework.\n\n```bash\npip install openai\nexport OPENAI_API_KEY=\"your-api-key\"\n```\n\nYou\u2019ll need API access to a model that supports Chat Completions tool calling.\n\n## 3. Implement a minimal agent\n\nThe article starts with `execute_code` and `finish` tools. For a safer first example, use a narrowly scoped `multiply` function instead of executing arbitrary model-generated Python. Here, a response without tool calls ends the loop.\n\nSave this as `agent.py`:\n\n```python\nimport json\nimport os\n\nfrom openai import OpenAI\n\nclient = OpenAI(timeout=30.0, max_retries=2)\nMODEL = os.getenv(\"OPENAI_MODEL\", \"gpt-4.1-mini\")\n\n\n# 1. Implement a tool, including runtime validation.\ndef multiply(a: int, b: int) -> dict:\n    if type(a) is not int or type(b) is not int:\n        raise ValueError(\"a and b must be integers\")\n    if abs(a) > 10**12 or abs(b) > 10**12:\n        raise ValueError(\"Inputs must be between -10^12 and 10^12\")\n",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic",
+            "title": "Agents Zero to Hero #5: Making an AI Agent Provider-Agnostic",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "site:nik-hil.hashnode.dev \"Agents Zero to Hero\" \"Tool Calling\"",
+          "function calling chat completions tool_calls append model_dump tool_call_id strict python",
+          "site:developers.openai.com \"tool_call_id\" \"Function calling\""
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "What makes an LLM with tool calling an agent rather than just a chatbot?",
+        "answer": "**Tool calling alone does not make an LLM an agent. The key is whether the model controls a goal-directed feedback loop: choose an action, observe its result, and decide what to do next.**\n\nThe [article under evaluation](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling) captures this distinction well:\n\n> \u201cAn LLM becomes an agent when it can decide to take actions, invoke capabilities outside the model, observe the result, and continue working until the task is complete.\u201d\n\n### What changes from chatbot to agent?\n\n| System | Who determines the next step? |\n|---|---|\n| Basic chatbot | The model produces a response; the user usually initiates the next step. |\n| Fixed tool-enabled workflow | Application code prescribes the sequence\u2014for example, retrieve information, then summarize it. |\n| Agent | The model chooses actions and adapts subsequent steps based on results, within boundaries enforced by the application. |\n\nThis matches [Anthropic\u2019s architectural distinction](https://www.anthropic.com/engineering/building-effective-agents): workflows follow predefined code paths, whereas agents let LLMs dynamically direct their processes and tool usage. Definitions vary, so this is a useful practical distinction rather than a universally settled taxonomy.\n\n### Why the article\u2019s example qualifies\n\nThe article exposes two tools, `execute_code` and `finish`, and places the model inside a loop:\n\n1. **Decide:** The model chooses whether to execute Python and supplies the code.\n2. **Act:** The surrounding application\u2014the **harness**\u2014executes the requested tool.\n3. **Observe:** The tool\u2019s output or error returns to the model.\n4. **Adapt or stop:** The model can request another action or indicate completion.\n\nFor example, generating Python code is chatbot behavior. Running it, seeing an error, revising the code, rerunning it, and deciding when to report the result is agentic behavior\u2014provided the model, rather than a fixed script or ",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic",
+            "title": "Agents Zero to Hero #5: Making an AI Agent Provider-Agnostic",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "site:nik-hil.hashnode.dev \"Agents Zero to Hero\" \"Tool Calling\"",
+          "site:anthropic.com engineering building effective agents workflows agents dynamically direct own processes tool usage"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How do I turn an LLM tool call into a Python function call and send the result back to the model?",
+        "answer": "**The model requests a tool call; your Python code executes it.** The bridge is a dictionary mapping tool names to Python functions, plus JSON parsing for the arguments.\n\nThis is the central pattern in [*Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling*](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling): the model decides what to call, while your \u201charness\u201d performs the action and returns the result.\n\n### The round trip\n\nFor an OpenAI-compatible **Chat Completions API**:\n\n1. Send the model your messages and tool schemas.\n2. Save its assistant message, including any tool calls.\n3. Parse each call\u2019s JSON arguments.\n4. Look up and execute the corresponding Python function.\n5. Append a `tool` message containing the result and the matching `tool_call_id`.\n6. Call the model again with the updated conversation.\n\nHere is the core loop, assuming `client`, `model`, `messages`, and `TOOL_SCHEMAS` are already configured, and your tool functions are imported:\n\n```python\nimport json\n\n# Only functions explicitly registered here can be called.\nTOOLS = {\n    \"execute_code\": execute_code,\n    \"finish\": finish,\n}\n\nfor _ in range(10):  # Bound the number of model turns.\n    response = client.chat.completions.create(\n        model=model,\n        messages=messages,\n        tools=TOOL_SCHEMAS,\n    )\n    message = response.choices[0].message\n\n    # Preserve the assistant's tool-call requests before adding results.\n    messages.append(message.model_dump(exclude_none=True))\n\n    if not message.tool_calls:\n        print(message.content)\n        break\n\n    finished = False\n\n    for call in message.tool_calls:\n        name = call.function.name\n\n        try:\n            if name not in TOOLS:\n                raise ValueError(f\"Unknown tool: {name}\")\n\n            args = json.loads(call.function.arguments)\n            if not isinstance(args, dict):\n                raise ValueError(\"Tool arguments must be a JSON object\")",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/how-to-add-agents-in-large-language-models-a-detailed-guide"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch ...",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Building AI Agent File Tools: A Coding Agent from Scratch",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/how-to-add-agents-in-large-language-models-a-detailed-guide",
+            "title": "Adding Agents to Large Language Models Guide",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #1 Building an AI Agent from Scratch with Tool Calling",
+          "\"agents-zero-to-hero-1\" \"json.loads\" \"tool_call_id\"",
+          "function calling chat completions messages append tool_call_id json.loads"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How do I define a Python execution tool schema and let the model decide when to call it?",
+        "answer": "Define the tool as a **function schema**, send it with the model request, and use **`tool_choice=\"auto\"`** so the model can either request Python execution or answer directly. Your application\u2014not the model\u2014executes the requested code.\n\nThis follows the article\u2019s central distinction: **\u201cThe model decides what should happen. The harness controls how it happens.\u201d** [Source: Agents Zero to Hero #1](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling)\n\n### 1. Define the Python execution schema\n\nThe article uses a tool named `execute_code`, with one required string argument, `code`:\n\n```python\nTOOL_SCHEMAS = [\n    {\n        \"type\": \"function\",\n        \"function\": {\n            \"name\": \"execute_code\",\n            \"description\": \"Execute Python code and return stdout or error.\",\n            \"parameters\": {\n                \"type\": \"object\",\n                \"properties\": {\n                    \"code\": {\n                        \"type\": \"string\",\n                        \"description\": \"The Python code to execute\"\n                    }\n                },\n                \"required\": [\"code\"],\n                \"additionalProperties\": False\n            }\n        }\n    }\n]\n```\n\nThe schema describes the interface; it does **not** implement or run Python. You must separately supply an `execute_code(code: str)` implementation.\n\n### 2. Let the model choose, then handle its tool calls\n\nHere is a Chat Completions example adapted from the article\u2019s agent-loop pattern. It assumes you have implemented `execute_code` using a sandboxed Python runner.\n\n```python\nimport json\nfrom openai import OpenAI\n\nclient = OpenAI()\n\n# Supply your own sandbox-backed implementation.\nTOOLS = {\"execute_code\": execute_code}\n\nmessages = [\n    {\n        \"role\": \"system\",\n        \"content\": (\n            \"Use execute_code when computation or verification is useful. \"\n            \"Print values you need to inspect. Otherwise answer directly.\"\n        ),\n    },\n    {\n  ",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent",
+            "title": "Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #1 Building an AI Agent from Scratch with Tool Calling Python execution tool schema",
+          "function calling chat completions tool_choice auto tool_call_id"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How should I maintain conversation history so an AI agent can use tool results and retry failed code?",
+        "answer": "Maintain **one ordered conversation history for each agent session**, and send the updated history on every model call. Crucially, retain both **what the model asked the tool to do** and **what actually happened**, including failures.\n\nThis implements the feedback loop described in [*Agents Zero to Hero #1*](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling): model \u2192 tool \u2192 observation \u2192 model.\n\n### What to save, in order\n\nFor the article\u2019s Chat Completions-style interface:\n\n1. **System instructions** and the **user\u2019s task**.\n2. **The assistant\u2019s response**, including its `tool_calls`, arguments, and call IDs\u2014not just its text.\n3. **A `tool` message for each call**, with:\n   - `tool_call_id` matching that call\u2019s ID;\n   - `content` containing the serialized result or error.\n4. Any subsequent assistant calls and tool results, until completion.\n\nThe critical detail is to **append the assistant\u2019s tool-call message before appending the tool results**. OpenAI\u2019s [function-calling guide](https://developers.openai.com/api/docs/guides/function-calling?api-mode=chat) describes sending the original prompt, model tool call, and tool output back together.\n\n### Minimal implementation\n\nThis example assumes `client`, `MODEL`, `TOOL_SCHEMAS`, and the `TOOLS` registry are already configured. It uses a normal assistant response as the stopping condition; the article also introduces an explicit `finish` tool.\n\n```python\nimport json\n\nmessages = [\n    {\n        \"role\": \"system\",\n        \"content\": (\n            \"Use tools when needed. Inspect execution results. \"\n            \"If code fails, use the error to revise it and try again. \"\n            \"Do not claim success without supporting results.\"\n        ),\n    },\n    {\"role\": \"user\", \"content\": task},\n]\n\nfor step in range(10):  # Bound retries and cost.\n    response = client.chat.completions.create(\n        model=MODEL,\n        messages=messages,\n        tools=TOOL_SCHEMAS,\n    )\n    me",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/how-to-add-agents-in-large-language-models-a-detailed-guide",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/how-to-add-agents-in-large-language-models-a-detailed-guide",
+            "title": "Adding Agents to Large Language Models Guide",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #1 Building an AI Agent from Scratch with Tool Calling conversation history retry code",
+          "\"agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling\" \"messages.append\" \"history\"",
+          "function calling chat completions messages append tool_call_id response message"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "Why use a finish tool to stop an AI agent instead of accepting a normal assistant response?",
+        "answer": "A `finish` tool makes **\u201cthe task is complete\u201d an explicit control signal**, rather than something the agent harness infers from an ordinary message.\n\nIn [*Agents Zero to Hero #1*](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling), the author exposes two tools: `execute_code` for computation and `finish` to explicitly terminate the task. This follows the article\u2019s central distinction: **\u201cThe model decides what should happen. The harness controls how it happens.\u201d**\n\n### Why that can be useful\n\n- **Separate talking from stopping.** \u201cI\u2019ll check the result now\u201d is assistant text, but not a completion signal. With an explicit finish protocol, ordinary messages need not end the workflow.\n- **Make completion machine-readable.** The harness can branch on `call.name == \"finish\"` instead of interpreting wording such as \u201cDone.\u201d A finish schema can also require a final answer or other completion information.\n- **Provide a checkpoint.** The harness can validate the finish arguments\u2014and, if designed to do so, check required outputs or tests\u2014before accepting completion.\n- **Keep control consistent with other actions.** Executing code and requesting termination both use the same tool-dispatch mechanism. The series later explicitly categorizes `finish` as a **control** tool in [article #4](https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent).\n\n### Is it necessary?\n\n**No.** A perfectly valid alternative is: \u201cIf the model returns a normal response without tool calls, return it to the user and stop.\u201d In fact, article #1\u2019s introductory pseudocode includes exactly that rule:\n\n```python\nif not response.tool_calls:\n    break\n```\n\nThat rule is already unambiguous at the protocol level; it does not require parsing prose. A `finish` tool is valuable when you want a **different, stricter completion contract**, not because ordinary responses are inherently unusable.\n\nFinally, `finish` mea",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/how-to-add-agents-in-large-language-models-a-detailed-guide"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/how-to-add-agents-in-large-language-models-a-detailed-guide",
+            "title": "Adding Agents to Large Language Models Guide",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #1 Building an AI Agent from Scratch with Tool Calling finish",
+          "\"agents-zero-to-hero-1\" \"finish\" \"summary\" \"termination\""
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How can I execute model-generated Python code, capture its output and errors, and enforce a timeout?",
+        "answer": "Use **a separate Python process** via `subprocess.run()`, rather than `exec()` inside your agent. Capture `stdout` and `stderr`, inspect the exit code, and catch `subprocess.TimeoutExpired`.\n\nThe article introduces this capability as an `execute_code` tool whose result is returned to the model so it can observe success or failure and continue working. See [Agents Zero to Hero #1](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling).\n\n### Example implementation\n\nThe following standalone implementation preserves partial output on timeout:\n\n```python\nimport subprocess\nimport sys\n\n\ndef as_text(value):\n    # TimeoutExpired may contain bytes even when text=True.\n    if isinstance(value, bytes):\n        return value.decode(\"utf-8\", errors=\"replace\")\n    return value or \"\"\n\n\ndef execute_code(code: str, timeout: float = 10) -> dict:\n    try:\n        result = subprocess.run(\n            [sys.executable, \"-X\", \"utf8\", \"-u\", \"-c\", code],\n            stdin=subprocess.DEVNULL,\n            capture_output=True,\n            text=True,\n            encoding=\"utf-8\",\n            errors=\"replace\",\n            timeout=timeout,\n            check=False,\n        )\n        return {\n            \"stdout\": result.stdout,\n            \"stderr\": result.stderr,\n            \"returncode\": result.returncode,\n            \"error\": (\n                None if result.returncode == 0\n                else f\"Python exited with code {result.returncode}\"\n            ),\n        }\n\n    except subprocess.TimeoutExpired as exc:\n        return {\n            \"stdout\": as_text(exc.stdout),\n            \"stderr\": as_text(exc.stderr),\n            \"returncode\": None,\n            \"error\": f\"Execution exceeded {timeout} seconds\",\n        }\n\n    except OSError as exc:\n        return {\n            \"stdout\": \"\",\n            \"stderr\": \"\",\n            \"returncode\": None,\n            \"error\": f\"Could not start Python: {exc}\",\n        }\n```\n\nExample calls:\n\n```python\nexecute_code(\"",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent",
+            "title": "Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #1 Building an AI Agent from Scratch with Tool Calling execute python timeout",
+          "\"agents-zero-to-hero-1\" \"subprocess\" \"timeout\"",
+          "subprocess.run timeout capture_output TimeoutExpired output bytes killed waited"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "Is running AI-generated Python in a subprocess safe, and where should an agent enforce security controls?",
+        "answer": "**No\u2014not by itself. A subprocess provides process separation, not a security sandbox.** Treat AI-generated Python as untrusted code. Security controls must live in the trusted agent harness, tool implementations, and execution environment\u2014not in the model\u2019s promises to behave.\n\n## Assessment of the article\n\n[\u201cAgents Zero to Hero #1\u201d](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling) is an introductory tool-calling tutorial, exposing `execute_code` and `finish`. Its key architectural distinction is sound:\n\n> \u201cThe model decides what should happen. The harness controls how it happens.\u201d\n\nHowever, **the minimal execution pattern should not be treated as a production security design**. The article presents permissions as a capability to develop later; a working tool-calling loop does not establish that generated code is safe.\n\n## Why a subprocess is insufficient\n\nUnless you explicitly restrict it, a child Python process generally runs with the launching user\u2019s permissions. That can let generated code:\n\n- Read or modify accessible host files.\n- Read inherited environment variables, potentially including API keys.\n- Make network requests and exfiltrate data.\n- Launch additional processes.\n- Exhaust memory, CPU, disk, or output buffers.\n\nThe [Python subprocess documentation](https://docs.python.org/3/library/subprocess.html) explicitly states that the current environment is inherited unless an `env` mapping is supplied.\n\nSeveral useful settings are **not** sandboxes:\n\n| Setting | What it actually provides |\n|---|---|\n| `shell=False` | Avoids implicit shell interpretation; Python code can still perform dangerous operations directly. |\n| `timeout=...` | Limits execution time for the managed child; it does not prevent damage before the timeout or supply comprehensive descendant-process containment. |\n| `cwd=workspace` | Changes the working directory; it does not prohibit access to absolute paths or parent directories. |\n| `c",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic",
+            "title": "Agents Zero to Hero #5: Making an AI Agent Provider-Agnostic",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "site:nik-hil.hashnode.dev \"Agents Zero to Hero\" \"Tool Calling\"",
+          "\"agents-zero-to-hero-1\" \"subprocess\" \"timeout\"",
+          "subprocess run env inherited environment timeout shell=False security considerations"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How do I run the v0.1 basic tool-calling example from the Agents Zero 2 Hero repository?",
+        "answer": "Use the **`v0.1-basic-tool` Git tag**, not the latest branch. The article identifies this as the first milestone, exposing just `execute_code` and `finish`. [Source: article](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling)\n\n### 1. Clone and select the example\n\n```bash\ngit clone https://github.com/nik-hil/agents-zero-2-hero.git\ncd agents-zero-2-hero\ngit checkout v0.1-basic-tool\n```\n\nA \u201cdetached HEAD\u201d message is normal when checking out a tag.\n\n### 2. Configure the API key\n\nThe early versions use **OpenRouter** and the environment variable `OPENROUTER_API_KEY`, as the author explains in the later provider-abstraction article. In a macOS/Linux shell:\n\n```bash\nexport OPENROUTER_API_KEY=\"your-openrouter-api-key\"\n```\n\n[Source: provider configuration history](https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic)\n\n### 3. Follow the checked-out version\u2019s installation and launch instructions\n\nUse the README and dependency files **at that tag**, rather than instructions for the repository\u2019s latest version. I couldn\u2019t verify the exact dependency-install or launch commands from the retrieved article text, so I don\u2019t want to give you an unconfirmed command.\n\n[Browse the v0.1 source and README](https://github.com/nik-hil/agents-zero-2-hero/tree/v0.1-basic-tool)\n\nOnce running, the example demonstrates the model requesting Python execution, receiving the tool\u2019s result, and explicitly calling `finish` when the task is complete. Run it in a disposable environment: this milestone lets model-generated Python execute and predates the later permission controls.\n\n## Highlights:\n- Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling: # Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that...\n- Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Fil",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic",
+            "title": "Agents Zero to Hero #5: Making an AI Agent Provider-Agnostic",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "site:nik-hil.hashnode.dev \"Agents Zero to Hero\" \"Tool Calling\"",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling \"Running\" \"uv\"",
+          "\"Agents Zero to Hero #1\" \"git clone\""
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      }
+    ]
+  },
+  "opportunities": [
+    {
+      "question": "How can I build a basic AI agent in Python that calls tools without using an agent framework?",
+      "answerability": "strong",
+      "evidence_quote": "LLM + tool definitions + execution engine + state + control loop",
+      "target_heading": "The agent loop",
+      "problem": "The implementation is covered across several sections, but the loop section lacks a compact explanation connecting Python functions, schemas, dispatch, history, and completion. The observed API answer cited the article but supplied a different implementation.",
+      "recommended_change": "Add a short framework-free implementation summary before the loop. Label the snippet as simplified pseudocode so it is not mistaken for the complete implementation or the finish-tool protocol.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "What makes an LLM with tool calling an agent rather than just a chatbot?",
+      "answerability": "strong",
+      "evidence_quote": "An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete.",
+      "target_heading": "The complete flow",
+      "problem": "The opening already answers this well, and the observed API answer quoted it. The complete-flow section could more directly connect its architecture summary to the action-and-observation distinction without adding a new taxonomy.",
+      "recommended_change": "Tighten the existing observation to explain that agent behavior comes from choosing actions, observing results, and continuing or finishing\u2014not merely generating a reply.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How do I turn an LLM tool call into a Python function call and send the result back to the model?",
+      "answerability": "strong",
+      "evidence_quote": "tool_name = tool_call.function.name\nargs = json.loads(tool_call.function.arguments)\n\nresult = TOOLS[tool_name](**args)",
+      "target_heading": "Handling a tool call",
+      "problem": "Dispatch and result feedback are demonstrated in adjacent sections, but neither opens with the complete round trip. The observed API answer also emphasized preserving the assistant tool-call message, a detail only implicit in the article's history diagram.",
+      "recommended_change": "Introduce dispatch with a sentence covering JSON parsing, registry lookup, and returning the serialized result with the matching tool_call_id. Clarify message ordering in the existing history section.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How do I define a Python execution tool schema and let the model decide when to call it?",
+      "answerability": "strong",
+      "evidence_quote": "\"required\": [\"code\"],\n            \"additionalProperties\": False",
+      "target_heading": "Tool schemas",
+      "problem": "The schema and automatic tool selection are both present, but separated. A reader extracting only the schema section misses how it is supplied to the model and how selection differs from execution.",
+      "recommended_change": "Replace the generic example introduction with a concise explanation of the required code string, tools=TOOL_SCHEMAS, and tool_choice=\"auto\". State that the schema describes the interface rather than executing Python.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How should I maintain conversation history so an AI agent can use tool results and retry failed code?",
+      "answerability": "weak",
+      "evidence_quote": "system message\n      \u2193\nuser task\n      \u2193\nassistant tool call\n      \u2193\ntool result\n      \u2193\nassistant decision\n      \u2193\ntool call\n      \u2193\ntool result\n      \u2193\n...",
+      "target_heading": "Why the message history matters",
+      "problem": "The diagram gives the correct sequence, but the code excerpts only show appending tool results. They do not explicitly explain retaining the assistant's tool-call message before those results or connecting returned errors to the next model request.",
+      "recommended_change": "Explain the diagram operationally: keep system and user messages, retain the assistant tool-call message before its results, match results by tool_call_id, and resend the updated history, including errors, on the next iteration.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "Why use a finish tool to stop an AI agent instead of accepting a normal assistant response?",
+      "answerability": "strong",
+      "evidence_quote": "Because it gives the harness an explicit completion signal.",
+      "target_heading": "The finish tool",
+      "problem": "The rationale is clear, but the introductory pseudocode stops when there are no tool calls and does not show finish handling. The observed API answer highlighted this distinction. Also, returning final_answer from the function is not itself loop termination.",
+      "recommended_change": "Clarify that finish returns the answer while the harness handles termination. Distinguish this explicit completion protocol from the simplified no-tool-call stopping rule shown earlier.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How can I execute model-generated Python code, capture its output and errors, and enforce a timeout?",
+      "answerability": "strong",
+      "evidence_quote": "result = subprocess.run(\n            [\"python\", \"temp.py\"],\n            capture_output=True,\n            text=True,\n            timeout=10,\n        )",
+      "target_heading": "Implementing execute\\_code",
+      "problem": "The code directly answers the question, but its behavior is not summarized in prose. The observed API answer supplied a different implementation with features that are not part of this example.",
+      "recommended_change": "Describe the existing implementation precisely: write temp.py, run Python with captured text output and a ten-second timeout, return stdout on success or stderr on a nonzero exit, and return exception text through error. Do not replace the implementation with additional features.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "Is running AI-generated Python in a subprocess safe, and where should an agent enforce security controls?",
+      "answerability": "strong",
+      "evidence_quote": "At this stage there are essentially no meaningful security boundaries.",
+      "target_heading": "There is already a security problem",
+      "problem": "The warning is explicit, but readers must connect it to the earlier list of harness controls. A concise statement should make clear that the subprocess and timeout do not make this example a secure execution environment.",
+      "recommended_change": "Strengthen the existing warning by connecting arbitrary Python execution to the absence of sandboxing and identifying the harness as the place for permissions, validation, sandboxing, and policy checks. Keep these controls clearly unimplemented at this checkpoint.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How do I run the v0.1 basic tool-calling example from the Agents Zero 2 Hero repository?",
+      "answerability": "strong",
+      "evidence_quote": "Configure your LLM provider according to the repository instructions.\n\nThen:\n\n```bash\npython client.py\npython coding_agent.py\n```",
+      "target_heading": "Running the project",
+      "problem": "The original contains installation and launch commands, yet the observed API answer said it could not verify them and relied on a later article for provider details. This is an extraction gap, not missing setup commands; provider-specific configuration remains delegated to the repository.",
+      "recommended_change": "Add a tag-specific setup summary naming the environment, dependency installation, provider configuration, and both launch commands. Keep the existing commands and repository delegation without importing provider details from the observed answer.",
+      "source": "llm_generated"
+    }
+  ],
+  "recommendations": {
+    "opportunities": [
+      {
+        "question": "How can I build a basic AI agent in Python that calls tools without using an agent framework?",
+        "answerability": "strong",
+        "evidence_quote": "LLM + tool definitions + execution engine + state + control loop",
+        "target_heading": "The agent loop",
+        "problem": "The implementation is covered across several sections, but the loop section lacks a compact explanation connecting Python functions, schemas, dispatch, history, and completion. The observed API answer cited the article but supplied a different implementation.",
+        "recommended_change": "Add a short framework-free implementation summary before the loop. Label the snippet as simplified pseudocode so it is not mistaken for the complete implementation or the finish-tool protocol.",
+        "source": "llm_generated"
+      },
+      {
+        "question": "What makes an LLM with tool calling an agent rather than just a chatbot?",
+        "answerability": "strong",
+        "evidence_quote": "An LLM becomes an agent when it can **decide to take actions**, invoke capabilities outside the model, observe the result, and continue working until the task is complete.",
+        "target_heading": "The complete flow",
+        "problem": "The opening already answers this well, and the observed API answer quoted it. The complete-flow section could more directly connect its architecture summary to the action-and-observation distinction without adding a new taxonomy.",
+        "recommended_change": "Tighten the existing observation to explain that agent behavior comes from choosing actions, observing results, and continuing or finishing\u2014not merely generating a reply.",
+        "source": "llm_generated"
+      },
+      {
+        "question": "How do I turn an LLM tool call into a Python function call and send the result back to the model?",
+        "answerability": "strong",
+        "evidence_quote": "tool_name = tool_call.function.name\nargs = json.loads(tool_call.function.arguments)\n\nresult = TOOLS[tool_name](**args)",
+        "target_heading": "Handling a tool call",
+        "problem": "Dispatch and result feedback are demonstrated in adjacent sections, but neither opens with the complete round trip. The observed API answer also emphasized preserving the assistant tool-call message, a detail only implicit in the article's history diagram.",
+        "recommended_change": "Introduce dispatch with a sentence covering JSON parsing, registry lookup, and returning the serialized result with the matching tool_call_id. Clarify message ordering in the existing history section.",
+        "source": "llm_generated"
+      },
+      {
+        "question": "How do I define a Python execution tool schema and let the model decide when to call it?",
+        "answerability": "strong",
+        "evidence_quote": "\"required\": [\"code\"],\n            \"additionalProperties\": False",
+        "target_heading": "Tool schemas",
+        "problem": "The schema and automatic tool selection are both present, but separated. A reader extracting only the schema section misses how it is supplied to the model and how selection differs from execution.",
+        "recommended_change": "Replace the generic example introduction with a concise explanation of the required code string, tools=TOOL_SCHEMAS, and tool_choice=\"auto\". State that the schema describes the interface rather than executing Python.",
+        "source": "llm_generated"
+      },
+      {
+        "question": "How should I maintain conversation history so an AI agent can use tool results and retry failed code?",
+        "answerability": "weak",
+        "evidence_quote": "system message\n      \u2193\nuser task\n      \u2193\nassistant tool call\n      \u2193\ntool result\n      \u2193\nassistant decision\n      \u2193\ntool call\n      \u2193\ntool result\n      \u2193\n...",
+        "target_heading": "Why the message history matters",
+        "problem": "The diagram gives the correct sequence, but the code excerpts only show appending tool results. They do not explicitly explain retaining the assistant's tool-call message before those results or connecting returned errors to the next model request.",
+        "recommended_change": "Explain the diagram operationally: keep system and user messages, retain the assistant tool-call message before its results, match results by tool_call_id, and resend the updated history, including errors, on the next iteration.",
+        "source": "llm_generated"
+      },
+      {
+        "question": "Why use a finish tool to stop an AI agent instead of accepting a normal assistant response?",
+        "answerability": "strong",
+        "evidence_quote": "Because it gives the harness an explicit completion signal.",
+        "target_heading": "The finish tool",
+        "problem": "The rationale is clear, but the introductory pseudocode stops when there are no tool calls and does not show finish handling. The observed API answer highlighted this distinction. Also, returning final_answer from the function is not itself loop termination.",
+        "recommended_change": "Clarify that finish returns the answer while the harness handles termination. Distinguish this explicit completion protocol from the simplified no-tool-call stopping rule shown earlier.",
+        "source": "llm_generated"
+      },
+      {
+        "question": "How can I execute model-generated Python code, capture its output and errors, and enforce a timeout?",
+        "answerability": "strong",
+        "evidence_quote": "result = subprocess.run(\n            [\"python\", \"temp.py\"],\n            capture_output=True,\n            text=True,\n            timeout=10,\n        )",
+        "target_heading": "Implementing execute\\_code",
+        "problem": "The code directly answers the question, but its behavior is not summarized in prose. The observed API answer supplied a different implementation with features that are not part of this example.",
+        "recommended_change": "Describe the existing implementation precisely: write temp.py, run Python with captured text output and a ten-second timeout, return stdout on success or stderr on a nonzero exit, and return exception text through error. Do not replace the implementation with additional features.",
+        "source": "llm_generated"
+      },
+      {
+        "question": "Is running AI-generated Python in a subprocess safe, and where should an agent enforce security controls?",
+        "answerability": "strong",
+        "evidence_quote": "At this stage there are essentially no meaningful security boundaries.",
+        "target_heading": "There is already a security problem",
+        "problem": "The warning is explicit, but readers must connect it to the earlier list of harness controls. A concise statement should make clear that the subprocess and timeout do not make this example a secure execution environment.",
+        "recommended_change": "Strengthen the existing warning by connecting arbitrary Python execution to the absence of sandboxing and identifying the harness as the place for permissions, validation, sandboxing, and policy checks. Keep these controls clearly unimplemented at this checkpoint.",
+        "source": "llm_generated"
+      },
+      {
+        "question": "How do I run the v0.1 basic tool-calling example from the Agents Zero 2 Hero repository?",
+        "answerability": "strong",
+        "evidence_quote": "Configure your LLM provider according to the repository instructions.\n\nThen:\n\n```bash\npython client.py\npython coding_agent.py\n```",
+        "target_heading": "Running the project",
+        "problem": "The original contains installation and launch commands, yet the observed API answer said it could not verify them and relied on a later article for provider details. This is an extraction gap, not missing setup commands; provider-specific configuration remains delegated to the repository.",
+        "recommended_change": "Add a tag-specific setup summary naming the environment, dependency installation, provider configuration, and both launch commands. Keep the existing commands and repository delegation without importing provider details from the observed answer.",
+        "source": "llm_generated"
+      }
+    ],
+    "change_explanations": [
+      "Added a compact framework-free implementation summary and labeled the introductory loop as simplified pseudocode.",
+      "Connected the tool schema to automatic selection and clarified that schemas describe interfaces rather than execute functions.",
+      "Summarized the existing subprocess implementation without changing its code or adding execution features.",
+      "Linked JSON dispatch to result feedback and made assistant/tool message ordering and error feedback explicit.",
+      "Clarified that finish supplies an explicit completion signal while the harness is responsible for stopping.",
+      "Tightened the agent-versus-reply distinction and connected the existing security warning to unimplemented harness controls.",
+      "Added a tag-specific setup summary because the observed API answer missed commands already present; retained repository-based provider configuration without importing external details.",
+      "Preserved the title, headings, examples, code, repository links, and major sections. Treated API citations as observed visibility, not proof of consumer UI visibility or a source of new article facts."
+    ],
+    "validation_warnings": [],
+    "model": "openai-gpt-6-astra",
+    "source": "llm_generated",
+    "recommended_markdown_chars": 14731
+  },
+  "quality_eval": {
+    "passed": true,
+    "summary": "The questions are realistic, relevant, and sufficiently distinct, and the recommended Markdown improves direct answerability without materially changing the article's scope or implementation. The strongest improvements clarify message ordering, distinguish the finish signal from actual loop termination, and explain why subprocess execution is not sandboxing. Added technical explanations are grounded in the original prose, diagrams, and code. Minor repetition remains, and references to observed API answers in the change rationale cannot be verified from the supplied material.",
+    "question_feedback": [
+      "All nine questions reflect plausible reader needs rather than awkward transformations of section headings.",
+      "The questions appropriately distinguish overall architecture, schemas, dispatch, conversation state, completion, execution, security, and setup.",
+      "The broad framework-free implementation question overlaps with several detailed questions, but serves a distinct overview intent.",
+      "The repository-specific setup question is appropriately precise about the project and version."
+    ],
+    "recommendation_feedback": [
+      "The loop summary makes the framework-free architecture easier to extract, while labeling the snippet as simplified pseudocode avoids presenting it as a complete implementation.",
+      "The schema introduction usefully connects the required code argument, tool definitions, and automatic tool selection.",
+      "The history addition makes the original diagram operational by explaining assistant-message retention, matching tool_call_id values, and resending errors.",
+      "The finish clarification correctly separates returning final_answer from the harness's responsibility to stop. Actual termination code remains absent, but the recommendation explicitly acknowledges that limitation.",
+      "The execution summary accurately describes the demonstrated subprocess behavior, and the security addition avoids implying that a timeout provides isolation.",
+      "The setup summary preserves the original commands and appropriately leaves provider configuration to the repository."
+    ],
+    "unsupported_claims": [
+      "The structured opportunity rationales repeatedly describe what an 'observed API answer' cited, supplied, highlighted, or missed. No such answer or observation record is provided, so those editorial-evidence claims are unverifiable. They are not carried into the recommended article."
+    ],
+    "unnecessary_changes": [
+      "The new setup paragraph repeats nearly every step immediately shown below it. This offers a compact extractable answer, but is the clearest candidate for trimming.",
+      "The added agent-versus-reply explanation repeats the opening definition, although it remains relevant to the complete-flow section."
+    ],
+    "explanations": [
+      "PASS \u2014 Questions are natural, specific, relevant, and meaningfully differentiated.",
+      "PASS \u2014 Targeted prose additions answer the questions more directly than the original, especially around protocol details and security boundaries.",
+      "PASS \u2014 No invented article facts, statistics, citations, provider settings, or implemented safeguards were introduced.",
+      "PASS \u2014 Code, structure, examples, and authorial voice are preserved; changes are proportionate to the identified gaps.",
+      "PASS \u2014 Human readability remains strong despite modest repetition.",
+      "CAVEAT \u2014 Claims about external API-answer observations need supporting records or removal from the editorial rationale."
+    ],
+    "model": "openai-gpt-6-astra",
+    "source": "llm_generated"
+  },
+  "llm_used": true,
+  "retrieval_used": true,
+  "auto_publish": false,
+  "diff_preview": "--- CURRENT.md\n+++ RECOMMENDED.md\n@@ -61,7 +61,9 @@\n \n The most important concept in the entire project is the agent loop.\n \n-At a high level:\n+To build this basic Python agent without an agent framework, define Python tools and their schemas, send the schemas and conversation to the model, dispatch requested calls through a tool registry, and add the results to the conversation. Repeat so the model can observe each result and decide whether to act again or finish.\n+\n+At a high level, the loop looks like this in simplified pseudocode. This sketch stops when there are no tool calls; the explicit `finish` signal is covered below.\n \n ```python\n while True:\n@@ -143,7 +145,7 @@\n \n # Tool schemas\n \n-For example:\n+The `execute_code` function schema declares one required input: a string named `code`. We pass tool definitions with `tools=TOOL_SCHEMAS` and let the model decide whether to request a tool with `tool_choice=\"auto\"`, as shown in the model call below. The schema describes the interface; it does not execute Python.\n \n ```python\n {\n@@ -189,7 +191,7 @@\n \n # Implementing execute\\_code\n \n-The implementation is intentionally small:\n+The implementation is intentionally small. It writes the supplied Python to `temp.py`, then runs it with `subprocess.run`, capturing stdout and stderr as text with a ten-second timeout. A successful exit returns stdout in `output`; a nonzero exit returns stderr in `error`. Exceptions, including a timeout, return their text in `error`.\n \n ```python\n def execute_code(code: str):\n@@ -266,7 +268,7 @@\n \n Why make finishing a tool instead of simply accepting a normal assistant response?\n \n-Because it gives the harness an explicit completion signal.\n+Because it gives the harness an explicit completion signal, with the answer in `final_answer`, rather than relying on a response without tool calls as the stopping rule.\n \n The model can say:\n \n@@ -280,7 +282,7 @@\n finish(...)\n ```\n \n-The harness then knows it can terminate the loop.\n+The harness then knows it can terminate the loop. The function itself only returns the answer; stopping is the harness's responsibility. The introductory pseudocode omits this explicit finish handling to focus on the tool-result loop.\n \n This becomes very useful as the agent starts performing multi-step work.\n \n@@ -363,6 +365,8 @@\n \n # Handling a tool call\n \n+To turn a model tool call into a Python function call, parse its JSON arguments and look up its name in `TOOLS`. After execution, return the serialized result in a `tool` message with the matching `tool_call_id`, as shown in the next section.\n+\n Suppose the model decides to call:\n \n ```text\n@@ -444,6 +448,8 @@\n # Why the message history matters\n \n The model does not remember tool executions automatically.\n+\n+Keep the system instructions and user task in `messages`, then retain the assistant's tool-call message before appending its tool results. Each result's `tool_call_id` links it to the requested call. Send the updated history on the next model request, including any returned error, so the model can decide whether to revise the code and try again.\n \n The harness maintains the conversation state:\n \n@@ -517,7 +523,7 @@\n FINAL ANSWER\n ```\n \n-The important observation is that the LLM is not itself the agent.\n+The important observation is that the LLM is not itself the agent. Agent behavior comes from choosing actions, observing their results, and deciding whether to continue or finish\u2014not merely generating a reply.\n \n The combination is:\n \n@@ -542,7 +548,7 @@\n )\n ```\n \n-At this stage there are essentially no meaningful security boundaries.\n+At this stage there are essentially no meaningful security boundaries. Running the code in a subprocess with a timeout does not make this a sandbox. Permissions, sandboxing, validation, and policy checks belong at the harness's execution control point; this checkpoint does not implement those safeguards.\n \n That is intentional.\n \n@@ -614,6 +620,8 @@\n \n # Running the project\n \n+To run the `v0.1-"
+}

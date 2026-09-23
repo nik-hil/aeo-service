@@ -33,7 +33,7 @@ cp .env.example .env
 |----------|---------|
 | `AEO_LLM_API_KEY` | **Only** LLM credential (DigitalOcean Inference) |
 | `AEO_LLM_BASE_URL` | Default `https://inference.do-ai.run/v1` |
-| `AEO_LLM_MODEL` | Default `openai-gpt-5.6-luna` (experiment) |
+| `AEO_LLM_MODEL` | Default `openai-gpt-6-astra` (experiment) |
 | `AEO_API_KEY` | Optional service auth (separate from LLM) |
 
 Removed / not used: `OPENAI_API_KEY`, `DO_MODEL_ACCESS_KEY`, `MODEL_ACCESS_KEY`, `PERPLEXITY_API_KEY`.
@@ -42,8 +42,8 @@ Removed / not used: `OPENAI_API_KEY`, `DO_MODEL_ACCESS_KEY`, `MODEL_ACCESS_KEY`,
 
 | Role | Model ID |
 |------|----------|
-| Default experiment | `openai-gpt-5.6-luna` |
-| One-shot stronger compare | `openai-gpt-6-astra` |
+| Default | `openai-gpt-6-astra` |
+| Concise compare | `openai-gpt-5.6-luna` |
 
 Wire via `AEO_LLM_MODEL` only. Confirm with `GET /v1/models` on your key if catalog names change. See [`docs/MODELS.md`](docs/MODELS.md).
 
@@ -51,7 +51,7 @@ Wire via `AEO_LLM_MODEL` only. Confirm with `GET /v1/models` on your key if cata
 
 ```bash
 export AEO_LLM_API_KEY=...
-export AEO_LLM_MODEL=openai-gpt-5.6-luna   # or openai-gpt-6-astra
+export AEO_LLM_MODEL=openai-gpt-6-astra   # or openai-gpt-5.6-luna for compare
 python -m aeo_mvp.cli path/to/article.md \
   --domain nik-hil.hashnode.dev \
   --live \

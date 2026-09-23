@@ -7,9 +7,9 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Experiment defaults (DO Inference catalog, 2026):
-#   AEO_LLM_MODEL=openai-gpt-5.6-luna   (default candidate)
-#   AEO_LLM_MODEL=openai-gpt-6-astra    (one-shot compare)
+# Experiment defaults (DO Inference catalog):
+#   AEO_LLM_MODEL=openai-gpt-6-astra      (default after CoS live acceptance)
+#   AEO_LLM_MODEL=openai-gpt-5.6-luna     (concise compare)
 # See docs/MODELS.md. Never hardcode secrets.
 
 
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
         alias="AEO_LLM_BASE_URL",
     )
     llm_model: str = Field(
-        default="openai-gpt-5.6-luna",
+        default="openai-gpt-6-astra",
         alias="AEO_LLM_MODEL",
     )
     llm_timeout_s: float = Field(default=120.0, alias="AEO_LLM_TIMEOUT_S")
