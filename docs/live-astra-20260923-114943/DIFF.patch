@@ -1,0 +1,19 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -1387,7 +1387,7 @@
+ | Permissions | **Shared** |
+ | Hooks | **Shared** |
+ | Memory object | **Shared** |
+-| Tools | Same tool set |
++| Tools | Same core tools; `spawn_subagent` is only advertised when `depth < max_depth` |
+ | MCP connections | Available through inherited tool configuration |
+ | Depth | Incremented |
+ | Result | Child returns to parent |
+@@ -1401,7 +1401,6 @@
+ ```
+ 
+ * * *
+-
+ # Why not isolate the workspace too?
+ 
+ That would be a different architecture.
