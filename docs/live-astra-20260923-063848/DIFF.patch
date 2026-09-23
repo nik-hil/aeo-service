@@ -1,0 +1,59 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -280,7 +280,7 @@
+ finish(...)
+ ```
+ 
+-The harness then knows it can terminate the loop.
++The high-level loop above stops when there are no tool calls; that is a different stopping convention. With `finish`, the harness must recognize the call, return `final_answer`, and stop rather than send it back for another model turn. The function's return value alone does not stop the loop.
+ 
+ This becomes very useful as the agent starts performing multi-step work.
+ 
+@@ -411,6 +411,8 @@
+     }
+ )
+ ```
++
++The `tool_call_id` links this result to the specific request that produced it, not just to a tool name. That keeps results associated with the right requests when the model makes multiple calls.
+ 
+ Now the model can observe what happened.
+ 
+@@ -465,7 +467,7 @@
+ ...
+ ```
+ 
+-The message history is therefore a critical part of the harness.
++The message history is therefore a critical part of the harness. Preserve the assistant message containing the tool calls before appending their corresponding tool results; the abbreviated agent loop above omits that assistant-message append. Keep failed calls and their error results too, so the next decision can use both the attempted code and what went wrong.
+ 
+ Later, this will evolve into a much larger problem:
+ 
+@@ -543,6 +545,8 @@
+ ```
+ 
+ At this stage there are essentially no meaningful security boundaries.
++
++A separate subprocess is not a sandbox: generated code can still act with the runner's permissions. The 10-second timeout limits runtime, not file or network access. Permission and validation checks belong in the harness before tool dispatch, with sandboxing around execution; those controls are not implemented here.
+ 
+ That is intentional.
+ 
+@@ -635,7 +639,13 @@
+ pip install -r requirements.txt
+ ```
+ 
+-Configure your LLM provider according to the repository instructions.
++The early versions use OpenRouter's OpenAI-compatible endpoint. Set `OPENROUTER_API_KEY` in your environment (macOS/Linux):
++
++```bash
++export OPENROUTER_API_KEY="your-api-key"
++```
++
++Follow the repository instructions for the remaining provider configuration.
+ 
+ Then:
+ 
+@@ -696,4 +706,4 @@
+ 
+ It is to understand what the frameworks are doing for us.
+ 
+-One Git tag at a time.
++One Git tag at a time.
