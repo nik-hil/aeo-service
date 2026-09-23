@@ -359,6 +359,9 @@ def test_recommend_prompt_embeds_systematic_decision_method():
         "CALIBRATED EXAMPLES",
         "APPLIED-CHANGE CONTRACT",
         "CONSISTENCY CHECK",
+        "CORE RULE",
+        "SOURCE PRIORITY",
+        "GROUNDING RULE",
     ):
         assert marker in prompt, f"missing prompt marker: {marker}"
     assert "tool_call_id" in prompt
@@ -367,8 +370,70 @@ def test_recommend_prompt_embeds_systematic_decision_method():
     assert "If I remove this edit, would an AI's answer become materially less" in prompt
 
 
+def test_prompt_current_is_content_source_of_truth():
+    """1. CURRENT = content source of truth."""
+    prompt = _prompt_from_generate()
+    assert "content source of truth" in prompt
+    assert "EDITOR of the existing article" in prompt or "editor of the existing article" in prompt.lower()
+    assert "not a researcher writing new content" in prompt.lower() or (
+        "not a researcher" in prompt
+    )
+
+
+def test_prompt_questions_are_optimization_targets():
+    """2. Questions = optimization targets."""
+    prompt = _prompt_from_generate()
+    assert "SELECTED QUESTIONS = optimization targets" in prompt or (
+        "optimization targets" in prompt
+    )
+
+
+def test_prompt_visibility_is_diagnostic_only():
+    """3. Visibility = diagnostic only (not a content source)."""
+    prompt = _prompt_from_generate()
+    assert "diagnostic evidence only" in prompt or "Diagnostic only" in prompt
+    assert "not a content source" in prompt.lower()
+    assert (
+        "Search evidence tells you WHAT may be weak. CURRENT.md tells you WHAT you are"
+        in prompt
+    )
+
+
+def test_prompt_rejects_search_only_fact():
+    """4. Search-only fact (e.g. OpenRouter) → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD search-only import" in prompt
+    assert "OpenRouter" in prompt
+    assert "OPENROUTER_API_KEY" in prompt
+    assert "Search finding it does NOT authorize it" in prompt or (
+        "Search evidence ≠ content license" in prompt
+    )
+
+
+def test_prompt_accepts_existing_relationship_made_explicit():
+    """5. Existing relationship made explicit → accept."""
+    prompt = _prompt_from_generate()
+    assert "GOOD missing relationship" in prompt
+    assert "tool_call_id" in prompt
+    assert "associates" in prompt or "association" in prompt
+
+
+def test_prompt_accepts_existing_facts_connected_causally():
+    """6. Existing facts connected causally → accept."""
+    prompt = _prompt_from_generate()
+    assert "GOOD connecting existing facts" in prompt
+    assert "revise and retry" in prompt or "failed result" in prompt
+
+
+def test_prompt_rejects_general_knowledge_not_in_current():
+    """7. General knowledge not in CURRENT → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD general-knowledge expansion" in prompt
+    assert "file/network" in prompt or "general knowledge" in prompt.lower()
+
+
 def test_strong_already_sufficient_allows_empty_opportunities():
-    """1. NO GAP → no opportunity / no edit (empty ops + CURRENT ok)."""
+    """NO GAP → no opportunity / no edit (empty ops + CURRENT ok)."""
     article = load_hashnode_markdown(text=ARTICLE)
     qs = QuerySet(
         selected=[
@@ -392,23 +457,24 @@ def test_strong_already_sufficient_allows_empty_opportunities():
 
 
 def test_prompt_clarity_gap_allows_meaningful_clarification():
-    """2. CLARITY GAP → meaningful clarification allowed (prompt + weak opp path)."""
+    """CLARITY GAP → meaningful clarification allowed (prompt + weak opp path)."""
     prompt = _prompt_from_generate()
     assert "CLARITY GAP" in prompt
     assert "local clarification allowed" in prompt
-    assert 'Map emitted answerability to "weak"' in prompt or "weak" in prompt
+    assert "weak" in prompt
 
 
 def test_prompt_information_gap_allows_grounded_addition():
-    """3. INFORMATION GAP → grounded addition allowed; ungrounded → no invent."""
+    """INFORMATION GAP → CURRENT-grounded addition allowed; search-only → no invent."""
     prompt = _prompt_from_generate()
     assert "INFORMATION GAP" in prompt
-    assert "add only if grounded" in prompt
     assert "do not invent" in prompt
+    assert "missing entirely from CURRENT" in prompt or "not in CURRENT" in prompt
+    assert "GROUNDING RULE" in prompt
 
 
 def test_prompt_rejects_visible_code_narration():
-    """4. Visible-code narration → reject."""
+    """Visible-code narration → reject."""
     prompt = _prompt_from_generate()
     assert "BAD visible-code narration" in prompt
     assert "append tool result" in prompt or "appends tool" in prompt
@@ -416,7 +482,7 @@ def test_prompt_rejects_visible_code_narration():
 
 
 def test_prompt_rejects_paraphrase():
-    """5. Paraphrase → reject."""
+    """Paraphrase → reject."""
     prompt = _prompt_from_generate()
     assert "BAD paraphrase" in prompt
     assert "LLM makes decisions" in prompt or "same meaning" in prompt
@@ -426,30 +492,31 @@ def test_prompt_rejects_paraphrase():
 
 
 def test_prompt_keeps_missing_relationship():
-    """6. Missing relationship → keep."""
+    """Missing relationship → keep."""
     prompt = _prompt_from_generate()
     assert "GOOD missing relationship" in prompt
     assert "tool_call_id" in prompt
-    assert "associates the returned result" in prompt or "specific tool request" in prompt
+    assert "associates" in prompt or "association" in prompt or "specific tool request" in prompt
 
 
 def test_prompt_keeps_connecting_existing_facts():
-    """7. Connecting existing facts → keep."""
+    """Connecting existing facts → keep."""
     prompt = _prompt_from_generate()
     assert "GOOD connecting existing facts" in prompt
     assert "revise and retry" in prompt or "failed result" in prompt
 
 
 def test_prompt_stop_after_sufficiency():
-    """8. Stop after sufficiency."""
+    """Stop after sufficiency."""
     prompt = _prompt_from_generate()
     assert "STOPPING RULE PER QUESTION" in prompt
     assert "sufficiently complete and unambiguous → STOP" in prompt
     assert "internal answer summary" in prompt.lower() or "INTERNAL ANSWER SUMMARY" in prompt
+    assert "Do not edit merely because search has more information" in prompt
 
 
 def test_prompt_rejects_second_redundant_edit():
-    """9. Second redundant edit → reject."""
+    """Second redundant edit → reject."""
     prompt = _prompt_from_generate()
     assert "BAD polish after sufficiency" in prompt
     assert "second paragraph restating" in prompt or "second, independent" in prompt
@@ -457,7 +524,7 @@ def test_prompt_rejects_second_redundant_edit():
 
 
 def test_prompt_article_code_contradiction_check():
-    """10. Article/code contradiction + competing-explanation check."""
+    """Article/code contradiction + competing-explanation check."""
     prompt = _prompt_from_generate()
     assert "contradictions with code" in prompt
     assert "competing explanations" in prompt or "two competing explanations" in prompt
@@ -465,7 +532,7 @@ def test_prompt_article_code_contradiction_check():
 
 
 def test_prompt_do_not_become_too_conservative():
-    """Partial answers can still need real improvement."""
+    """Partial answers can still need real improvement (CURRENT-authorized)."""
     prompt = _prompt_from_generate()
     assert "DO NOT BECOME TOO CONSERVATIVE" in prompt
     assert "only edit when absolutely no information exists" in prompt
