@@ -312,8 +312,10 @@ def validate_recommended_markdown(
     if unattributed:
         raise LLMError(
             "RECOMMENDED has substantive section edits without matching opportunities "
-            f"for: {unattributed}. Emit an opportunity for each applied section change, "
-            "or leave that section unchanged."
+            f"for: {unattributed}. Emit an opportunity for each applied section change "
+            f"with the SAME exact target_heading, or leave that section unchanged. "
+            "Prefer leaving the document title / leading H1 unchanged unless a "
+            "selected question specifically requires it."
         )
 
     # If ≥3 opportunities exist and ALL target only the intro/H1 while article has
@@ -455,7 +457,10 @@ def _apply_section_edits(current: str, edits: list[SectionEdit]) -> str:
     recommended = current
     for edit in edits:
         recommended = replace_section_body(
-            recommended, edit.target_heading, edit.replacement_body
+            recommended,
+            edit.target_heading,
+            edit.replacement_body,
+            exact=True,
         )
     return recommended
 
@@ -468,19 +473,25 @@ def _assert_opportunity_section_edit_consistency(
     opp_heads = {o.target_heading.lower() for o in opportunities}
     edit_heads = {e.target_heading.lower() for e in edits}
 
-    missing_edits = sorted(h for h in opp_heads if h not in edit_heads)
+    missing_edits = sorted(
+        {o.target_heading for o in opportunities if o.target_heading.lower() not in edit_heads}
+    )
     if missing_edits:
         raise LLMError(
             "Opportunities must correspond to applied section_edits; "
             f"missing section_edit for: {missing_edits}. "
             "Omit opportunities that were considered but not applied."
         )
-    missing_opps = sorted(h for h in edit_heads if h not in opp_heads)
+    missing_opps = sorted(
+        {e.target_heading for e in edits if e.target_heading.lower() not in opp_heads}
+    )
     if missing_opps:
         raise LLMError(
-            "section_edits without matching opportunities for: "
-            f"{missing_opps}. Emit an opportunity for each applied section change, "
-            "or leave that section unchanged."
+            "RECOMMENDED has substantive section edits without matching opportunities "
+            f"for: {missing_opps}. Emit an opportunity for each applied section change "
+            f"with the SAME exact target_heading, or remove that section_edit / leave "
+            "that section unchanged. Prefer leaving the document title / leading H1 "
+            "unchanged unless a selected question specifically requires it."
         )
 
 
@@ -567,6 +578,14 @@ CRITICAL PRODUCT RULES:
    - Do NOT return recommended_markdown.
    - Return section_edits ONLY for existing CURRENT sections that need a substantive
      change. target_heading must be an exact existing CURRENT H1–H6 heading.
+   - Prefer LEAVING the document title / leading H1 unchanged unless a selected
+     question specifically requires editing that section's body.
+   - Do NOT casually rewrite the title line or the leading-H1 intro body. The
+     heading line itself is never part of replacement_body (Python keeps the
+     existing ATX heading). If you DO edit the H1/title section body, you MUST
+     emit ≥1 opportunity whose target_heading is that exact H1 text.
+   - ANY section_edit — including title / leading H1 — MUST have ≥1 opportunity
+     with the SAME exact target_heading. No exceptions.
    - replacement_body = the COMPLETE new body for that section WITHOUT the heading
      line itself. Do not rewrite untouched sections. Do not return copies of
      unchanged sections.
@@ -685,9 +704,11 @@ into the intro merely for AI visibility.
 
 STEP 8 — SECTION EDITS ONLY (Python builds RECOMMENDED.md):
 Emit section_edits for accepted CURRENT-grounded changes only.
-Do not independently rewrite the rest of the article. Do not import retrieval
-discoveries. Do not return recommended_markdown. Opportunities + section_edits
-define the allowed changes; Python applies them onto ORIGINAL CURRENT.
+Prefer leaving the document title / leading H1 unchanged unless a selected
+question specifically requires a body edit there. Do not casually rewrite the
+title/H1 intro. Do not independently rewrite the rest of the article. Do not
+import retrieval discoveries. Do not return recommended_markdown. Opportunities +
+section_edits define the allowed changes; Python applies them onto ORIGINAL CURRENT.
 
 STEP 9 — CONSISTENCY CHECK (before final JSON):
 For every substantive edit verify: selected question, exact gap, why it materially
@@ -699,7 +720,8 @@ descriptions of the same mechanism; unnecessary repetition; intro-heavy changes;
 invented / search-only information. Do not leave two competing explanations (e.g.
 completion when no tool calls vs finish tool — clarify the relationship rather than
 add another paragraph). Also verify bidirectional opportunity ↔ section_edit
-consistency below.
+consistency below — especially that any title/H1 section_edit has a matching
+opportunity with that exact H1 target_heading (or remove the H1 section_edit).
 
 APPLIED-CHANGE CONTRACT / OPPORTUNITY ↔ SECTION_EDIT (critical — Python enforces;
 PR #48 bidirectional consistency adapted to section_edits):
@@ -708,7 +730,11 @@ An opportunity = a meaningful change that was actually applied via a section_edi
 - No opportunities whose recommended_change requires info absent from CURRENT.
 - If you emit an opportunity → you MUST include a matching section_edit for that
   exact existing target_heading with a substantive replacement_body.
-- If you emit a section_edit → you MUST emit ≥1 opportunity targeting that heading.
+- If you emit a section_edit → you MUST emit ≥1 opportunity with the SAME exact
+  target_heading (including title / leading H1 — no exceptions).
+- Prefer leaving the document title / leading H1 unchanged unless a selected
+  question specifically requires editing that section. If you edit the H1 body,
+  opportunity.target_heading MUST be that exact H1 text.
 - Multiple opportunities may target the same section → emit exactly ONE section_edit
   with the final complete replacement_body for that section.
 - If you consider a gap but do NOT edit that section → do NOT emit that opportunity.
@@ -780,6 +806,11 @@ def _is_transient_llm_error(exc: BaseException) -> bool:
     return any(marker in msg for marker in _TRANSIENT_LLM_ERROR_MARKERS)
 
 
+def _is_missing_opportunity_for_section_edit_error(error: str) -> bool:
+    """True when reverse opportunity↔section_edit invariant failed."""
+    return "without matching opportunities" in (error or "")
+
+
 def _with_repair_feedback(
     base_prompt: str,
     error: str,
@@ -792,6 +823,40 @@ def _with_repair_feedback(
         if second_repair
         else ""
     )
+    if _is_missing_opportunity_for_section_edit_error(error):
+        # Reverse invariant: section_edit / applied body change without opportunity.
+        # Quote the validator error (which lists exact headings) and force a
+        # local fix — add opportunity OR remove section_edit — never full regen.
+        specific = (
+            "REVERSE INVARIANT FAILURE — section_edit without matching opportunity:\n"
+            "The validator error above lists the exact heading(s) that changed "
+            "(or that you emitted as section_edits) without a matching opportunity.\n"
+            "For EACH listed heading you MUST either:\n"
+            "  (A) add ≥1 opportunity with the SAME exact target_heading, OR\n"
+            "  (B) remove that section_edit / leave that section unchanged.\n"
+            "Prefer leaving the document title / leading H1 unchanged unless a "
+            "selected question specifically requires editing that section.\n"
+            "If the listed heading is the document title / leading H1 and no "
+            "selected question requires changing it, choose (B) — remove the "
+            "H1/title section_edit.\n"
+            "Do NOT regenerate the complete article.\n"
+            "Do NOT invent new headings. Do NOT rewrite unrelated sections.\n"
+            "Return only opportunities and section_edits; Python assembles "
+            "RECOMMENDED.md from ORIGINAL CURRENT + section_edits.\n"
+            "Return JSON ONLY using the required schema.\n"
+        )
+        return (
+            f"{base_prompt.rstrip()}\n\n"
+            "REPAIR FEEDBACK:\n"
+            "The previous recommendation failed deterministic validation.\n\n"
+            "Validator error:\n"
+            f"{error}\n\n"
+            f"{note}"
+            "Repair this exact failure.\n"
+            "Do not make unrelated changes.\n"
+            f"{specific}"
+        )
+
     # Do not use str.format on ``error`` — it may contain braces.
     return (
         f"{base_prompt.rstrip()}\n\n"

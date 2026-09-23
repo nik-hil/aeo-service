@@ -137,11 +137,25 @@ def find_section(sections: list[Section], heading: str) -> Section | None:
     return None
 
 
-def replace_section_body(markdown: str, heading: str, new_body: str) -> str:
-    """Replace the body of the named section; leave other sections untouched."""
+def replace_section_body(
+    markdown: str,
+    heading: str,
+    new_body: str,
+    *,
+    exact: bool = False,
+) -> str:
+    """Replace the body of the named section; leave other sections untouched.
+
+    When ``exact`` is True, only an exact case-insensitive heading match is used
+    (avoids applying an H2 edit onto an H1 whose title merely contains that text).
+    """
     lines = (markdown or "").splitlines()
     sections = parse_sections(markdown)
-    target = find_section(sections, heading)
+    if exact:
+        want = (heading or "").strip().lower()
+        target = next((s for s in sections if s.heading.lower() == want), None)
+    else:
+        target = find_section(sections, heading)
     if target is None:
         return markdown
     body_lines = (new_body or "").rstrip("\n").splitlines()

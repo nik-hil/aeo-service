@@ -1264,6 +1264,101 @@ def test_section_edit_without_opportunity_rejected():
         )
 
 
+def test_h1_section_edit_without_opportunity_rejected():
+    """Title/H1 section_edit without matching opportunity → LLMError."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    payload = {
+        "opportunities": [],
+        "section_edits": [
+            {
+                "target_heading": "Agents Zero to Hero",
+                "replacement_body": (
+                    "Intro about agents and tool calling.\n"
+                    "Extra H1 body rewrite without an opportunity."
+                ),
+            }
+        ],
+        "change_explanations": ["Rewrote title section."],
+    }
+    with pytest.raises(
+        LLMError,
+        match=r"without matching opportunities.*Agents Zero to Hero",
+    ):
+        generate_recommendations(
+            article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+        )
+
+
+def test_repair_prompt_quotes_missing_opportunity_heading_for_h1_edit():
+    """Repair feedback quotes the exact H1 heading missing an opportunity."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    bad_h1 = {
+        "opportunities": [],
+        "section_edits": [
+            {
+                "target_heading": "Agents Zero to Hero",
+                "replacement_body": (
+                    "Intro about agents and tool calling.\n"
+                    "Unattributed H1 body change."
+                ),
+            }
+        ],
+        "change_explanations": ["Bad H1 edit."],
+    }
+    client = SequencingLLM([bad_h1, _valid_loop_payload()])
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 2
+    repair = client.prompts[1]
+    assert "REPAIR FEEDBACK" in repair
+    assert "Agents Zero to Hero" in repair
+    assert "without matching opportunities" in repair
+    assert "SAME exact target_heading" in repair or "SAME exact" in repair
+    assert "remove that section_edit" in repair.lower() or (
+        "remove that section_edit" in repair
+    )
+    assert "Do NOT regenerate the complete article" in repair or (
+        "Do not regenerate the complete article" in repair
+    )
+    assert "Prefer leaving the document title" in repair
+    assert bundle.opportunities[0].target_heading == "What is an agent loop?"
+    # Title/H1 left unchanged in the successful repair path.
+    assert bundle.recommended_markdown.startswith("# Agents Zero to Hero\n")
+    assert "Unattributed H1 body change" not in bundle.recommended_markdown
+
+
+def test_title_left_unchanged_still_passes():
+    """H2 section_edit with matching opportunity; title/H1 untouched → passes."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(_valid_loop_payload())
+    )
+    assert "# Agents Zero to Hero" in bundle.recommended_markdown
+    intro = next(s for s in parse_sections(bundle.recommended_markdown) if s.level == 1)
+    assert intro.heading == "Agents Zero to Hero"
+    assert "Intro about agents and tool calling." in intro.body
+    assert "Extra H1" not in intro.body
+    assert "keeps calling tools until the task is done" in bundle.recommended_markdown
+
+
+def test_prompt_prefers_leaving_title_h1_unchanged():
+    """Recommend prompt prefers leaving title/H1 unchanged + requires matching opp."""
+    prompt = _prompt_from_generate()
+    assert "Prefer LEAVING the document title / leading H1 unchanged" in prompt
+    assert "ANY section_edit" in prompt or "ANY section_edit — including title" in prompt
+    assert "SAME exact target_heading" in prompt
+    assert "casually rewrite the title" in prompt.lower() or (
+        "casually rewrite the title line" in prompt
+    )
+
+
 def test_quality_evaluation_sees_complete_assembled_document():
     """13. Quality evaluation still sees complete document."""
     from aeo_mvp.evaluation import evaluate_quality
