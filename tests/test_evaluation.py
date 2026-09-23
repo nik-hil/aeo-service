@@ -31,11 +31,10 @@ def test_quality_eval_parses_pass_fail_and_wires_inputs():
         opportunities=[
             Opportunity(
                 question="What is an agent loop in practice?",
-                answerability="weak",
-                evidence_quote="",
+                gap="unclear for answer engines",
                 target_heading="A",
-                problem="unclear",
                 recommended_change="clarify",
+                evidence_quote="Body about agents.",
             )
         ],
         recommended_markdown=article.markdown + "\nClarified.\n",

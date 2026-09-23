@@ -11,13 +11,13 @@ Documented from the public [DO Inference models](https://docs.digitalocean.com/p
 
 ## Why Astra is default
 
-Same Safari fixture + domain, paid live on tip `ee076e1` ([compare note](live-astra-vs-luna-20260923.md)):
+Same Safari fixture + domain, paid live on tip `ee076e1` (CoS Astra vs Luna acceptance):
 
 - **Astra:** 9 structured opportunities with valid target headings; usable RECOMMENDED.md.
 - **Luna:** 0 opportunities + stray `---` in RECOMMENDED despite `quality_eval` pass.
 - **Both:** `llm_used` / `retrieval_used` true; 5–10 article-specific questions (no heading transforms); no Direct-answer spam; quality eval pass; `auto_publish=false`.
 
-Luna remains documented for cheaper/concise compare runs via `AEO_LLM_MODEL`.
+Luna remains documented for cheaper/concise compare runs via `AEO_LLM_MODEL`. Fresh `docs/live-*` artifacts are produced by CoS after recommendation-prompt upgrades (older live folders are not kept on the branch).
 
 ```bash
 export AEO_LLM_MODEL=openai-gpt-6-astra

@@ -2,9 +2,10 @@
 
 Small **Answer Engine Optimization** proof of concept for **Hashnode Markdown**.
 
-**Core principle:** the LLM owns semantic intelligence (questions, opportunities,
-recommended Markdown, quality eval). Python owns plumbing (Markdown parse,
-JSON/schema validation, DO `web_search` visibility metrics, DIFF, safety).
+**Core principle:** the LLM owns semantic intelligence (questions, full-document
+question→section opportunities, recommended Markdown, quality eval). Python owns
+plumbing (Markdown parse, JSON/schema validation, DO `web_search` visibility
+metrics, DIFF, safety). The introduction is not the default edit target.
 
 ```text
 Hashnode Markdown

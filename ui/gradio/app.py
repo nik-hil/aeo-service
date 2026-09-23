@@ -88,10 +88,9 @@ def _opportunities_md(report) -> str:
         lines.extend(
             [
                 f"### {o.question}",
-                f"- answerability: {o.answerability}",
+                f"- gap: {o.gap}",
                 f"- target_heading: {o.target_heading or '—'}",
                 f"- evidence_quote: {o.evidence_quote or '—'}",
-                f"- problem: {o.problem}",
                 f"- recommended_change: {o.recommended_change}",
                 f"- source: `{o.source}`",
                 "",

@@ -1,8 +1,0 @@
-{
-  "crawl_source": "Safari on user's Mac (curl/datacenter + gql-beta Pro-gated both failed CF/Pro)",
-  "requested_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling.md",
-  "fetched_at": "2026-09-23T02:04:49Z",
-  "local_path": "fixtures/agents-z2h-live.md",
-  "target_domain": "nik-hil.hashnode.dev",
-  "notes": "Article MD provided on disk after CF/Pro blocks on automated crawl paths."
-}

@@ -65,6 +65,11 @@ class E2EMock:
             return questions
         if self.step == 3:
             md = Path(FIXTURE).read_text(encoding="utf-8")
+            # RECOMMENDED must be article body only — no YAML/frontmatter.
+            if md.lstrip().startswith("---"):
+                parts = md.split("---", 2)
+                if len(parts) >= 3:
+                    md = parts[2].lstrip("\n")
             recommended = md.replace(
                 "The agent loop is the control flow that lets a model call tools, see results, and decide whether to continue.",
                 "The agent loop is the control flow that lets a model call tools, see results, and decide whether to continue. "
@@ -77,14 +82,14 @@ class E2EMock:
                 "opportunities": [
                     {
                         "question": "What is an agent loop for tool calling?",
-                        "answerability": "weak",
+                        "gap": "Could state the loop more directly for extractability.",
                         "evidence_quote": (
                             "The agent loop is the control flow that lets a model call tools, "
                             "see results, and decide whether to continue."
                         ),
                         "target_heading": "What is an agent loop?",
-                        "problem": "Could state the loop more directly for extractability.",
                         "recommended_change": "Clarify the lead definition.",
+                        "answerability": "weak",
                     }
                 ],
                 "recommended_markdown": recommended,
