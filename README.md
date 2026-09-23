@@ -1,108 +1,91 @@
-# AEO MVP
+# AEO MVP — Hashnode Markdown PoC
 
-Backend-only **Answer Engine Optimization** service. Analyzes one public website per job for answer-engine readiness, computes a transparent **AEO Health Score** (`health-v1`), runs controlled visibility experiments (`vis-exp-v1`), and emits prioritized, evidence-linked recommendations as JSON.
+Small **Answer Engine Optimization** proof of concept for **Hashnode Markdown**.
 
-> Visibility metrics are **sample estimates**, not rankings. This product does **not** reproduce ChatGPT / Gemini / Perplexity ranking.
+**Core principle:** the LLM owns semantic intelligence (questions, full-document
+question→section opportunities, recommended Markdown, quality eval). Python owns
+plumbing (Markdown parse, JSON/schema validation, DO `web_search` visibility
+metrics, DIFF, safety). The introduction is not the default edit target.
 
-## Stack
+```text
+Hashnode Markdown
+  → LLM question discovery + LLM quality pass (5–10)
+  → OBSERVED AI-search visibility (DigitalOcean Responses + web_search)
+  → LLM opportunities + full RECOMMENDED.md
+  → LLM quality evaluation
+  → CURRENT.md / RECOMMENDED.md / DIFF / report.json
+  → Gradio report
+```
 
-Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy 2.x, SQLite, httpx, selectolax, pytest.
+Does **not** auto-publish. Visibility is an **API observation**, not consumer ChatGPT UI.
 
 ## Setup
 
 ```bash
-cd /workspace/aeo-mvp
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,ui]"
+cp .env.example .env
 ```
 
-Copy `.env.example` to `.env` if you want local overrides (optional for demo).
+## Environment
 
-## Run the API
+| Variable | Purpose |
+|----------|---------|
+| `AEO_LLM_API_KEY` | **Only** LLM credential (DigitalOcean Inference) |
+| `AEO_LLM_BASE_URL` | Default `https://inference.do-ai.run/v1` |
+| `AEO_LLM_MODEL` | Default `openai-gpt-6-astra` (experiment) |
+| `AEO_API_KEY` | Optional service auth (separate from LLM) |
+
+Removed / not used: `OPENAI_API_KEY`, `DO_MODEL_ACCESS_KEY`, `MODEL_ACCESS_KEY`, `PERPLEXITY_API_KEY`.
+
+### Model IDs (DO Inference catalog)
+
+| Role | Model ID |
+|------|----------|
+| Default | `openai-gpt-6-astra` |
+| Concise compare | `openai-gpt-5.6-luna` |
+
+Wire via `AEO_LLM_MODEL` only. Confirm with `GET /v1/models` on your key if catalog names change. See [`docs/MODELS.md`](docs/MODELS.md).
+
+## Live CLI (CoS / machine with key)
 
 ```bash
-source .venv/bin/activate
-export AEO_API_KEY=dev-local-key-change-me
-uvicorn aeo_mvp.api.app:app --host 127.0.0.1 --port 8000
+export AEO_LLM_API_KEY=...
+export AEO_LLM_MODEL=openai-gpt-6-astra   # or openai-gpt-5.6-luna for compare
+python -m aeo_mvp.cli path/to/article.md \
+  --domain nik-hil.hashnode.dev \
+  --live \
+  --out docs/live-run/
 ```
 
-Liveness (public): `GET http://127.0.0.1:8000/health`  
-All other routes require `Authorization: Bearer $AEO_API_KEY` (see `docs/security/API_AUTH.md`).
+Writes `CURRENT.md`, `RECOMMENDED.md`, `DIFF.patch`, `report.json` (`llm_used`, `retrieval_used`, `model`, questions, opportunities, quality_eval). `auto_publish` is always false.
 
-## Demo job (no live provider keys / no network crawl)
+Dry visibility (still needs LLM for questions/recs):
 
 ```bash
-curl -s -X POST http://127.0.0.1:8000/api/v1/jobs \
-  -H "Authorization: Bearer $AEO_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"url":"https://demo.example/","demo_mode":true,"options":{"provider":"demo"}}'
+python -m aeo_mvp.cli path/to/article.md --out out/   # no --live
 ```
 
-Poll status, then fetch the report:
+## Gradio
 
 ```bash
-JOB_ID=<id from create response>
-curl -s -H "Authorization: Bearer $AEO_API_KEY" http://127.0.0.1:8000/api/v1/jobs/$JOB_ID
-curl -s -H "Authorization: Bearer $AEO_API_KEY" http://127.0.0.1:8000/api/v1/jobs/$JOB_ID/report | python -m json.tool
-curl -s -H "Authorization: Bearer $AEO_API_KEY" http://127.0.0.1:8000/api/v1/jobs/$JOB_ID/pages
+python ui/gradio/app.py
 ```
 
-Demo fixtures live under `src/aeo_mvp/demo/fixtures/` for fictional site `https://demo.example/`.
+Sections: ARTICLE · AI VISIBILITY (OBSERVED) · QUESTIONS (LLM-GENERATED) ·
+OPPORTUNITIES · CURRENT vs RECOMMENDED · DIFF · QUALITY EVALUATION.
 
 ## Tests
 
 ```bash
-source .venv/bin/activate
 pytest -q
+python -m compileall -q src ui
 ```
-
-## Optional live visibility providers
-
-**LLM mention** (`experiment_kind=llm_mention`): set `OPENAI_API_KEY` (optional
-`OPENAI_BASE_URL`, `OPENAI_MODEL`). Chat completions only — **not** AI search visibility.
-
-**AI search visibility** (`experiment_kind=ai_search_visibility`): set
-`DO_MODEL_ACCESS_KEY` (or `MODEL_ACCESS_KEY`) and optionally
-`AEO_VISIBILITY_PROVIDER=digitalocean_web_search`. Uses DigitalOcean Inference
-Responses API + `web_search`. **Does not** measure consumer ChatGPT/Gemini/Perplexity UI
-(`measures_consumer_ui=false`). See `docs/methodology/AI_SEARCH_VISIBILITY_DO.md`.
-
-**Enable paid DO retrieval:** set `AEO_PAID_RETRIEVAL_OPT_IN=true` in the environment
-(see `.env.example`). That is the runtime master switch. ADR-026 still applies:
-paid retrieval runs only when opt-in **and** a ready QuerySet **and** DO credentials
-(`DO_MODEL_ACCESS_KEY` / `MODEL_ACCESS_KEY`) are present. A DO key alone never spends.
-API `options.paid_retrieval_opt_in=true` cannot bypass env false (fail-closed).
-
-Under `provider=auto` / `AEO_VISIBILITY_PROVIDER=auto`: DigitalOcean web_search only when
-a DO key is present **and** ADR-026 allows paid retrieval. Otherwise OpenAI key → LLM
-mention; else DemoProvider. Demo mode always stays deterministic. See
-`docs/architecture/ADR-026-paid-retrieval-opt-in.md`.
-
-## Leadership UI
-
-Optional Gradio demo for leadership walkthroughs (URL → AEO Health → gaps → recommendations → drafts). Does not change scoring or crawl security — it only calls the secured API.
-
-```bash
-pip install -e ".[ui]"
-export AEO_API_KEY=dev-local-key-change-me
-uvicorn aeo_mvp.api.app:app --host 127.0.0.1 --port 8000 &
-export AEO_API_BASE_URL=http://127.0.0.1:8000
-python ui/gradio/app.py
-```
-
-See [`ui/gradio/README.md`](ui/gradio/README.md) for modes, glossary, tests, and honesty limits.
 
 ## Docs
 
-- `docs/blueprint/BLUEPRINT.md` — product & technical blueprint
-- `docs/methodology/METRICS.md` — `health-v1` formulas
-- `docs/methodology/AI_VISIBILITY.md` — `vis-exp-v1` protocol
-- `docs/methodology/RECOMMENDATIONS.md` — `rec-catalog-v1`
-- `docs/api/openapi-sketch.yaml` — OpenAPI sketch
-- `docs/security/API_AUTH.md` — fail-closed API authentication (P0-3)
-- `docs/IMPLEMENTATION_STATUS.md` — what works / gaps
-
-## Example JSON
-
-See `examples/` for sample create-job request and completed report.
+- [`docs/ADR-001-llm-semantics.md`](docs/ADR-001-llm-semantics.md) — LLM vs Python ownership
+- [`docs/OVERVIEW.md`](docs/OVERVIEW.md)
+- [`docs/VISIBILITY.md`](docs/VISIBILITY.md)
+- [`docs/MODELS.md`](docs/MODELS.md)

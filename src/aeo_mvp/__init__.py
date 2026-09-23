@@ -1,3 +1,6 @@
-"""AEO MVP — Answer Engine Optimization backend service."""
+"""Hashnode Markdown AEO proof of concept."""
 
-__version__ = "0.1.0"
+from aeo_mvp.pipeline import run_pipeline
+
+__all__ = ["run_pipeline"]
+__version__ = "0.3.0"
