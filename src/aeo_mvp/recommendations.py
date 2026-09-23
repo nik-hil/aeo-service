@@ -468,8 +468,15 @@ def _apply_section_edits(current: str, edits: list[SectionEdit]) -> str:
 def _assert_opportunity_section_edit_consistency(
     opportunities: list[Opportunity],
     edits: list[SectionEdit],
+    *,
+    leading_h1: str | None = None,
 ) -> None:
-    """Bidirectional opportunity ↔ section_edit heading consistency (pre-apply)."""
+    """Bidirectional opportunity ↔ section_edit heading consistency (pre-apply).
+
+    Must run BEFORE ``replace_section_body`` so orphan section_edits never mutate
+    CURRENT. Leading H1 / title edits are allowed only when paired with a matching
+    opportunity (title edits are exceptional — prefer leaving H1 unchanged).
+    """
     opp_heads = {o.target_heading.lower() for o in opportunities}
     edit_heads = {e.target_heading.lower() for e in edits}
 
@@ -482,16 +489,51 @@ def _assert_opportunity_section_edit_consistency(
             f"missing section_edit for: {missing_edits}. "
             "Omit opportunities that were considered but not applied."
         )
-    missing_opps = sorted(
+    orphan_edits = sorted(
         {e.target_heading for e in edits if e.target_heading.lower() not in opp_heads}
     )
-    if missing_opps:
+    if orphan_edits:
+        h1_note = ""
+        if leading_h1 and any(h.lower() == leading_h1.lower() for h in orphan_edits):
+            h1_note = (
+                f" Orphan heading {leading_h1!r} is the document title / leading H1 — "
+                "title edits are exceptional; prefer removing that section_edit unless "
+                "a selected question specifically requires it."
+            )
         raise LLMError(
-            "RECOMMENDED has substantive section edits without matching opportunities "
-            f"for: {missing_opps}. Emit an opportunity for each applied section change "
-            f"with the SAME exact target_heading, or remove that section_edit / leave "
-            "that section unchanged. Prefer leaving the document title / leading H1 "
+            "Orphan section_edit(s) without matching opportunities for: "
+            f"{orphan_edits}. Remove those section_edits OR add ≥1 opportunity with "
+            "the SAME exact target_heading for each listed heading. Do not apply any "
+            "edits from this response. Prefer leaving the document title / leading H1 "
             "unchanged unless a selected question specifically requires it."
+            f"{h1_note}"
+        )
+
+
+def _assert_assembly_matches_section_edits(
+    original: str,
+    recommended: str,
+    edits: list[SectionEdit],
+) -> None:
+    """Post-apply integrity: every substantive body change must come from a section_edit.
+
+    Catches false-positive H1 mutations (assembly/normalization bugs) where no
+    intentional H1 section_edit was emitted — distinct from the opportunity contract.
+    """
+    edit_heads = {e.target_heading.lower() for e in edits}
+    mutated_without_edit: list[str] = []
+    for sec in parse_sections(original):
+        after = _body_for_heading(recommended, sec.heading)
+        if not _substantive_body_change(sec.body, after):
+            continue
+        if sec.heading.lower() not in edit_heads:
+            mutated_without_edit.append(sec.heading)
+    if mutated_without_edit:
+        raise LLMError(
+            "Assembly mutated section(s) without a corresponding section_edit for: "
+            f"{mutated_without_edit}. This indicates an apply/normalization bug "
+            "(not an LLM opportunity gap). section_edits must be the only source of "
+            "body changes; prefer leaving the document title / leading H1 unchanged."
         )
 
 
@@ -806,9 +848,13 @@ def _is_transient_llm_error(exc: BaseException) -> bool:
     return any(marker in msg for marker in _TRANSIENT_LLM_ERROR_MARKERS)
 
 
-def _is_missing_opportunity_for_section_edit_error(error: str) -> bool:
-    """True when reverse opportunity↔section_edit invariant failed."""
-    return "without matching opportunities" in (error or "")
+def _is_orphan_section_edit_error(error: str) -> bool:
+    """True when pre-apply orphan section_edit gate or reverse invariant failed."""
+    msg = error or ""
+    return (
+        "Orphan section_edit" in msg
+        or "without matching opportunities" in msg
+    )
 
 
 def _with_repair_feedback(
@@ -823,17 +869,17 @@ def _with_repair_feedback(
         if second_repair
         else ""
     )
-    if _is_missing_opportunity_for_section_edit_error(error):
-        # Reverse invariant: section_edit / applied body change without opportunity.
-        # Quote the validator error (which lists exact headings) and force a
-        # local fix — add opportunity OR remove section_edit — never full regen.
+    if _is_orphan_section_edit_error(error):
+        # Pre-apply orphan gate or post-apply reverse invariant.
+        # Quote the validator error (exact headings) — add opp OR remove edit.
         specific = (
-            "REVERSE INVARIANT FAILURE — section_edit without matching opportunity:\n"
-            "The validator error above lists the exact heading(s) that changed "
-            "(or that you emitted as section_edits) without a matching opportunity.\n"
+            "ORPHAN SECTION_EDIT / REVERSE INVARIANT FAILURE:\n"
+            "The validator error above lists the exact heading(s) that have a "
+            "section_edit (or a substantive body change) without a matching "
+            "opportunity.\n"
             "For EACH listed heading you MUST either:\n"
             "  (A) add ≥1 opportunity with the SAME exact target_heading, OR\n"
-            "  (B) remove that section_edit / leave that section unchanged.\n"
+            "  (B) remove those section_edits / leave that section unchanged.\n"
             "Prefer leaving the document title / leading H1 unchanged unless a "
             "selected question specifically requires editing that section.\n"
             "If the listed heading is the document title / leading H1 and no "
@@ -891,10 +937,19 @@ def _bundle_from_llm_raw(
 
     opportunities = _parse_opportunities(raw, article)
     section_edits = _parse_section_edits(raw, article)
-    _assert_opportunity_section_edit_consistency(opportunities, section_edits)
+    # Pre-apply gate: orphan section_edits must not mutate CURRENT.
+    _assert_opportunity_section_edit_consistency(
+        opportunities,
+        section_edits,
+        leading_h1=_intro_heading(article),
+    )
 
     # Always assemble from ORIGINAL CURRENT — never from a prior failed RECOMMENDED.
     recommended = _apply_section_edits(article.markdown, section_edits)
+    # Second line of defense for apply bugs (false-positive H1 mutation, etc.).
+    _assert_assembly_matches_section_edits(
+        article.markdown, recommended, section_edits
+    )
 
     explanations = [
         str(x).strip()
@@ -902,6 +957,7 @@ def _bundle_from_llm_raw(
         if str(x).strip()
     ]
 
+    # Opportunity ↔ applied body reverse invariant (kept; post-assembly).
     warnings = validate_recommended_markdown(
         article.markdown,
         recommended,

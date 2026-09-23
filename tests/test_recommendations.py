@@ -1249,7 +1249,7 @@ def test_opportunity_without_section_edit_rejected():
 
 
 def test_section_edit_without_opportunity_rejected():
-    """9. Section edit without opportunity rejected."""
+    """9. Section edit without opportunity rejected (pre-apply orphan gate)."""
     reset_execution_flags()
     article = load_hashnode_markdown(text=ARTICLE)
     qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
@@ -1258,14 +1258,44 @@ def test_section_edit_without_opportunity_rejected():
         "section_edits": [_loop_section_edit()],
         "change_explanations": [],
     }
-    with pytest.raises(LLMError, match="without matching opportunities"):
+    with pytest.raises(LLMError, match="Orphan section_edit"):
         generate_recommendations(
             article, qs, VisibilityReport(), client=ScriptedLLM(payload)
         )
 
 
+def test_orphan_section_edit_rejected_before_assembly_mutates_markdown(monkeypatch):
+    """Orphan section_edit → LLMError BEFORE replace_section_body runs."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    original = article.markdown
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+
+    import aeo_mvp.recommendations as rec_mod
+
+    calls: list[tuple] = []
+
+    def _tracking_replace(markdown, heading, new_body, *, exact=False):
+        calls.append((heading, exact))
+        return rec_mod.replace_section_body(markdown, heading, new_body, exact=exact)
+
+    monkeypatch.setattr(rec_mod, "replace_section_body", _tracking_replace)
+
+    payload = {
+        "opportunities": [],
+        "section_edits": [_loop_section_edit()],
+        "change_explanations": [],
+    }
+    with pytest.raises(LLMError, match=r"Orphan section_edit.*What is an agent loop"):
+        generate_recommendations(
+            article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+        )
+    assert calls == [], "replace_section_body must not run for orphan section_edits"
+    assert article.markdown == original
+
+
 def test_h1_section_edit_without_opportunity_rejected():
-    """Title/H1 section_edit without matching opportunity → LLMError."""
+    """Title/H1 section_edit without matching opportunity → LLMError (pre-apply)."""
     reset_execution_flags()
     article = load_hashnode_markdown(text=ARTICLE)
     qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
@@ -1284,11 +1314,46 @@ def test_h1_section_edit_without_opportunity_rejected():
     }
     with pytest.raises(
         LLMError,
-        match=r"without matching opportunities.*Agents Zero to Hero",
+        match=r"Orphan section_edit.*Agents Zero to Hero",
     ):
         generate_recommendations(
             article, qs, VisibilityReport(), client=ScriptedLLM(payload)
         )
+
+
+def test_h1_section_edit_with_matching_opportunity_allowed():
+    """Leading H1 section_edit is allowed when paired with a matching opportunity."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What are agents and tool calling?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "What are agents and tool calling?",
+                "gap": "Intro under-explains the series framing.",
+                "evidence_quote": "Intro about agents and tool calling.",
+                "target_heading": "Agents Zero to Hero",
+                "recommended_change": "Clarify agents+tools framing in the intro.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [
+            {
+                "target_heading": "Agents Zero to Hero",
+                "replacement_body": (
+                    "Intro about agents and tool calling.\n"
+                    "This series frames agents as models that call tools in a loop."
+                ),
+            }
+        ],
+        "change_explanations": ["Clarified H1 intro framing."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert bundle.opportunities[0].target_heading == "Agents Zero to Hero"
+    assert "models that call tools in a loop" in bundle.recommended_markdown
+    assert bundle.recommended_markdown.startswith("# Agents Zero to Hero\n")
 
 
 def test_repair_prompt_quotes_missing_opportunity_heading_for_h1_edit():
@@ -1317,17 +1382,14 @@ def test_repair_prompt_quotes_missing_opportunity_heading_for_h1_edit():
     repair = client.prompts[1]
     assert "REPAIR FEEDBACK" in repair
     assert "Agents Zero to Hero" in repair
-    assert "without matching opportunities" in repair
-    assert "SAME exact target_heading" in repair or "SAME exact" in repair
-    assert "remove that section_edit" in repair.lower() or (
-        "remove that section_edit" in repair
-    )
+    assert "Orphan section_edit" in repair or "without matching opportunities" in repair
+    assert "SAME exact target_heading" in repair
+    assert "remove those section_edits" in repair or "remove that section_edit" in repair
     assert "Do NOT regenerate the complete article" in repair or (
         "Do not regenerate the complete article" in repair
     )
     assert "Prefer leaving the document title" in repair
     assert bundle.opportunities[0].target_heading == "What is an agent loop?"
-    # Title/H1 left unchanged in the successful repair path.
     assert bundle.recommended_markdown.startswith("# Agents Zero to Hero\n")
     assert "Unattributed H1 body change" not in bundle.recommended_markdown
 
