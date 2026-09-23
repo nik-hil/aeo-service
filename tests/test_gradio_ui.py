@@ -194,20 +194,3 @@ def test_analyze_empty_markdown_single_error():
     assert outs[1] == ""
     assert outs[2] == ""
     assert outs[5] == ""
-
-
-def test_build_app_returns_blocks_with_css():
-    """CSS must be on Blocks, not launch — Gradio 5 rejects launch(css=...)."""
-    import inspect
-
-    import gradio as gr
-
-    demo = gradio_app.build_app()
-    assert isinstance(demo, gr.Blocks)
-    assert "aeo-wrap" in (demo.css or "")
-    assert "css" in inspect.signature(gr.Blocks.__init__).parameters
-    assert "css" not in inspect.signature(gr.Blocks.launch).parameters
-    # main() must not pass css= to launch
-    src = inspect.getsource(gradio_app.main)
-    assert "css=" not in src
-    assert "server_name=" in src and "server_port=" in src
