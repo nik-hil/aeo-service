@@ -65,34 +65,41 @@ class E2EMock:
             return questions
         if self.step == 3:
             md = Path(FIXTURE).read_text(encoding="utf-8")
-            # RECOMMENDED must be article body only — no YAML/frontmatter.
+            # RECOMMENDED assembly input must be article body only — no YAML/frontmatter.
             if md.lstrip().startswith("---"):
                 parts = md.split("---", 2)
                 if len(parts) >= 3:
                     md = parts[2].lstrip("\n")
-            recommended = md.replace(
-                "The agent loop is the control flow that lets a model call tools, see results, and decide whether to continue.",
-                "The agent loop is the control flow that lets a model call tools, see results, and decide whether to continue. "
-                "It keeps invoking tools until the task is finished.",
-                1,
+            from aeo_mvp.markdown import parse_sections
+
+            loop = next(
+                s for s in parse_sections(md) if s.heading == "What is an agent loop?"
             )
-            if recommended == md:
-                recommended = md.rstrip() + "\n\n_Clarified agent-loop definition for answer engines._\n"
+            replacement = (
+                loop.body.rstrip()
+                + "\n\nIt keeps invoking tools until the task is finished."
+            )
+            evidence = (
+                "The agent loop is the control flow that lets a model call tools, "
+                "see results, and decide whether to continue."
+            )
             return {
                 "opportunities": [
                     {
                         "question": "What is an agent loop for tool calling?",
                         "gap": "Could state the loop more directly for extractability.",
-                        "evidence_quote": (
-                            "The agent loop is the control flow that lets a model call tools, "
-                            "see results, and decide whether to continue."
-                        ),
+                        "evidence_quote": evidence,
                         "target_heading": "What is an agent loop?",
                         "recommended_change": "Clarify the lead definition.",
                         "answerability": "weak",
                     }
                 ],
-                "recommended_markdown": recommended,
+                "section_edits": [
+                    {
+                        "target_heading": "What is an agent loop?",
+                        "replacement_body": replacement,
+                    }
+                ],
                 "change_explanations": ["Clarified agent loop wording."],
             }
         return {
