@@ -3,6 +3,9 @@
 Python validates headings, evidence quotes, structure, anti-intro-concentration,
 and the applied-change contract (opportunity ↔ RECOMMENDED section edits) —
 no Direct-answer templates, no semantic scoring.
+
+The LLM returns section_edits only; Python assembles complete RECOMMENDED.md from
+ORIGINAL CURRENT via markdown.replace_section_body.
 """
 
 from __future__ import annotations
@@ -14,7 +17,13 @@ from typing import Any, Literal, Protocol
 
 from aeo_mvp.article import Article
 from aeo_mvp.llm import LLMClient, LLMError
-from aeo_mvp.markdown import extract_title, find_section, parse_sections
+from aeo_mvp.markdown import (
+    Section,
+    extract_title,
+    find_section,
+    parse_sections,
+    replace_section_body,
+)
 from aeo_mvp.queries import Query, QuerySet
 from aeo_mvp.visibility import VisibilityReport
 
@@ -23,6 +32,7 @@ Answerability = Literal["strong", "weak", "missing"]
 _WS_RE = re.compile(r"\s+")
 _DIRECT_ANSWER_RE = re.compile(r"\*\*Direct answer:\*\*", re.I)
 _FRONT_MATTER_RE = re.compile(r"^---\s*\n[\s\S]*?\n---\s*(?:\n|$)", re.M)
+_ATX_HEADING_LINE_RE = re.compile(r"^#{1,6}\s+\S")
 
 
 class SupportsRespondJSON(Protocol):
@@ -60,6 +70,20 @@ class Opportunity:
 
 
 @dataclass
+class SectionEdit:
+    """One LLM-authored section body replacement (heading stays in CURRENT)."""
+
+    target_heading: str
+    replacement_body: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target_heading": self.target_heading,
+            "replacement_body": self.replacement_body,
+        }
+
+
+@dataclass
 class RecommendationBundle:
     opportunities: list[Opportunity] = field(default_factory=list)
     recommended_markdown: str = ""
@@ -67,10 +91,12 @@ class RecommendationBundle:
     validation_warnings: list[str] = field(default_factory=list)
     model: str = ""
     source: str = "llm_generated"
+    section_edits: list[SectionEdit] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "opportunities": [o.to_dict() for o in self.opportunities],
+            "section_edits": [e.to_dict() for e in self.section_edits],
             "change_explanations": list(self.change_explanations),
             "validation_warnings": list(self.validation_warnings),
             "model": self.model,
@@ -119,14 +145,18 @@ def _section_order(markdown: str) -> list[str]:
     return [s.heading for s in parse_sections(markdown)]
 
 
-def _reject_frontmatter_or_rules(markdown: str) -> None:
+def _reject_frontmatter_or_rules(
+    markdown: str, *, original: str | None = None
+) -> None:
+    """Reject YAML/frontmatter rules unless they were already present on CURRENT."""
     text = markdown or ""
     stripped = text.lstrip()
-    if stripped.startswith("---"):
+    orig_has_fm = bool(original) and (original or "").lstrip().startswith("---")
+    if stripped.startswith("---") and not orig_has_fm:
         raise LLMError(
             "recommended_markdown must not start with YAML/frontmatter or --- rules"
         )
-    if _FRONT_MATTER_RE.match(stripped):
+    if _FRONT_MATTER_RE.match(stripped) and not orig_has_fm:
         raise LLMError("recommended_markdown must not include YAML frontmatter")
     if re.search(r"(?:^|\n)---\s*$", text.rstrip()):
         raise LLMError(
@@ -143,6 +173,12 @@ def _intro_heading(article: Article) -> str | None:
 
 
 def _body_for_heading(markdown: str, heading: str) -> str | None:
+    """First section body for ``heading`` (exact, case-insensitive).
+
+    Prefer ``_section_body_pairs_by_occurrence`` when comparing CURRENT vs
+    RECOMMENDED across all sections — first-match is wrong when headings repeat
+    (e.g. duplicate leading H1 title lines).
+    """
     want = (heading or "").strip().lower()
     for sec in parse_sections(markdown):
         if sec.heading.lower() == want:
@@ -150,11 +186,55 @@ def _body_for_heading(markdown: str, heading: str) -> str | None:
     return None
 
 
+def _heading_bodies(markdown: str, heading: str) -> list[str]:
+    """All section bodies for ``heading`` in document order (exact match)."""
+    want = (heading or "").strip().lower()
+    return [s.body for s in parse_sections(markdown) if s.heading.lower() == want]
+
+
 def _substantive_body_change(before: str | None, after: str | None) -> bool:
     """True when section bodies differ beyond whitespace/Markdown normalization."""
     if before is None or after is None:
         return False
     return _ws_canonical(before) != _ws_canonical(after)
+
+
+def _substantive_heading_change(
+    original: str, recommended: str, heading: str
+) -> bool:
+    """True when any occurrence of ``heading`` changed (occurrence-aligned)."""
+    befores = _heading_bodies(original, heading)
+    afters = _heading_bodies(recommended, heading)
+    if not befores and not afters:
+        return False
+    if len(befores) != len(afters):
+        return True
+    return any(_substantive_body_change(b, a) for b, a in zip(befores, afters))
+
+
+def _section_body_pairs_by_occurrence(
+    original: str, recommended: str
+) -> list[tuple[Section, Section | None]]:
+    """Pair each CURRENT section with the same heading occurrence in RECOMMENDED.
+
+    Uses occurrence index per heading so duplicate titles (e.g. repeated H1) are
+    compared to their counterparts — not always to the first match.
+    """
+    orig_secs = parse_sections(original)
+    new_secs = parse_sections(recommended)
+    new_occ: dict[str, list[Section]] = {}
+    for s in new_secs:
+        new_occ.setdefault(s.heading.lower(), []).append(s)
+    used: dict[str, int] = {}
+    pairs: list[tuple[Section, Section | None]] = []
+    for sec in orig_secs:
+        key = sec.heading.lower()
+        idx = used.get(key, 0)
+        used[key] = idx + 1
+        cands = new_occ.get(key) or []
+        after_sec = cands[idx] if idx < len(cands) else None
+        pairs.append((sec, after_sec))
+    return pairs
 
 
 def validate_recommended_markdown(
@@ -175,7 +255,7 @@ def validate_recommended_markdown(
     if not (recommended or "").strip():
         raise LLMError("recommended_markdown is empty")
 
-    _reject_frontmatter_or_rules(recommended)
+    _reject_frontmatter_or_rules(recommended, original=original)
 
     orig_title = extract_title(original)
     new_title = extract_title(recommended)
@@ -249,6 +329,7 @@ def validate_recommended_markdown(
 
     # Applied-change invariant (forward): every opportunity must land as a real
     # section body edit in RECOMMENDED. Whitespace-only diffs are not applied edits.
+    # Occurrence-aligned: any occurrence of the target heading may carry the edit.
     intro = _intro_heading(article)
     claimed: list[str] = []
     unchanged_targets: list[str] = []
@@ -257,9 +338,7 @@ def validate_recommended_markdown(
         if not canon:
             continue
         claimed.append(canon)
-        before = _body_for_heading(original, canon)
-        after = _body_for_heading(recommended, canon)
-        if not _substantive_body_change(before, after):
+        if not _substantive_heading_change(original, recommended, canon):
             unchanged_targets.append(canon)
     if unchanged_targets:
         unique_unchanged = list(dict.fromkeys(unchanged_targets))
@@ -271,20 +350,22 @@ def validate_recommended_markdown(
 
     # Applied-change invariant (reverse): every substantive section body change
     # must be attributable to ≥1 opportunity targeting that heading.
+    # Pair by heading occurrence so duplicate titles do not false-positive.
     claimed_lower = {h.lower() for h in claimed}
     unattributed: list[str] = []
-    for sec in orig_secs:
-        before = sec.body
-        after = _body_for_heading(recommended, sec.heading)
-        if not _substantive_body_change(before, after):
+    for sec, after_sec in _section_body_pairs_by_occurrence(original, recommended):
+        after = after_sec.body if after_sec is not None else None
+        if not _substantive_body_change(sec.body, after):
             continue
         if sec.heading.lower() not in claimed_lower:
             unattributed.append(sec.heading)
     if unattributed:
         raise LLMError(
             "RECOMMENDED has substantive section edits without matching opportunities "
-            f"for: {unattributed}. Emit an opportunity for each applied section change, "
-            "or leave that section unchanged."
+            f"for: {unattributed}. Emit an opportunity for each applied section change "
+            f"with the SAME exact target_heading, or leave that section unchanged. "
+            "Prefer leaving the document title / leading H1 unchanged unless a "
+            "selected question specifically requires it."
         )
 
     # If ≥3 opportunities exist and ALL target only the intro/H1 while article has
@@ -303,10 +384,14 @@ def validate_recommended_markdown(
                 "existing sections when the article has multiple sections."
             )
 
-    # Obvious duplicate consecutive paragraphs
+    # Obvious duplicate consecutive paragraphs (not ATX heading lines —
+    # duplicate leading H1 title lines are a document-structure issue, not
+    # duplicate prose additions).
     paras = [p.strip() for p in recommended.split("\n\n") if p.strip()]
     for i in range(1, len(paras)):
         if paras[i] == paras[i - 1] and len(paras[i]) > 40:
+            if _ATX_HEADING_LINE_RE.match(paras[i]):
+                continue
             raise LLMError("Obvious duplicate paragraph additions in recommended Markdown")
 
     return warnings
@@ -360,82 +445,419 @@ def _parse_opportunities(raw: Any, article: Article) -> list[Opportunity]:
     return out
 
 
+def _parse_section_edits(raw: Any, article: Article) -> list[SectionEdit]:
+    """Parse LLM section_edits: structure/refs only — no semantic judgment."""
+    if not isinstance(raw, dict):
+        raise LLMError("Expected recommendations JSON object with section_edits")
+
+    if "recommended_markdown" in raw and raw.get("recommended_markdown"):
+        raise LLMError(
+            "LLM must not return recommended_markdown; return section_edits only "
+            "and Python will assemble RECOMMENDED.md from CURRENT"
+        )
+
+    items = raw.get("section_edits")
+    if items is None:
+        items = []
+    if not isinstance(items, list):
+        raise LLMError("section_edits must be an array")
+
+    seen: set[str] = set()
+    out: list[SectionEdit] = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise LLMError("section_edits entries must be objects")
+        heading_raw = str(item.get("target_heading") or "").strip()
+        heading = _exact_heading_match(article, heading_raw)
+        if not heading:
+            raise LLMError(f"section_edit target_heading does not exist: {heading_raw!r}")
+        key = heading.lower()
+        if key in seen:
+            raise LLMError(f"Duplicate section_edit for heading {heading!r}")
+        seen.add(key)
+
+        if "replacement_body" not in item:
+            raise LLMError(
+                f"section_edit replacement_body required for heading {heading!r}"
+            )
+        body = item.get("replacement_body")
+        if body is None or not str(body).strip():
+            raise LLMError(
+                f"section_edit replacement_body is empty for heading {heading!r}"
+            )
+        body_text = str(body)
+        first_line = next(
+            (ln.strip() for ln in body_text.lstrip().splitlines() if ln.strip()),
+            "",
+        )
+        if _ATX_HEADING_LINE_RE.match(first_line):
+            raise LLMError(
+                f"section_edit replacement_body for {heading!r} must not include "
+                "the heading line itself"
+            )
+
+        before = _body_for_heading(article.markdown, heading)
+        if not _substantive_body_change(before, body_text):
+            raise LLMError(
+                f"section_edit for {heading!r} is not a substantive body change"
+            )
+
+        out.append(SectionEdit(target_heading=heading, replacement_body=body_text))
+    return out
+
+
+def _apply_section_edits(current: str, edits: list[SectionEdit]) -> str:
+    """Assemble RECOMMENDED.md from ORIGINAL CURRENT + section_edits only."""
+    recommended = current
+    for edit in edits:
+        recommended = replace_section_body(
+            recommended,
+            edit.target_heading,
+            edit.replacement_body,
+            exact=True,
+        )
+    return recommended
+
+
+def _assert_opportunity_section_edit_consistency(
+    opportunities: list[Opportunity],
+    edits: list[SectionEdit],
+    *,
+    leading_h1: str | None = None,
+) -> None:
+    """Bidirectional opportunity ↔ section_edit heading consistency (pre-apply).
+
+    Must run BEFORE ``replace_section_body`` so orphan section_edits never mutate
+    CURRENT. Leading H1 / title edits are allowed only when paired with a matching
+    opportunity (title edits are exceptional — prefer leaving H1 unchanged).
+    """
+    opp_heads = {o.target_heading.lower() for o in opportunities}
+    edit_heads = {e.target_heading.lower() for e in edits}
+
+    missing_edits = sorted(
+        {o.target_heading for o in opportunities if o.target_heading.lower() not in edit_heads}
+    )
+    if missing_edits:
+        raise LLMError(
+            "Opportunities must correspond to applied section_edits; "
+            f"missing section_edit for: {missing_edits}. "
+            "Omit opportunities that were considered but not applied."
+        )
+    orphan_edits = sorted(
+        {e.target_heading for e in edits if e.target_heading.lower() not in opp_heads}
+    )
+    if orphan_edits:
+        h1_note = ""
+        if leading_h1 and any(h.lower() == leading_h1.lower() for h in orphan_edits):
+            h1_note = (
+                f" Orphan heading {leading_h1!r} is the document title / leading H1 — "
+                "title edits are exceptional; prefer removing that section_edit unless "
+                "a selected question specifically requires it."
+            )
+        raise LLMError(
+            "Orphan section_edit(s) without matching opportunities for: "
+            f"{orphan_edits}. Remove those section_edits OR add ≥1 opportunity with "
+            "the SAME exact target_heading for each listed heading. Do not apply any "
+            "edits from this response. Prefer leaving the document title / leading H1 "
+            "unchanged unless a selected question specifically requires it."
+            f"{h1_note}"
+        )
+
+
+def _assert_assembly_matches_section_edits(
+    original: str,
+    recommended: str,
+    edits: list[SectionEdit],
+) -> None:
+    """Post-apply integrity: every substantive body change must come from a section_edit.
+
+    Compares CURRENT vs RECOMMENDED section bodies by heading *occurrence* (not
+    first-match only). First-match lookup false-positives when the leading H1
+    title is duplicated as a second H1 — the classic z2h12 live failure mode.
+    Non-edited sections (including leading H1 without an H1 section_edit) must
+    keep an identical body under the shared whitespace-canonical contract.
+    """
+    edit_heads = {e.target_heading.lower() for e in edits}
+    mutated_without_edit: list[str] = []
+    for sec, after_sec in _section_body_pairs_by_occurrence(original, recommended):
+        after = after_sec.body if after_sec is not None else None
+        if after_sec is None:
+            if sec.heading.lower() not in edit_heads:
+                mutated_without_edit.append(sec.heading)
+            continue
+        if not _substantive_body_change(sec.body, after):
+            continue
+        if sec.heading.lower() not in edit_heads:
+            mutated_without_edit.append(sec.heading)
+    if mutated_without_edit:
+        raise LLMError(
+            "Assembly mutated section(s) without a corresponding section_edit for: "
+            f"{mutated_without_edit}. This indicates an apply/normalization bug "
+            "(not an LLM opportunity gap). section_edits must be the only source of "
+            "body changes; prefer leaving the document title / leading H1 unchanged."
+        )
+
+
 _RECOMMEND_PROMPT = """You are the AEO recommendation engine for a Hashnode Markdown article.
 
-You optimize the FULL document for answer-engine visibility. Python will only
-validate structure and grounding — you own all semantic decisions.
+You are an EDITOR of the existing article — not a researcher writing new content.
+Python will only validate structure, grounding, and the applied-change contract —
+you own all semantic decisions. The heading inventory in the questions payload is
+navigation ONLY; section meaning and gap judgment stay with you.
+
+CORE RULE (mandatory — diagnosis vs content):
+Search evidence tells you WHAT may be weak. CURRENT.md tells you WHAT you are
+allowed to say.
+- OBSERVED VISIBILITY diagnoses retrieval/extractability/clarity problems.
+- CURRENT ARTICLE is the only content source of truth for new prose.
+Do NOT import search facts, citations, snippets, external pages, or model/general
+knowledge into RECOMMENDED merely because they seem relevant.
+
+GOAL — SUFFICIENT ANSWERABILITY WITH THE SMALLEST USEFUL CHANGE:
+Optimize for making each selected question sufficiently answerable from the
+article, using the smallest useful CURRENT-grounded edit, then STOP. Do NOT
+optimize for max/min edits, article length, opportunity count, diff size, or
+keyword count. Correct output may have 0, 2, 5, or more meaningful changes.
+
+Reject restatements, paraphrases, visible-code narration, polish, and any content
+that is not authorized by CURRENT. Still emit opportunities for genuine CLARITY /
+INFORMATION gaps when the fix is grounded in CURRENT (relationships, distinctions,
+constraints, consequences, limitations, dependencies, ambiguity, missing element
+elsewhere in CURRENT). Do NOT become too conservative: partial answers can still
+need real improvement — but only with CURRENT-authorized content.
+
+SOURCE PRIORITY (do not confuse these roles):
+1) CURRENT ARTICLE = content source of truth. New prose must be grounded in
+   information already in CURRENT (including connecting facts that appear in
+   different sections, making implicit relationships explicit, clarifying
+   ambiguity, improving extractability/precision/placement).
+2) SELECTED QUESTIONS = optimization targets (what readers ask; whether CURRENT
+   answers sufficiently).
+3) OBSERVED VISIBILITY = diagnostic evidence only (weak retrieval, hard-to-extract
+   concepts, wording/relationship clarity). Do NOT treat retrieved answers as
+   source material. Do NOT import search facts into RECOMMENDED merely because
+   they are relevant.
+
+MAY CHANGE (when grounded in CURRENT):
+Make existing relationships/distinctions/limitations/constraints explicit; connect
+facts already in CURRENT; resolve ambiguity; improve extractability/precision/
+placement; rewrite existing prose when needed for answerability; combine info from
+different parts of CURRENT into a clearer local explanation.
+
+MUST NOT (forbidden content sources):
+Add information that exists only in DigitalOcean/search answers, external pages,
+citations, snippets, model/general knowledge, assumptions, or inferred repo
+behavior not stated in CURRENT. No external provider/implementation details,
+stats, new facts/examples/citations/URLs/technologies/claims, or researched
+explanations the author did not provide — unless already in CURRENT.
 
 INPUTS:
 1) CURRENT ARTICLE — the complete Hashnode Markdown (read and reason about ALL of it)
 2) SELECTED QUESTIONS — realistic user questions this article should answer
 3) OBSERVED VISIBILITY — DigitalOcean Responses + web_search API observations
-   (answers, citations, source URLs). These are API observations, NOT consumer
-   ChatGPT / Gemini / Perplexity UI rankings.
+   (answers, citations, source URLs). Diagnostic only — NOT consumer ChatGPT /
+   Gemini / Perplexity UI rankings, and NOT a content source.
 
 CRITICAL PRODUCT RULES:
 1. FULL-DOCUMENT OPTIMIZATION — Inspect the entire article before deciding changes.
    Do NOT optimize only the introduction. The introduction is NOT the default place
-   for improvements.
-2. QUESTION → SECTION PRINCIPLE — For EACH selected question:
-   - Does the article answer it well?
-   - If not, what is the gap (missing/weak/unclear)?
-   - Find the EXISTING section (H1–H6 heading already in CURRENT) where the answer
-     logically belongs.
-   - Apply the smallest useful grounded edit IN THAT SECTION.
-   Prefer improving that section over moving information into the intro.
+   for improvements. Do NOT dump improvements into the intro.
+2. QUESTION → SECTION PRINCIPLE — Place every accepted change in the EXISTING section
+   (H1–H6 already in CURRENT) that owns the concept. Prefer that section over the intro.
    Different questions SHOULD touch different sections when evidence supports it.
    Do NOT artificially concentrate changes near the beginning.
-3. GROUNDING — Use only the CURRENT article text plus the supplied visibility
-   observations. Do NOT invent facts, statistics, citations, sources, examples,
-   implementation details, or fake search claims.
-4. MINIMALITY — Prefer improving existing sentences/paragraphs or short clarifications.
-   Rewrite only when needed for a real question-level gap. No keyword stuffing or
-   artificial SEO.
+3. GROUNDING RULE (content authorization): For every proposed addition ask:
+   Can I point to supporting info inside CURRENT.md?
+   - YES → allowed (as clarification / connection / local rewrite of CURRENT).
+   - NO → do not add. Search finding it does NOT authorize it.
+   Visibility may identify that a gap exists; it never authorizes external content.
+4. MINIMALITY — Prefer improve sentence → expand paragraph → one short paragraph →
+   larger rewrite only if needed. Maximize answerability per meaningful change,
+   not Markdown churn. No keyword stuffing or artificial SEO.
 5. AEO AIM — Help an AI system identify concepts, answer the selected questions from
    the article, connect answers to the correct section, and distinguish related concepts.
-6. RECOMMENDED_MARKDOWN must be the COMPLETE improved article Markdown ONLY:
-   - Preserve title, H1–H6 structure and relative order, narrative, voice, important examples
+6. SECTION EDIT OUTPUT RULE (critical — Python assembles RECOMMENDED.md):
+   - Do NOT regenerate or return the complete article Markdown.
+   - Do NOT return recommended_markdown.
+   - Return section_edits ONLY for existing CURRENT sections that need a substantive
+     change. target_heading must be an exact existing CURRENT H1–H6 heading.
+   - Prefer LEAVING the document title / leading H1 unchanged unless a selected
+     question specifically requires editing that section's body.
+   - Do NOT casually rewrite the title line or the leading-H1 intro body. The
+     heading line itself is never part of replacement_body (Python keeps the
+     existing ATX heading). If you DO edit the H1/title section body, you MUST
+     emit ≥1 opportunity whose target_heading is that exact H1 text.
+   - ANY section_edit — including title / leading H1 — MUST have ≥1 opportunity
+     with the SAME exact target_heading. No exceptions.
+   - replacement_body = the COMPLETE new body for that section WITHOUT the heading
+     line itself. Do not rewrite untouched sections. Do not return copies of
+     unchanged sections.
+   - Python constructs RECOMMENDED.md = CURRENT + section_edits.
+   - You receive the complete CURRENT article so you can reason globally; you are
+     NOT responsible for reconstructing the complete article.
+   - Preserve title, H1–H6 structure and relative order, narrative, voice, examples
    - Preserve code blocks unless a grounded correction is required
-   - No YAML/frontmatter, no leading/trailing `---`, no meta commentary about the
-     optimization inside the article
+   - No YAML/frontmatter, no leading/trailing `---`, no meta commentary
    - No arbitrary new major sections; no deleting major sections; no moving content
-     between unrelated sections
+     between unrelated sections; do not invent/delete headings
    - Do NOT use "**Direct answer:**" template blocks
+   - No external citations / URLs / SEO filler imported from search
+7. NOT EVERY QUESTION NEEDS A CHANGE — NO GAP questions get NO opportunity and NO filler.
+   Do not force every selected question into an opportunity.
+   Do not edit merely because search has more information than the article.
 
-APPLIED-CHANGE CONTRACT (critical — Python enforces this):
-Opportunities are records of changes you ACTUALLY applied in recommended_markdown,
-NOT ideas you considered. Bidirectional consistency is required:
-- If you emit an opportunity → you MUST edit that target_heading's section body in
-  recommended_markdown (the applied recommended_change must land there).
-- If you edit a section body in recommended_markdown → you MUST emit a matching
-  opportunity with that exact existing target_heading.
+REQUIRED DECISION METHOD — follow these steps for EACH selected question before
+producing final JSON. Do not skip steps. Do not emit section_edits until
+steps 1–6 are done for all questions.
+
+STEP 1 — FIND THE CURRENT ANSWER:
+Read the COMPLETE CURRENT article. Locate where the question is answered (possibly
+across multiple sections). Do NOT assume the introduction contains the answer.
+The Python heading inventory is navigation only.
+
+STEP 2 — WRITE AN INTERNAL ANSWER SUMMARY (CURRENT only):
+Before deciding whether to edit, mentally answer the question using CURRENT only.
+Ask: What would an AI have to say to answer this question correctly using only
+facts supportable by CURRENT?
+Compare that required answer with what CURRENT actually supports.
+This prevents edits driven only by wording similarity or by search results.
+
+STEP 3 — IDENTIFY THE SMALLEST REAL GAP — classify as exactly one of:
+- NO GAP / sufficiently: article already answers sufficiently → no opportunity, no edit.
+- CLARITY GAP / partially: info exists in CURRENT but an important relationship,
+  distinction, constraint, consequence, dependency, limitation, or ambiguity
+  prevents a strong answer → local clarification allowed. Map answerability to "weak".
+- INFORMATION GAP (elsewhere in CURRENT): important answer element is present
+  somewhere else in CURRENT but not where the question needs it → local addition/
+  relocation of CURRENT-authorized info allowed. Map answerability to "missing".
+- INFORMATION GAP (missing entirely from CURRENT): important element is not in
+  CURRENT at all → do not invent; do not create the opportunity — even if search/
+  visibility mentions it.
+Search may identify that a gap exists; it does not authorize external content.
+Do not force every question into an opportunity.
+
+STEP 4 — THE BEFORE / AFTER TEST (for every proposed edit):
+What specific part of the answer is better after this edit? Must be concrete.
+GOOD: explains why X↔Y; distinguishes X from Y; makes a limitation explicit; makes a
+causal relationship clear; adds a necessary CURRENT-grounded detail; removes
+ambiguity that could cause an incorrect answer.
+BAD alone (reject): clearer / more descriptive / sounds better / more SEO / more
+context / summarizes the code / adds search-only details.
+
+STEP 5 — COUNTERFACTUAL TEST (primary stopping / keep-or-reject criterion):
+Ask exactly: If I remove this edit, would an AI's answer become materially less
+accurate, less complete, or more ambiguous?
+- YES → KEEP (only if also CURRENT-authorized)
+- NO → REJECT (repetition, paraphrase, narrating visible code, polish, generic
+  explanation, unnecessary expansion, search-imported filler)
+
+CALIBRATED EXAMPLES (teach these judgment standards):
+1. BAD search-only import → REJECT: visibility says the repo uses OpenRouter /
+   OPENROUTER_API_KEY but CURRENT does not mention OpenRouter → do not add OpenRouter
+   endpoint / API-key setup prose; no opportunity. Search evidence ≠ content license.
+2. GOOD missing relationship → KEEP: CURRENT has tool_call_id and appends the tool
+   result but never says why the ID matters → make the association with the specific
+   tool request explicit (matters with multiple calls).
+3. GOOD connecting existing facts → KEEP: CURRENT separately has tool error +
+   preserved history → make the causal connection explicit (failed result in
+   conversation lets the model revise and retry).
+4. BAD general-knowledge expansion → REJECT: expanding arbitrary Python execution
+   into file/network risks (or similar) when CURRENT does not support that claim.
+5. BAD visible-code narration → REJECT: code already shows append tool result and
+   prose says the harness sends the result back; proposing "harness appends tool
+   result so model can see it" adds no meaningful answer value.
+6. BAD paraphrase → REJECT: "model decides / harness controls how" rewritten as
+   "LLM makes decisions / harness controls execution" — same meaning, no opportunity.
+7. GOOD important boundary → KEEP: schemas + TOOLS registry in CURRENT leave the
+   model→harness→function boundary implicit; making that boundary explicit improves
+   answerability.
+8. BAD polish after sufficiency → STOP / REJECT second: one useful CURRENT-grounded
+   clarification makes the question answerable; a second paragraph restating the
+   same point is redundant — no additional opportunity for that question.
+
+DO NOT BECOME TOO CONSERVATIVE:
+Do NOT interpret this method as "only edit when absolutely no information exists."
+Partial answers can require real improvement when CURRENT already contains the
+needed facts. Example that still qualifies: history contains tool calls/results
+but does not explain that an assistant tool-call message must remain associated
+with the subsequent tool result — legitimate clarification when the selected
+question depends on that AND CURRENT supports the association pattern.
+
+STEP 6 — STOPPING RULE PER QUESTION:
+1. Determine the current answer (from STEPs 1–2) using CURRENT only
+2. Identify the smallest real answerability gap (STEP 3)
+3. Make the smallest useful edit that passes STEPs 4–5 AND the GROUNDING RULE
+4. Reconsider the question with the proposed edit in mind
+5. If now sufficiently complete and unambiguous → STOP for that question
+6. Do not make another edit unless a second, independent answerability gap remains
+Do not keep editing because words could still be improved.
+Do not edit merely because search has more information than the article.
+
+STEP 7 — SECTION PLACEMENT:
+Place every accepted change in the existing section that owns the concept
+(adapt to CURRENT headings; do not invent headings):
+- tool schemas → Tool schemas (or equivalent)
+- execution → Implementing execute_code (or equivalent)
+- tool results → Feeding the result back… (or equivalent)
+- conversation state → Why the message history matters (or equivalent)
+- completion → The finish tool (or equivalent)
+- security → There is already a security problem (or equivalent)
+Only modify the intro when missing info genuinely belongs there. Do not move content
+into the intro merely for AI visibility.
+
+STEP 8 — SECTION EDITS ONLY (Python builds RECOMMENDED.md):
+Emit section_edits for accepted CURRENT-grounded changes only.
+Prefer leaving the document title / leading H1 unchanged unless a selected
+question specifically requires a body edit there. Do not casually rewrite the
+title/H1 intro. Do not independently rewrite the rest of the article. Do not
+import retrieval discoveries. Do not return recommended_markdown. Opportunities +
+section_edits define the allowed changes; Python applies them onto ORIGINAL CURRENT.
+
+STEP 9 — CONSISTENCY CHECK (before final JSON):
+For every substantive edit verify: selected question, exact gap, why it materially
+improves the answer (BEFORE/AFTER + COUNTERFACTUAL), correct section, CURRENT-
+grounded (GROUNDING RULE), not search-imported, not redundant, no additional edit
+needed for that question.
+Whole-article checks: contradictions with code; duplicate explanations; conflicting
+descriptions of the same mechanism; unnecessary repetition; intro-heavy changes;
+invented / search-only information. Do not leave two competing explanations (e.g.
+completion when no tool calls vs finish tool — clarify the relationship rather than
+add another paragraph). Also verify bidirectional opportunity ↔ section_edit
+consistency below — especially that any title/H1 section_edit has a matching
+opportunity with that exact H1 target_heading (or remove the H1 section_edit).
+
+APPLIED-CHANGE CONTRACT / OPPORTUNITY ↔ SECTION_EDIT (critical — Python enforces;
+PR #48 bidirectional consistency adapted to section_edits):
+An opportunity = a meaningful change that was actually applied via a section_edit.
+- No idea-only opportunities; no opportunities for NO GAP / strong questions.
+- No opportunities whose recommended_change requires info absent from CURRENT.
+- If you emit an opportunity → you MUST include a matching section_edit for that
+  exact existing target_heading with a substantive replacement_body.
+- If you emit a section_edit → you MUST emit ≥1 opportunity with the SAME exact
+  target_heading (including title / leading H1 — no exceptions).
+- Prefer leaving the document title / leading H1 unchanged unless a selected
+  question specifically requires editing that section. If you edit the H1 body,
+  opportunity.target_heading MUST be that exact H1 text.
+- Multiple opportunities may target the same section → emit exactly ONE section_edit
+  with the final complete replacement_body for that section.
 - If you consider a gap but do NOT edit that section → do NOT emit that opportunity.
-- If there are no substantive edits → return opportunities: [] (do not invent rows).
-- Minor whitespace / Markdown normalization alone is NOT a substantive edit and
-  must not produce opportunity records.
+- If there are no substantive edits → return opportunities: [] and section_edits: [].
+- Minor whitespace / Markdown normalization alone is NOT a substantive edit.
+- evidence_quote MUST be a verbatim substring of CURRENT.
 
-FOR EACH QUESTION whose gap you actually fix in recommended_markdown, emit:
+FOR EACH QUESTION whose gap you actually fix via a section_edit, emit:
 - question
-- gap (what is missing/weak for answer engines)
+- gap (the real answerability problem — CLARITY or INFORMATION in CURRENT terms,
+  not a restatement and not a search-import excuse)
 - target_heading (MUST be an existing H1–H6 heading from CURRENT, exact text)
-- recommended_change (description of the edit you applied in that section)
+- recommended_change (description of the CURRENT-grounded edit you applied)
 - evidence_quote (MUST be copied verbatim from CURRENT and support the change)
 - answerability: strong | weak | missing
+  (prefer weak for CLARITY GAP; missing for INFORMATION GAP grounded in CURRENT;
+   NO GAP questions usually have no opportunity row)
 
-Then produce recommended_markdown (full article) and change_explanations (short bullets).
-
-SELF-CHECK BEFORE RETURNING (must all be true):
-- I inspected the whole article, not just the intro
-- I considered the logically relevant EXISTING section for each question
-- Improvements are located where the information belongs
-- Changes are NOT intro-concentrated
-- Multiple sections are touched when questions span topics
-- Every opportunity maps to an applied section edit in recommended_markdown
-- Every substantive recommended_markdown section edit has a matching opportunity
-- Every evidence_quote is verbatim from CURRENT
-- Structure, order, and voice are preserved
-- No unnecessary rewriting; no invented facts
-- No opportunity rows for gaps I did not actually edit
+Then produce section_edits (changed sections only) and change_explanations
+(short bullets describing only material CURRENT-grounded applied edits).
 
 Respond with JSON ONLY:
 {{
@@ -446,10 +868,15 @@ Respond with JSON ONLY:
       "target_heading": "...",
       "recommended_change": "...",
       "evidence_quote": "...",
-      "answerability": "strong|weak|missing"
+      "answerability": "weak|missing"
     }}
   ],
-  "recommended_markdown": "... complete markdown article only ...",
+  "section_edits": [
+    {{
+      "target_heading": "... exact existing CURRENT heading ...",
+      "replacement_body": "... complete new body without the heading line ..."
+    }}
+  ],
   "change_explanations": ["...", "..."]
 }}
 
@@ -461,9 +888,153 @@ ARTICLE>>>
 SELECTED QUESTIONS (LLM-GENERATED):
 {questions}
 
-OBSERVED VISIBILITY (API — not consumer ChatGPT/Gemini UI):
+OBSERVED VISIBILITY (API — diagnostic only; not a content source):
 {visibility}
 """
+
+
+MAX_RECOMMENDATION_ATTEMPTS = 3
+
+_TRANSIENT_LLM_ERROR_MARKERS = (
+    "LLM request failed",
+    "LLM HTTP ",
+)
+
+
+def _is_transient_llm_error(exc: BaseException) -> bool:
+    """True for transport/API failures with no model output to repair against."""
+    if isinstance(exc, (TimeoutError, ConnectionError, OSError)):
+        return True
+    msg = str(exc)
+    return any(marker in msg for marker in _TRANSIENT_LLM_ERROR_MARKERS)
+
+
+def _is_orphan_section_edit_error(error: str) -> bool:
+    """True when pre-apply orphan section_edit gate or reverse invariant failed."""
+    msg = error or ""
+    return (
+        "Orphan section_edit" in msg
+        or "without matching opportunities" in msg
+    )
+
+
+def _with_repair_feedback(
+    base_prompt: str,
+    error: str,
+    *,
+    second_repair: bool,
+) -> str:
+    """Append targeted repair instructions; keep original CURRENT in base_prompt."""
+    note = (
+        "This is a second repair attempt. Fix only the latest failure below.\n\n"
+        if second_repair
+        else ""
+    )
+    if _is_orphan_section_edit_error(error):
+        # Pre-apply orphan gate or post-apply reverse invariant.
+        # Quote the validator error (exact headings) — add opp OR remove edit.
+        specific = (
+            "ORPHAN SECTION_EDIT / REVERSE INVARIANT FAILURE:\n"
+            "The validator error above lists the exact heading(s) that have a "
+            "section_edit (or a substantive body change) without a matching "
+            "opportunity.\n"
+            "For EACH listed heading you MUST either:\n"
+            "  (A) add ≥1 opportunity with the SAME exact target_heading, OR\n"
+            "  (B) remove those section_edits / leave that section unchanged.\n"
+            "Prefer leaving the document title / leading H1 unchanged unless a "
+            "selected question specifically requires editing that section.\n"
+            "If the listed heading is the document title / leading H1 and no "
+            "selected question requires changing it, choose (B) — remove the "
+            "H1/title section_edit.\n"
+            "Do NOT regenerate the complete article.\n"
+            "Do NOT invent new headings. Do NOT rewrite unrelated sections.\n"
+            "Return only opportunities and section_edits; Python assembles "
+            "RECOMMENDED.md from ORIGINAL CURRENT + section_edits.\n"
+            "Return JSON ONLY using the required schema.\n"
+        )
+        return (
+            f"{base_prompt.rstrip()}\n\n"
+            "REPAIR FEEDBACK:\n"
+            "The previous recommendation failed deterministic validation.\n\n"
+            "Validator error:\n"
+            f"{error}\n\n"
+            f"{note}"
+            "Repair this exact failure.\n"
+            "Do not make unrelated changes.\n"
+            f"{specific}"
+        )
+
+    # Do not use str.format on ``error`` — it may contain braces.
+    return (
+        f"{base_prompt.rstrip()}\n\n"
+        "REPAIR FEEDBACK:\n"
+        "The previous recommendation failed deterministic validation.\n\n"
+        "Validator error:\n"
+        f"{error}\n\n"
+        f"{note}"
+        "Repair this exact failure.\n"
+        "Do not make unrelated changes.\n"
+        "Do not regenerate the complete article.\n"
+        "Return only opportunities and section_edits; Python assembles RECOMMENDED.md "
+        "from ORIGINAL CURRENT + section_edits.\n"
+        "Re-evaluate the opportunity and section_edits together.\n"
+        "If the opportunity is not justified, remove the opportunity instead of "
+        "forcing an edit.\n"
+        "If the opportunity is justified, apply the corresponding meaningful edit "
+        "in the correct existing section via section_edits.\n"
+        "Return JSON ONLY using the required schema.\n"
+    )
+
+
+def _bundle_from_llm_raw(
+    raw: Any,
+    *,
+    article: Article,
+    model: str,
+) -> RecommendationBundle:
+    """Parse section_edits, assemble RECOMMENDED from ORIGINAL CURRENT, validate."""
+    if not isinstance(raw, dict):
+        raise LLMError("Recommendations response must be a JSON object")
+
+    opportunities = _parse_opportunities(raw, article)
+    section_edits = _parse_section_edits(raw, article)
+    # Pre-apply gate: orphan section_edits must not mutate CURRENT.
+    _assert_opportunity_section_edit_consistency(
+        opportunities,
+        section_edits,
+        leading_h1=_intro_heading(article),
+    )
+
+    # Always assemble from ORIGINAL CURRENT — never from a prior failed RECOMMENDED.
+    recommended = _apply_section_edits(article.markdown, section_edits)
+    # Second line of defense for apply bugs (false-positive H1 mutation, etc.).
+    _assert_assembly_matches_section_edits(
+        article.markdown, recommended, section_edits
+    )
+
+    explanations = [
+        str(x).strip()
+        for x in (raw.get("change_explanations") or [])
+        if str(x).strip()
+    ]
+
+    # Opportunity ↔ applied body reverse invariant (kept; post-assembly).
+    warnings = validate_recommended_markdown(
+        article.markdown,
+        recommended,
+        article=article,
+        opportunities=opportunities,
+    )
+
+    return RecommendationBundle(
+        opportunities=opportunities,
+        recommended_markdown=recommended,
+        change_explanations=explanations,
+        validation_warnings=warnings,
+        model=model,
+        source="llm_generated",
+        section_edits=section_edits,
+    )
 
 
 def generate_recommendations(
@@ -473,7 +1044,15 @@ def generate_recommendations(
     *,
     client: SupportsRespondJSON | None = None,
 ) -> RecommendationBundle:
-    """LLM full-document opportunities + complete recommended Markdown."""
+    """LLM opportunities + section_edits; Python assembles complete Markdown.
+
+    One LLM call per attempt. On deterministic validation / JSON-schema failure,
+    retry up to twice with the same base prompt plus targeted repair feedback
+    containing the exact error (max 3 attempts). Transient transport/API errors
+    retry the original prompt without repair feedback. Failed RECOMMENDED is never
+    used as CURRENT — every attempt reasons from the original article and returns
+    section_edits only; Python applies them onto ORIGINAL CURRENT.
+    """
     llm: SupportsRespondJSON = client or LLMClient()
     if client is None and isinstance(llm, LLMClient) and not llm.available():
         raise LLMError("AEO_LLM_API_KEY required for recommendations (no template fallback)")
@@ -504,7 +1083,8 @@ def generate_recommendations(
     else:
         vis_payload = visibility.to_dict()
 
-    prompt = _RECOMMEND_PROMPT.format(
+    # Base prompt always uses ORIGINAL CURRENT — never a failed RECOMMENDED.
+    base_prompt = _RECOMMEND_PROMPT.format(
         article=article.markdown,
         questions=json.dumps(
             {"questions": q_payload, "existing_headings": heading_inventory},
@@ -512,33 +1092,36 @@ def generate_recommendations(
         ),
         visibility=json.dumps(vis_payload, indent=2)[:60000],
     )
-    raw = llm.respond_json(prompt, max_output_tokens=8192)
-    if not isinstance(raw, dict):
-        raise LLMError("Recommendations response must be a JSON object")
 
-    opportunities = _parse_opportunities(raw, article)
-    recommended = str(raw.get("recommended_markdown") or "").strip()
-    if not recommended:
-        raise LLMError("LLM did not return recommended_markdown")
+    next_repair_error: str | None = None
+    repairs_sent = 0
+    last_error: LLMError | None = None
+    model = getattr(llm, "model", "") or ""
 
-    explanations = [
-        str(x).strip()
-        for x in (raw.get("change_explanations") or [])
-        if str(x).strip()
-    ]
+    for attempt in range(1, MAX_RECOMMENDATION_ATTEMPTS + 1):
+        if next_repair_error is None:
+            prompt = base_prompt
+        else:
+            prompt = _with_repair_feedback(
+                base_prompt,
+                next_repair_error,
+                second_repair=repairs_sent >= 1,
+            )
+            repairs_sent += 1
 
-    warnings = validate_recommended_markdown(
-        article.markdown,
-        recommended,
-        article=article,
-        opportunities=opportunities,
-    )
+        try:
+            raw = llm.respond_json(prompt, max_output_tokens=8192)
+            return _bundle_from_llm_raw(raw, article=article, model=model)
+        except LLMError as exc:
+            last_error = exc
+            if attempt >= MAX_RECOMMENDATION_ATTEMPTS:
+                break
+            if _is_transient_llm_error(exc):
+                # Transport/API redraw — same original prompt, no repair block.
+                next_repair_error = None
+            else:
+                # JSON/schema or deterministic Markdown validation — targeted repair.
+                next_repair_error = str(exc)
 
-    return RecommendationBundle(
-        opportunities=opportunities,
-        recommended_markdown=recommended,
-        change_explanations=explanations,
-        validation_warnings=warnings,
-        model=getattr(llm, "model", "") or "",
-        source="llm_generated",
-    )
+    assert last_error is not None
+    raise last_error

@@ -37,6 +37,10 @@ class LLMResult:
     had_web_search_call: bool = False
     llm_called: bool = True
     model: str = ""
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    status: str | None = None
+    incomplete_reason: str | None = None
 
 
 _LLM_CALLS = 0
@@ -47,6 +51,47 @@ def reset_execution_flags() -> None:
     global _LLM_CALLS, _RETRIEVAL_EVIDENCE
     _LLM_CALLS = 0
     _RETRIEVAL_EVIDENCE = 0
+
+
+def extract_response_usage(data: dict[str, Any]) -> dict[str, Any]:
+    """Extract Responses API usage/status fields when present; else nulls.
+
+    Only records fields that exist on the payload — no invented metrics.
+    """
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    incomplete = (
+        data.get("incomplete_details")
+        if isinstance(data.get("incomplete_details"), dict)
+        else {}
+    )
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    if "input_tokens" in usage and usage.get("input_tokens") is not None:
+        try:
+            input_tokens = int(usage["input_tokens"])
+        except (TypeError, ValueError):
+            input_tokens = None
+    if "output_tokens" in usage and usage.get("output_tokens") is not None:
+        try:
+            output_tokens = int(usage["output_tokens"])
+        except (TypeError, ValueError):
+            output_tokens = None
+
+    status = data.get("status")
+    if status is not None:
+        status = str(status)
+
+    incomplete_reason: str | None = None
+    if incomplete and incomplete.get("reason") not in (None, ""):
+        incomplete_reason = str(incomplete.get("reason"))
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "status": status,
+        "incomplete_reason": incomplete_reason,
+    }
 
 
 def llm_used() -> bool:
@@ -242,6 +287,7 @@ class LLMClient:
         self.timeout_s = float(timeout_s if timeout_s is not None else settings.llm_timeout_s)
         self.max_uses = max(1, min(5, settings.web_search_max_uses))
         self.max_results = max(1, min(10, settings.web_search_max_results))
+        self.last_result: LLMResult | None = None
 
     def available(self) -> bool:
         return bool(self.api_key)
@@ -315,7 +361,8 @@ class LLMClient:
                 "Refusing to treat as AI search visibility."
             )
 
-        return LLMResult(
+        usage_meta = extract_response_usage(data)
+        result = LLMResult(
             text=parsed["answer_text"] or "",
             raw=data,
             search_queries=list(parsed["search_queries"]),
@@ -324,7 +371,13 @@ class LLMClient:
             had_web_search_call=bool(parsed["had_web_search_call"]),
             llm_called=True,
             model=self.model,
+            input_tokens=usage_meta["input_tokens"],
+            output_tokens=usage_meta["output_tokens"],
+            status=usage_meta["status"],
+            incomplete_reason=usage_meta["incomplete_reason"],
         )
+        self.last_result = result
+        return result
 
     def respond_json(
         self,

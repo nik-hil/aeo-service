@@ -74,3 +74,42 @@ def test_replace_section_preserves_siblings():
     assert "Replaced body only." in updated
     assert "Body of first." in updated
     assert "Body of third." in updated
+
+
+def test_replace_section_exact_does_not_apply_substring_to_h1():
+    """exact=True avoids applying an H2-named edit onto an H1 that contains that text."""
+    md = """# Agents Zero to Hero #12: Building AI Subagents with Context Isolation
+
+Intro about the series episode.
+
+## Building AI Subagents with Context Isolation
+
+H2 body about isolation.
+
+## Other Section
+
+Other body.
+"""
+    # Fuzzy (default) may match H1 because the H2 text is a substring of the H1.
+    fuzzy = replace_section_body(
+        md, "Building AI Subagents with Context Isolation", "FUZZY_BODY\n"
+    )
+    # Exact must only touch the H2, leaving the H1 intro intact.
+    exact = replace_section_body(
+        md,
+        "Building AI Subagents with Context Isolation",
+        "EXACT_H2_BODY\n",
+        exact=True,
+    )
+    sections_exact = parse_sections(exact)
+    h1 = next(s for s in sections_exact if s.level == 1)
+    h2 = next(
+        s
+        for s in sections_exact
+        if s.heading == "Building AI Subagents with Context Isolation"
+    )
+    assert "Intro about the series episode." in h1.body
+    assert "EXACT_H2_BODY" in h2.body
+    assert "EXACT_H2_BODY" not in h1.body
+    # Document that fuzzy behaviour can differ (regression guard for exact path).
+    assert "FUZZY_BODY" in fuzzy

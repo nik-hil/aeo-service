@@ -5,7 +5,9 @@ import pytest
 from aeo_mvp.article import load_hashnode_markdown
 from aeo_mvp.llm import LLMError, reset_execution_flags
 from aeo_mvp.queries import Query, QuerySet
+from aeo_mvp.markdown import parse_sections
 from aeo_mvp.recommendations import (
+    MAX_RECOMMENDATION_ATTEMPTS,
     Opportunity,
     evidence_quote_in_article,
     generate_recommendations,
@@ -32,6 +34,34 @@ A minimal harness needs read, write, and shell tools.
 """
 
 
+def _loop_body_edited() -> str:
+    return (
+        "The agent loop lets a model call tools, see results, and decide whether to continue.\n"
+        "In short, it is the control flow that keeps calling tools until the task is done."
+    )
+
+
+def _tools_body_edited() -> str:
+    return (
+        "Tool calling works by giving the model a schema of available functions.\n"
+        "The host executes the named function and returns the observation to the model."
+    )
+
+
+def _loop_section_edit() -> dict:
+    return {
+        "target_heading": "What is an agent loop?",
+        "replacement_body": _loop_body_edited(),
+    }
+
+
+def _tools_section_edit() -> dict:
+    return {
+        "target_heading": "How tool calling works",
+        "replacement_body": _tools_body_edited(),
+    }
+
+
 class ScriptedLLM:
     def __init__(self, payload: dict):
         self.payload = payload
@@ -46,6 +76,29 @@ class ScriptedLLM:
         self.calls += 1
         llm_mod._LLM_CALLS += 1
         return self.payload
+
+
+class SequencingLLM:
+    """Mock that returns/raises a scripted sequence of respond_json outcomes."""
+
+    def __init__(self, outcomes: list):
+        self.outcomes = list(outcomes)
+        self.model = "mock-model"
+        self.calls = 0
+        self.prompts: list[str] = []
+
+    def respond_json(self, prompt: str, *, max_output_tokens: int = 4096):
+        import aeo_mvp.llm as llm_mod
+
+        self.prompts.append(prompt)
+        self.calls += 1
+        llm_mod._LLM_CALLS += 1
+        if not self.outcomes:
+            raise LLMError("SequencingLLM exhausted scripted outcomes")
+        item = self.outcomes.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
 
 
 def _good_recommended(*, edit_loop: bool = True, edit_tools: bool = False) -> str:
@@ -299,7 +352,7 @@ def test_generate_recommendations_prompt_is_full_document_and_schema():
                 "answerability": "weak",
             }
         ],
-        "recommended_markdown": _good_recommended(),
+        "section_edits": [_loop_section_edit()],
         "change_explanations": ["Clarified agent loop lead sentence."],
     }
     client = ScriptedLLM(payload)
@@ -316,6 +369,372 @@ def test_generate_recommendations_prompt_is_full_document_and_schema():
     assert bundle.opportunities[0].gap
     assert bundle.opportunities[0].target_heading == "What is an agent loop?"
     assert bundle.source == "llm_generated"
+
+
+def _prompt_from_generate() -> str:
+    """Capture the recommendation prompt via a no-op (empty-ops) mocked call."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    payload = {
+        "opportunities": [],
+        "section_edits": [],
+        "change_explanations": [],
+    }
+    client = ScriptedLLM(payload)
+    generate_recommendations(article, qs, VisibilityReport(), client=client)
+    return client.prompts[0]
+
+
+def test_recommend_prompt_embeds_systematic_decision_method():
+    """Prompt contract: full decision method for sufficient answerability."""
+    prompt = _prompt_from_generate()
+    for marker in (
+        "STEP 1",
+        "STEP 2",
+        "STEP 3",
+        "STEP 4",
+        "STEP 5",
+        "STEP 6",
+        "STEP 7",
+        "STEP 8",
+        "STEP 9",
+        "SUFFICIENT ANSWERABILITY WITH THE SMALLEST USEFUL CHANGE",
+        "INTERNAL ANSWER SUMMARY",
+        "NO GAP",
+        "CLARITY GAP",
+        "INFORMATION GAP",
+        "BEFORE / AFTER TEST",
+        "COUNTERFACTUAL TEST",
+        "STOPPING RULE PER QUESTION",
+        "DO NOT BECOME TOO CONSERVATIVE",
+        "CALIBRATED EXAMPLES",
+        "APPLIED-CHANGE CONTRACT",
+        "CONSISTENCY CHECK",
+        "CORE RULE",
+        "SOURCE PRIORITY",
+        "GROUNDING RULE",
+        "SECTION EDIT OUTPUT RULE",
+        "section_edits",
+    ):
+        assert marker in prompt, f"missing prompt marker: {marker}"
+    assert "tool_call_id" in prompt
+    assert "NOT EVERY QUESTION NEEDS A CHANGE" in prompt
+    assert "navigation" in prompt.lower()
+    assert "If I remove this edit, would an AI's answer become materially less" in prompt
+
+
+def test_prompt_current_is_content_source_of_truth():
+    """1. CURRENT = content source of truth."""
+    prompt = _prompt_from_generate()
+    assert "content source of truth" in prompt
+    assert "EDITOR of the existing article" in prompt or "editor of the existing article" in prompt.lower()
+    assert "not a researcher writing new content" in prompt.lower() or (
+        "not a researcher" in prompt
+    )
+
+
+def test_prompt_questions_are_optimization_targets():
+    """2. Questions = optimization targets."""
+    prompt = _prompt_from_generate()
+    assert "SELECTED QUESTIONS = optimization targets" in prompt or (
+        "optimization targets" in prompt
+    )
+
+
+def test_prompt_visibility_is_diagnostic_only():
+    """3. Visibility = diagnostic only (not a content source)."""
+    prompt = _prompt_from_generate()
+    assert "diagnostic evidence only" in prompt or "Diagnostic only" in prompt
+    assert "not a content source" in prompt.lower()
+    assert (
+        "Search evidence tells you WHAT may be weak. CURRENT.md tells you WHAT you are"
+        in prompt
+    )
+
+
+def test_prompt_rejects_search_only_fact():
+    """4. Search-only fact (e.g. OpenRouter) → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD search-only import" in prompt
+    assert "OpenRouter" in prompt
+    assert "OPENROUTER_API_KEY" in prompt
+    assert "Search finding it does NOT authorize it" in prompt or (
+        "Search evidence ≠ content license" in prompt
+    )
+
+
+def test_prompt_accepts_existing_relationship_made_explicit():
+    """5. Existing relationship made explicit → accept."""
+    prompt = _prompt_from_generate()
+    assert "GOOD missing relationship" in prompt
+    assert "tool_call_id" in prompt
+    assert "associates" in prompt or "association" in prompt
+
+
+def test_prompt_accepts_existing_facts_connected_causally():
+    """6. Existing facts connected causally → accept."""
+    prompt = _prompt_from_generate()
+    assert "GOOD connecting existing facts" in prompt
+    assert "revise and retry" in prompt or "failed result" in prompt
+
+
+def test_prompt_rejects_general_knowledge_not_in_current():
+    """7. General knowledge not in CURRENT → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD general-knowledge expansion" in prompt
+    assert "file/network" in prompt or "general knowledge" in prompt.lower()
+
+
+def test_strong_already_sufficient_allows_empty_opportunities():
+    """NO GAP → no opportunity / no edit (empty ops + CURRENT ok)."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(
+        selected=[
+            Query(text="What is an agent loop in tool-calling systems?"),
+            Query(text="How do tool schemas drive function calls?"),
+        ]
+    )
+    payload = {
+        "opportunities": [],
+        "section_edits": [],
+        "change_explanations": [],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert bundle.opportunities == []
+    assert bundle.recommended_markdown.strip() == ARTICLE.strip()
+    prompt = _prompt_from_generate()
+    assert "NO GAP" in prompt
+    assert "no opportunity, no edit" in prompt
+
+
+def test_prompt_clarity_gap_allows_meaningful_clarification():
+    """CLARITY GAP → meaningful clarification allowed (prompt + weak opp path)."""
+    prompt = _prompt_from_generate()
+    assert "CLARITY GAP" in prompt
+    assert "local clarification allowed" in prompt
+    assert "weak" in prompt
+
+
+def test_prompt_information_gap_allows_grounded_addition():
+    """INFORMATION GAP → CURRENT-grounded addition allowed; search-only → no invent."""
+    prompt = _prompt_from_generate()
+    assert "INFORMATION GAP" in prompt
+    assert "do not invent" in prompt
+    assert "missing entirely from CURRENT" in prompt or "not in CURRENT" in prompt
+    assert "GROUNDING RULE" in prompt
+
+
+def test_prompt_rejects_visible_code_narration():
+    """Visible-code narration → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD visible-code narration" in prompt
+    assert "append tool result" in prompt or "appends tool" in prompt
+    assert "no meaningful answer value" in prompt
+
+
+def test_prompt_rejects_paraphrase():
+    """Paraphrase → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD paraphrase" in prompt
+    assert "LLM makes decisions" in prompt or "same meaning" in prompt
+    assert "COUNTERFACTUAL TEST" in prompt
+    assert "BEFORE / AFTER TEST" in prompt
+    assert "sounds better" in prompt or "more SEO" in prompt
+
+
+def test_prompt_keeps_missing_relationship():
+    """Missing relationship → keep."""
+    prompt = _prompt_from_generate()
+    assert "GOOD missing relationship" in prompt
+    assert "tool_call_id" in prompt
+    assert "associates" in prompt or "association" in prompt or "specific tool request" in prompt
+
+
+def test_prompt_keeps_connecting_existing_facts():
+    """Connecting existing facts → keep."""
+    prompt = _prompt_from_generate()
+    assert "GOOD connecting existing facts" in prompt
+    assert "revise and retry" in prompt or "failed result" in prompt
+
+
+def test_prompt_stop_after_sufficiency():
+    """Stop after sufficiency."""
+    prompt = _prompt_from_generate()
+    assert "STOPPING RULE PER QUESTION" in prompt
+    assert "sufficiently complete and unambiguous → STOP" in prompt
+    assert "internal answer summary" in prompt.lower() or "INTERNAL ANSWER SUMMARY" in prompt
+    assert "Do not edit merely because search has more information" in prompt
+
+
+def test_prompt_rejects_second_redundant_edit():
+    """Second redundant edit → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD polish after sufficiency" in prompt
+    assert "second paragraph restating" in prompt or "second, independent" in prompt
+    assert "Do not keep editing because words could still be improved" in prompt
+
+
+def test_prompt_article_code_contradiction_check():
+    """Article/code contradiction + competing-explanation check."""
+    prompt = _prompt_from_generate()
+    assert "contradictions with code" in prompt
+    assert "competing explanations" in prompt or "two competing explanations" in prompt
+    assert "finish tool" in prompt
+
+
+def test_prompt_do_not_become_too_conservative():
+    """Partial answers can still need real improvement (CURRENT-authorized)."""
+    prompt = _prompt_from_generate()
+    assert "DO NOT BECOME TOO CONSERVATIVE" in prompt
+    assert "only edit when absolutely no information exists" in prompt
+    assert "tool-call message" in prompt or "subsequent tool result" in prompt
+
+
+def test_implicit_gap_targets_existing_local_section():
+    """CLARITY / implicit gap → targeted local improvement in owning section."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    recommended = _good_recommended(edit_loop=False, edit_tools=True)
+    warnings = validate_recommended_markdown(
+        ARTICLE,
+        recommended,
+        article=article,
+        opportunities=[_tools_opp()],
+    )
+    assert isinstance(warnings, list)
+    assert "returns the observation" in recommended
+    assert recommended.startswith("# Agents Zero to Hero\n\nIntro about agents")
+
+
+def test_missing_grounded_element_allows_local_addition():
+    """INFORMATION GAP → local grounded addition under correct heading."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": (
+                    "Article never states that the loop continues until the model "
+                    "stops requesting tools — answer engines miss the termination cue."
+                ),
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": (
+                    "Add one sentence: the loop keeps calling tools until the task is done."
+                ),
+                "answerability": "missing",
+            }
+        ],
+        "section_edits": [_loop_section_edit()],
+        "change_explanations": ["Added loop termination cue under agent loop section."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert len(bundle.opportunities) == 1
+    assert bundle.opportunities[0].answerability == "missing"
+    assert bundle.opportunities[0].target_heading == "What is an agent loop?"
+    assert "keeps calling tools until the task is done" in bundle.recommended_markdown
+
+
+def test_partial_clarification_opportunity_maps_to_weak():
+    """CLARITY GAP → weak opportunity + local section edit."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="How do tool schemas drive function calls?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "How do tool schemas drive function calls?",
+                "gap": (
+                    "Schemas are mentioned but the host observation handoff is "
+                    "under-explained — partial answer needs that relationship."
+                ),
+                "evidence_quote": (
+                    "Tool calling works by giving the model a schema of available functions."
+                ),
+                "target_heading": "How tool calling works",
+                "recommended_change": (
+                    "Clarify that the host executes the named function and returns "
+                    "the observation to the model."
+                ),
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [_tools_section_edit()],
+        "change_explanations": ["Clarified host observation handoff under tool calling."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert len(bundle.opportunities) == 1
+    assert bundle.opportunities[0].answerability == "weak"
+    assert bundle.opportunities[0].target_heading == "How tool calling works"
+
+
+def test_second_redundant_edit_after_sufficiency_not_required():
+    """After sufficiency, no redundant second section edit required."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(
+        selected=[
+            Query(text="What is an agent loop in tool-calling systems?"),
+            Query(text="How do tool schemas drive function calls?"),
+        ]
+    )
+    payload = {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Termination cue under-explained.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Add loop-continues-until-done clarification.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [_loop_section_edit()],
+        "change_explanations": ["One clarification; stopped after sufficiency."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert len(bundle.opportunities) == 1
+    tools_before = next(
+        s.body for s in article.sections if s.heading == "How tool calling works"
+    )
+    tools_after = next(
+        s.body
+        for s in parse_sections(bundle.recommended_markdown)
+        if s.heading == "How tool calling works"
+    )
+    assert tools_before.strip() == tools_after.strip()
+
+
+def test_meaningful_ops_can_modify_multiple_sections():
+    """11. Multiple genuine gaps can still modify multiple sections."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    recommended = _good_recommended(edit_loop=True, edit_tools=True)
+    warnings = validate_recommended_markdown(
+        ARTICLE,
+        recommended,
+        article=article,
+        opportunities=[_loop_opp(), _tools_opp()],
+    )
+    assert isinstance(warnings, list)
+    loop_body = next(
+        s.body for s in article.sections if s.heading == "What is an agent loop?"
+    )
+    new_secs = {s.heading: s.body for s in parse_sections(recommended)}
+    assert new_secs["What is an agent loop?"] != loop_body
+    assert "returns the observation" in new_secs["How tool calling works"]
 
 
 def test_ungrounded_or_invalid_opportunities_dropped():
@@ -342,8 +761,8 @@ def test_ungrounded_or_invalid_opportunities_dropped():
                 "recommended_change": "add",
             },
         ],
-        # No valid opportunities survive parsing → RECOMMENDED must stay non-substantive.
-        "recommended_markdown": ARTICLE,
+        # No valid opportunities survive parsing → no section_edits.
+        "section_edits": [],
         "change_explanations": [],
     }
     bundle = generate_recommendations(article, qs, None, client=ScriptedLLM(payload))
@@ -372,3 +791,832 @@ Tool calling works by giving the model a schema of available functions.
         validate_recommended_markdown(
             ARTICLE, reordered, article=article, opportunities=[]
         )
+
+
+def _valid_loop_payload() -> dict:
+    return {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Termination cue under-explained.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Add loop-continues-until-done clarification.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [_loop_section_edit()],
+        "change_explanations": ["Clarified agent loop."],
+    }
+
+
+def _invalid_unchanged_target_payload() -> dict:
+    """Opportunity claims a section edit but no section_edit is returned."""
+    return {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Needs clarification.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Clarify lead.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [],
+        "change_explanations": ["noop"],
+    }
+
+
+def _article_block_from_prompt(prompt: str) -> str:
+    start = prompt.find("<<<ARTICLE\n")
+    end = prompt.find("\nARTICLE>>>")
+    assert start >= 0 and end > start
+    return prompt[start + len("<<<ARTICLE\n") : end]
+
+
+def test_recommend_success_first_attempt_is_single_llm_call():
+    """Successful first attempt → exactly one recommendation LLM call."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM([_valid_loop_payload()])
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 1
+    assert "REPAIR FEEDBACK" not in client.prompts[0]
+    assert bundle.opportunities[0].target_heading == "What is an agent loop?"
+    assert "SECTION EDIT OUTPUT RULE" in client.prompts[0]
+
+
+def test_transient_llm_error_retries_original_prompt_without_repair():
+    """Transient LLM/API error → retry with original prompt, no repair feedback."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            LLMError("LLM request failed: connection reset"),
+            _valid_loop_payload(),
+        ]
+    )
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 2
+    assert "REPAIR FEEDBACK" not in client.prompts[0]
+    assert "REPAIR FEEDBACK" not in client.prompts[1]
+    assert _article_block_from_prompt(client.prompts[0]) == _article_block_from_prompt(
+        client.prompts[1]
+    )
+    assert bundle.opportunities
+
+
+def test_validator_failure_retry_includes_exact_error():
+    """Deterministic validator failure → next prompt contains exact error."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            _invalid_unchanged_target_payload(),
+            _valid_loop_payload(),
+        ]
+    )
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 2
+    repair = client.prompts[1]
+    assert "REPAIR FEEDBACK" in repair
+    assert "missing section_edit" in repair or "section_edits" in repair.lower()
+    assert "Validator error:" in repair
+    assert "Do not regenerate the complete article." in repair
+    assert "section_edits" in repair
+    assert bundle.opportunities[0].target_heading == "What is an agent loop?"
+
+
+def test_repair_prompt_still_contains_pr49_recommendation_instructions():
+    """Retry prompt still contains original PR #49 recommendation instructions."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            _invalid_unchanged_target_payload(),
+            _valid_loop_payload(),
+        ]
+    )
+    generate_recommendations(article, qs, VisibilityReport(), client=client)
+    repair = client.prompts[1]
+    for marker in (
+        "CORE RULE",
+        "SOURCE PRIORITY",
+        "GROUNDING RULE",
+        "COUNTERFACTUAL TEST",
+        "APPLIED-CHANGE CONTRACT",
+        "SECTION EDIT OUTPUT RULE",
+        "content source of truth",
+    ):
+        assert marker in repair, f"missing in repair prompt: {marker}"
+
+
+def test_second_validation_failure_uses_latest_error_on_third_attempt():
+    """Second validation failure → further repair with latest error only."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    # Attempt1: missing section_edit; Attempt2: empty replacement; Attempt3: ok
+    bad_empty_body = {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Needs clarification.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Clarify lead.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [
+            {
+                "target_heading": "What is an agent loop?",
+                "replacement_body": "   ",
+            }
+        ],
+        "change_explanations": [],
+    }
+    client = SequencingLLM(
+        [
+            _invalid_unchanged_target_payload(),
+            bad_empty_body,
+            _valid_loop_payload(),
+        ]
+    )
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 3
+    assert "REPAIR FEEDBACK" in client.prompts[1]
+    assert "REPAIR FEEDBACK" in client.prompts[2]
+    assert "This is a second repair attempt" in client.prompts[2]
+    assert "replacement_body is empty" in client.prompts[2]
+    assert bundle.opportunities
+
+
+def test_recommendation_attempts_capped_at_three():
+    """No more than 3 recommendation attempts."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            _invalid_unchanged_target_payload(),
+            _invalid_unchanged_target_payload(),
+            _invalid_unchanged_target_payload(),
+            _valid_loop_payload(),  # must never be consumed
+        ]
+    )
+    with pytest.raises(LLMError, match="missing section_edit|section_edits"):
+        generate_recommendations(article, qs, VisibilityReport(), client=client)
+    assert client.calls == MAX_RECOMMENDATION_ATTEMPTS == 3
+    assert len(client.outcomes) == 1  # fourth payload unused
+
+
+def test_failed_recommended_never_becomes_current_on_retry():
+    """Failed response is never used as CURRENT for the next attempt."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    failed = {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Needs clarification.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Clarify lead.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [
+            {
+                "target_heading": "What is an agent loop?",
+                "replacement_body": (
+                    "UNIQUE_FAILED_RECOMMENDED_MARKER_XYZ\n"
+                    "The agent loop lets a model call tools."
+                ),
+            }
+        ],
+        "change_explanations": ["bad"],
+    }
+    # This fails evidence/validation or succeeds assembly - make it fail via
+    # also returning forbidden recommended_markdown so parse raises before apply.
+    failed["recommended_markdown"] = (
+        "# Spoofed Full Article\n\nUNIQUE_FAILED_RECOMMENDED_MARKER_XYZ\n"
+    )
+    client = SequencingLLM([failed, _valid_loop_payload()])
+    generate_recommendations(article, qs, VisibilityReport(), client=client)
+    assert client.calls == 2
+    assert "UNIQUE_FAILED_RECOMMENDED_MARKER_XYZ" not in _article_block_from_prompt(
+        client.prompts[1]
+    )
+    assert _article_block_from_prompt(client.prompts[0]) == article.markdown
+    assert _article_block_from_prompt(client.prompts[1]) == article.markdown
+
+
+def test_repaired_response_that_passes_is_returned():
+    """Repaired response that passes validation is returned normally."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = SequencingLLM(
+        [
+            LLMError("Could not parse JSON from LLM response: ['Expecting value']"),
+            _valid_loop_payload(),
+        ]
+    )
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 2
+    assert "REPAIR FEEDBACK" in client.prompts[1]
+    assert "Could not parse JSON" in client.prompts[1]
+    assert bundle.source == "llm_generated"
+    assert "keeps calling tools until the task is done" in bundle.recommended_markdown
+
+
+def test_bidirectional_consistency_still_enforced_after_retry_path():
+    """PR #48 bidirectional opp ↔ RECOMMENDED consistency still enforced."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    with pytest.raises(LLMError, match="unchanged|applied"):
+        validate_recommended_markdown(
+            ARTICLE,
+            ARTICLE,
+            article=article,
+            opportunities=[_loop_opp()],
+        )
+    with pytest.raises(LLMError, match="without matching opportunities"):
+        validate_recommended_markdown(
+            ARTICLE,
+            _good_recommended(edit_loop=True, edit_tools=False),
+            article=article,
+            opportunities=[],
+        )
+
+
+def test_section_edits_assemble_complete_recommended_markdown():
+    """1. LLM returns section edits → bundle.recommended_markdown is Python-complete."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    client = ScriptedLLM(_valid_loop_payload())
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert "# Agents Zero to Hero" in bundle.recommended_markdown
+    assert "## Choosing tools for a harness" in bundle.recommended_markdown
+    assert "keeps calling tools until the task is done" in bundle.recommended_markdown
+    assert len(bundle.section_edits) == 1
+
+
+def test_untouched_sections_unchanged_when_editing_one():
+    """2. Untouched sections unchanged (edit only section #2)."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="How do tool schemas drive function calls?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "How do tool schemas drive function calls?",
+                "gap": "Host observation understated.",
+                "evidence_quote": (
+                    "Tool calling works by giving the model a schema of available functions."
+                ),
+                "target_heading": "How tool calling works",
+                "recommended_change": "Mention host observation.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [_tools_section_edit()],
+        "change_explanations": ["tools only"],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    secs = {s.heading: s.body for s in parse_sections(bundle.recommended_markdown)}
+    orig = {s.heading: s.body for s in article.sections}
+    assert secs["What is an agent loop?"] == orig["What is an agent loop?"]
+    assert secs["Choosing tools for a harness"] == orig["Choosing tools for a harness"]
+    assert secs["How tool calling works"] != orig["How tool calling works"]
+
+
+def test_section_deletion_impossible_through_assembly():
+    """3. Section deletion impossible through assembly (preservation by construction)."""
+    from aeo_mvp.recommendations import SectionEdit, _apply_section_edits
+
+    article = load_hashnode_markdown(text=ARTICLE)
+    edited = _apply_section_edits(
+        article.markdown,
+        [
+            SectionEdit(
+                target_heading="What is an agent loop?",
+                replacement_body=_loop_body_edited(),
+            )
+        ],
+    )
+    orig_heads = [s.heading for s in parse_sections(article.markdown)]
+    new_heads = [s.heading for s in parse_sections(edited)]
+    assert orig_heads == new_heads
+
+
+def test_multiple_section_edits_apply():
+    """4. Multiple section edits."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(
+        selected=[
+            Query(text="What is an agent loop in tool-calling systems?"),
+            Query(text="How do tool schemas drive function calls?"),
+        ]
+    )
+    payload = {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": "Termination cue.",
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": "Clarify loop.",
+                "answerability": "weak",
+            },
+            {
+                "question": "How do tool schemas drive function calls?",
+                "gap": "Host observation.",
+                "evidence_quote": (
+                    "Tool calling works by giving the model a schema of available functions."
+                ),
+                "target_heading": "How tool calling works",
+                "recommended_change": "Clarify host.",
+                "answerability": "weak",
+            },
+        ],
+        "section_edits": [_loop_section_edit(), _tools_section_edit()],
+        "change_explanations": ["two sections"],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert len(bundle.section_edits) == 2
+    assert "keeps calling tools until the task is done" in bundle.recommended_markdown
+    assert "returns the observation" in bundle.recommended_markdown
+
+
+def test_duplicate_section_edits_rejected():
+    """5. Duplicate section_edits → LLMError."""
+    from aeo_mvp.recommendations import _parse_section_edits
+
+    article = load_hashnode_markdown(text=ARTICLE)
+    raw = {
+        "section_edits": [
+            _loop_section_edit(),
+            dict(_loop_section_edit()),
+        ]
+    }
+    with pytest.raises(LLMError, match="Duplicate section_edit"):
+        _parse_section_edits(raw, article)
+
+
+def test_unknown_section_edit_heading_rejected():
+    """6. Unknown heading rejected."""
+    from aeo_mvp.recommendations import _parse_section_edits
+
+    article = load_hashnode_markdown(text=ARTICLE)
+    raw = {
+        "section_edits": [
+            {
+                "target_heading": "This Heading Does Not Exist",
+                "replacement_body": "Some body text that is long enough.",
+            }
+        ]
+    }
+    with pytest.raises(LLMError, match="does not exist"):
+        _parse_section_edits(raw, article)
+
+
+def test_empty_replacement_body_rejected():
+    """7. Empty replacement rejected."""
+    from aeo_mvp.recommendations import _parse_section_edits
+
+    article = load_hashnode_markdown(text=ARTICLE)
+    raw = {
+        "section_edits": [
+            {"target_heading": "What is an agent loop?", "replacement_body": "  \n"}
+        ]
+    }
+    with pytest.raises(LLMError, match="replacement_body is empty"):
+        _parse_section_edits(raw, article)
+
+
+def test_opportunity_without_section_edit_rejected():
+    """8. Opportunity without applied section edit rejected."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    with pytest.raises(LLMError, match="missing section_edit"):
+        generate_recommendations(
+            article,
+            qs,
+            VisibilityReport(),
+            client=ScriptedLLM(_invalid_unchanged_target_payload()),
+        )
+
+
+def test_section_edit_without_opportunity_rejected():
+    """9. Section edit without opportunity rejected (pre-apply orphan gate)."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    payload = {
+        "opportunities": [],
+        "section_edits": [_loop_section_edit()],
+        "change_explanations": [],
+    }
+    with pytest.raises(LLMError, match="Orphan section_edit"):
+        generate_recommendations(
+            article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+        )
+
+
+def test_orphan_section_edit_rejected_before_assembly_mutates_markdown(monkeypatch):
+    """Orphan section_edit → LLMError BEFORE replace_section_body runs."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    original = article.markdown
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+
+    import aeo_mvp.recommendations as rec_mod
+
+    calls: list[tuple] = []
+
+    def _tracking_replace(markdown, heading, new_body, *, exact=False):
+        calls.append((heading, exact))
+        return rec_mod.replace_section_body(markdown, heading, new_body, exact=exact)
+
+    monkeypatch.setattr(rec_mod, "replace_section_body", _tracking_replace)
+
+    payload = {
+        "opportunities": [],
+        "section_edits": [_loop_section_edit()],
+        "change_explanations": [],
+    }
+    with pytest.raises(LLMError, match=r"Orphan section_edit.*What is an agent loop"):
+        generate_recommendations(
+            article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+        )
+    assert calls == [], "replace_section_body must not run for orphan section_edits"
+    assert article.markdown == original
+
+
+def test_h1_section_edit_without_opportunity_rejected():
+    """Title/H1 section_edit without matching opportunity → LLMError (pre-apply)."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    payload = {
+        "opportunities": [],
+        "section_edits": [
+            {
+                "target_heading": "Agents Zero to Hero",
+                "replacement_body": (
+                    "Intro about agents and tool calling.\n"
+                    "Extra H1 body rewrite without an opportunity."
+                ),
+            }
+        ],
+        "change_explanations": ["Rewrote title section."],
+    }
+    with pytest.raises(
+        LLMError,
+        match=r"Orphan section_edit.*Agents Zero to Hero",
+    ):
+        generate_recommendations(
+            article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+        )
+
+
+def test_h1_section_edit_with_matching_opportunity_allowed():
+    """Leading H1 section_edit is allowed when paired with a matching opportunity."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What are agents and tool calling?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "What are agents and tool calling?",
+                "gap": "Intro under-explains the series framing.",
+                "evidence_quote": "Intro about agents and tool calling.",
+                "target_heading": "Agents Zero to Hero",
+                "recommended_change": "Clarify agents+tools framing in the intro.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [
+            {
+                "target_heading": "Agents Zero to Hero",
+                "replacement_body": (
+                    "Intro about agents and tool calling.\n"
+                    "This series frames agents as models that call tools in a loop."
+                ),
+            }
+        ],
+        "change_explanations": ["Clarified H1 intro framing."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert bundle.opportunities[0].target_heading == "Agents Zero to Hero"
+    assert "models that call tools in a loop" in bundle.recommended_markdown
+    assert bundle.recommended_markdown.startswith("# Agents Zero to Hero\n")
+
+
+def test_repair_prompt_quotes_missing_opportunity_heading_for_h1_edit():
+    """Repair feedback quotes the exact H1 heading missing an opportunity."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    bad_h1 = {
+        "opportunities": [],
+        "section_edits": [
+            {
+                "target_heading": "Agents Zero to Hero",
+                "replacement_body": (
+                    "Intro about agents and tool calling.\n"
+                    "Unattributed H1 body change."
+                ),
+            }
+        ],
+        "change_explanations": ["Bad H1 edit."],
+    }
+    client = SequencingLLM([bad_h1, _valid_loop_payload()])
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=client
+    )
+    assert client.calls == 2
+    repair = client.prompts[1]
+    assert "REPAIR FEEDBACK" in repair
+    assert "Agents Zero to Hero" in repair
+    assert "Orphan section_edit" in repair or "without matching opportunities" in repair
+    assert "SAME exact target_heading" in repair
+    assert "remove those section_edits" in repair or "remove that section_edit" in repair
+    assert "Do NOT regenerate the complete article" in repair or (
+        "Do not regenerate the complete article" in repair
+    )
+    assert "Prefer leaving the document title" in repair
+    assert bundle.opportunities[0].target_heading == "What is an agent loop?"
+    assert bundle.recommended_markdown.startswith("# Agents Zero to Hero\n")
+    assert "Unattributed H1 body change" not in bundle.recommended_markdown
+
+
+def test_title_left_unchanged_still_passes():
+    """H2 section_edit with matching opportunity; title/H1 untouched → passes."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(_valid_loop_payload())
+    )
+    assert "# Agents Zero to Hero" in bundle.recommended_markdown
+    intro = next(s for s in parse_sections(bundle.recommended_markdown) if s.level == 1)
+    assert intro.heading == "Agents Zero to Hero"
+    assert "Intro about agents and tool calling." in intro.body
+    assert "Extra H1" not in intro.body
+    assert "keeps calling tools until the task is done" in bundle.recommended_markdown
+
+
+def test_prompt_prefers_leaving_title_h1_unchanged():
+    """Recommend prompt prefers leaving title/H1 unchanged + requires matching opp."""
+    prompt = _prompt_from_generate()
+    assert "Prefer LEAVING the document title / leading H1 unchanged" in prompt
+    assert "ANY section_edit" in prompt or "ANY section_edit — including title" in prompt
+    assert "SAME exact target_heading" in prompt
+    assert "casually rewrite the title" in prompt.lower() or (
+        "casually rewrite the title line" in prompt
+    )
+
+
+Z2H12_LIKE = """# Agents Zero to Hero #12: Building AI Subagents with Context Isolation
+
+# Agents Zero to Hero #12: Building AI Subagents with Context Isolation
+
+So far, my AI coding agent has been doing everything itself. It can use tools
+and remember information across turns.
+
+## Building AI Subagents with Context Isolation
+
+Subagents need isolated context windows so tools do not leak state.
+
+## Why isolation matters
+
+Without isolation, one subagent can pollute another agent's memory.
+"""
+
+
+def test_z2h12_non_h1_edits_leave_leading_h1_bodies_byte_identical():
+    """Non-H1 section_edits must not alter either duplicate leading-H1 body."""
+    from aeo_mvp.recommendations import SectionEdit, _apply_section_edits
+
+    edits = [
+        SectionEdit(
+            target_heading="Building AI Subagents with Context Isolation",
+            replacement_body=(
+                "Subagents need isolated context windows so tools do not leak state.\n"
+                "Each child gets a fresh message history.\n"
+            ),
+        )
+    ]
+    recommended = _apply_section_edits(Z2H12_LIKE, edits)
+    orig_h1s = [s for s in parse_sections(Z2H12_LIKE) if s.level == 1]
+    new_h1s = [s for s in parse_sections(recommended) if s.level == 1]
+    assert len(orig_h1s) == 2 and len(new_h1s) == 2
+    for o, n in zip(orig_h1s, new_h1s):
+        assert o.heading == n.heading
+        assert o.body == n.body, (repr(o.body), repr(n.body))
+
+
+def test_assembly_check_no_false_positive_on_duplicate_leading_h1():
+    """Regression: duplicate H1 title must not trip assembly integrity (live B2)."""
+    from aeo_mvp.recommendations import (
+        SectionEdit,
+        _apply_section_edits,
+        _assert_assembly_matches_section_edits,
+    )
+
+    edits = [
+        SectionEdit(
+            target_heading="Building AI Subagents with Context Isolation",
+            replacement_body=(
+                "Subagents need isolated context windows so tools do not leak state.\n"
+                "Clarified isolation boundary.\n"
+            ),
+        )
+    ]
+    recommended = _apply_section_edits(Z2H12_LIKE, edits)
+    # Must not raise the live error about H1 mutation without section_edit.
+    _assert_assembly_matches_section_edits(Z2H12_LIKE, recommended, edits)
+
+
+def test_z2h12_duplicate_h1_h2_edit_passes_full_recommend_path():
+    """End-to-end: H2 edit + matching opp with duplicate leading H1 → success."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=Z2H12_LIKE)
+    qs = QuerySet(selected=[Query(text="What is context isolation for subagents?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "What is context isolation for subagents?",
+                "gap": "Isolation mechanism under-explained.",
+                "evidence_quote": (
+                    "Subagents need isolated context windows so tools do not leak state."
+                ),
+                "target_heading": "Building AI Subagents with Context Isolation",
+                "recommended_change": "Clarify fresh message history per child.",
+                "answerability": "weak",
+            }
+        ],
+        "section_edits": [
+            {
+                "target_heading": "Building AI Subagents with Context Isolation",
+                "replacement_body": (
+                    "Subagents need isolated context windows so tools do not leak state.\n"
+                    "Each child gets a fresh message history.\n"
+                ),
+            }
+        ],
+        "change_explanations": ["Clarified isolation."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert "fresh message history" in bundle.recommended_markdown
+    h1_heading = "Agents Zero to Hero #12: Building AI Subagents with Context Isolation"
+    assert bundle.opportunities[0].target_heading != h1_heading
+    orig_h1_bodies = [
+        s.body for s in parse_sections(Z2H12_LIKE) if s.heading == h1_heading
+    ]
+    new_h1_bodies = [
+        s.body
+        for s in parse_sections(bundle.recommended_markdown)
+        if s.heading == h1_heading
+    ]
+    assert orig_h1_bodies == new_h1_bodies
+
+
+def test_assembly_still_detects_real_h1_mutation_without_section_edit(monkeypatch):
+    """If apply truly mutates H1 without an H1 section_edit, assembly must still fail."""
+    from aeo_mvp.recommendations import (
+        SectionEdit,
+        _assert_assembly_matches_section_edits,
+    )
+
+    # Unique H1 (no duplicate) — simulate a corrupted recommended where H1 body changed.
+    original = ARTICLE
+    corrupted = ARTICLE.replace(
+        "Intro about agents and tool calling.",
+        "Intro about agents and tool calling.\nCorrupted H1 body.",
+        1,
+    )
+    edits = [
+        SectionEdit(
+            target_heading="What is an agent loop?",
+            replacement_body=_loop_body_edited(),
+        )
+    ]
+    with pytest.raises(
+        LLMError,
+        match=r"Assembly mutated section\(s\).*Agents Zero to Hero",
+    ):
+        _assert_assembly_matches_section_edits(original, corrupted, edits)
+
+
+def test_quality_evaluation_sees_complete_assembled_document():
+    """13. Quality evaluation still sees complete document."""
+    from aeo_mvp.evaluation import evaluate_quality
+
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(_valid_loop_payload())
+    )
+
+    class EvalLLM:
+        model = "eval-mock"
+        prompts: list[str] = []
+
+        def respond_json(self, prompt: str, *, max_output_tokens: int = 4096):
+            import aeo_mvp.llm as llm_mod
+
+            self.prompts.append(prompt)
+            llm_mod._LLM_CALLS += 1
+            return {
+                "passed": True,
+                "summary": "ok",
+                "question_feedback": [],
+                "recommendation_feedback": [],
+                "unsupported_claims": [],
+                "unnecessary_changes": [],
+                "explanations": ["pass"],
+            }
+
+    ev = EvalLLM()
+    result = evaluate_quality(article, qs, bundle, client=ev)
+    assert result.passed is True
+    prompt = ev.prompts[0]
+    assert "RECOMMENDED MARKDOWN:" in prompt
+    assert "# Agents Zero to Hero" in prompt
+    assert "## Choosing tools for a harness" in prompt
+    assert "keeps calling tools until the task is done" in prompt
+
+
+def test_response_usage_metadata_from_mocked_responses_api():
+    """14. Token metadata from mocked Responses API (only real fields present)."""
+    from aeo_mvp.llm import LLMResult, extract_response_usage
+
+    data = {
+        "status": "completed",
+        "usage": {"input_tokens": 120, "output_tokens": 40, "total_tokens": 160},
+        "incomplete_details": {"reason": "max_output_tokens"},
+        "output": [],
+    }
+    meta = extract_response_usage(data)
+    assert meta["input_tokens"] == 120
+    assert meta["output_tokens"] == 40
+    assert meta["status"] == "completed"
+    assert meta["incomplete_reason"] == "max_output_tokens"
+
+    sparse = extract_response_usage({"output": []})
+    assert sparse["input_tokens"] is None
+    assert sparse["output_tokens"] is None
+    assert sparse["status"] is None
+    assert sparse["incomplete_reason"] is None
+
+    result = LLMResult(text="{}", raw=data, **{k: meta[k] for k in meta})
+    assert result.input_tokens == 120
+    assert result.incomplete_reason == "max_output_tokens"
