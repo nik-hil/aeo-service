@@ -5,6 +5,7 @@ import pytest
 from aeo_mvp.article import load_hashnode_markdown
 from aeo_mvp.llm import LLMError, reset_execution_flags
 from aeo_mvp.queries import Query, QuerySet
+from aeo_mvp.markdown import parse_sections
 from aeo_mvp.recommendations import (
     Opportunity,
     evidence_quote_in_article,
@@ -316,6 +317,148 @@ def test_generate_recommendations_prompt_is_full_document_and_schema():
     assert bundle.opportunities[0].gap
     assert bundle.opportunities[0].target_heading == "What is an agent loop?"
     assert bundle.source == "llm_generated"
+
+
+def _prompt_from_generate() -> str:
+    """Capture the recommendation prompt via a no-op (empty-ops) mocked call."""
+    reset_execution_flags()
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    payload = {
+        "opportunities": [],
+        "recommended_markdown": ARTICLE,
+        "change_explanations": [],
+    }
+    client = ScriptedLLM(payload)
+    generate_recommendations(article, qs, VisibilityReport(), client=client)
+    return client.prompts[0]
+
+
+def test_recommend_prompt_embeds_eight_pass_material_procedure():
+    """Prompt contract: explicit 8-pass procedure + material improvement gate."""
+    prompt = _prompt_from_generate()
+    for marker in (
+        "PASS 1",
+        "PASS 2",
+        "PASS 3",
+        "PASS 4",
+        "PASS 5",
+        "PASS 6",
+        "PASS 7",
+        "PASS 8",
+        "MATERIAL IMPROVEMENT TEST",
+        "STRONG / WEAK / MISSING",
+        "SMALLEST USEFUL EDIT",
+        "APPLIED-CHANGE CONTRACT",
+    ):
+        assert marker in prompt, f"missing prompt marker: {marker}"
+    # Restatement ≠ opportunity; material relationship = opportunity
+    assert "restatement" in prompt.lower() or "RESTATEMENT" in prompt
+    assert "tool_call_id" in prompt
+    assert "NOT EVERY QUESTION NEEDS A CHANGE" in prompt
+    # Heading inventory is navigation only (semantics stay with LLM)
+    assert "navigation" in prompt.lower()
+
+
+def test_strong_already_sufficient_allows_empty_opportunities():
+    """Strong/already-sufficient → no opportunity required (empty ops + CURRENT ok)."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(
+        selected=[
+            Query(text="What is an agent loop in tool-calling systems?"),
+            Query(text="How do tool schemas drive function calls?"),
+        ]
+    )
+    # LLM judged both STRONG: no ops, RECOMMENDED == CURRENT
+    payload = {
+        "opportunities": [],
+        "recommended_markdown": ARTICLE,
+        "change_explanations": [],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert bundle.opportunities == []
+    assert bundle.recommended_markdown.strip() == ARTICLE.strip()
+
+
+def test_prompt_rejects_mere_restatement_as_meaningful_change():
+    """Mere restatement ≠ meaningful recommendation (documented in prompt contract)."""
+    prompt = _prompt_from_generate()
+    assert "restatement ≠ opportunity" in prompt.lower() or "restatement" in prompt.lower()
+    assert "if removing the new sentence would NOT materially reduce answerability" in prompt
+    assert "paraphrasing" in prompt.lower() or "rewording without new info" in prompt.lower()
+
+
+def test_implicit_gap_targets_existing_local_section():
+    """Real implicit gap → targeted local improvement in the owning section."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    # Host observation step is understated under "How tool calling works"
+    recommended = _good_recommended(edit_loop=False, edit_tools=True)
+    warnings = validate_recommended_markdown(
+        ARTICLE,
+        recommended,
+        article=article,
+        opportunities=[_tools_opp()],
+    )
+    assert isinstance(warnings, list)
+    # Edit must land in the tools section, not intro-only
+    assert "returns the observation" in recommended
+    assert recommended.startswith("# Agents Zero to Hero\n\nIntro about agents")
+
+
+def test_missing_grounded_element_allows_local_addition():
+    """Genuinely missing grounded element → local addition under correct heading."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
+    payload = {
+        "opportunities": [
+            {
+                "question": "What is an agent loop in tool-calling systems?",
+                "gap": (
+                    "Article never states that the loop continues until the model "
+                    "stops requesting tools — answer engines miss the termination cue."
+                ),
+                "evidence_quote": (
+                    "The agent loop lets a model call tools, see results, "
+                    "and decide whether to continue."
+                ),
+                "target_heading": "What is an agent loop?",
+                "recommended_change": (
+                    "Add one sentence: the loop keeps calling tools until the task is done."
+                ),
+                "answerability": "missing",
+            }
+        ],
+        "recommended_markdown": _good_recommended(edit_loop=True, edit_tools=False),
+        "change_explanations": ["Added loop termination cue under agent loop section."],
+    }
+    bundle = generate_recommendations(
+        article, qs, VisibilityReport(), client=ScriptedLLM(payload)
+    )
+    assert len(bundle.opportunities) == 1
+    assert bundle.opportunities[0].answerability == "missing"
+    assert bundle.opportunities[0].target_heading == "What is an agent loop?"
+    assert "keeps calling tools until the task is done" in bundle.recommended_markdown
+
+
+def test_meaningful_ops_can_modify_multiple_sections():
+    """Meaningful opportunities may still edit multiple non-intro sections."""
+    article = load_hashnode_markdown(text=ARTICLE)
+    recommended = _good_recommended(edit_loop=True, edit_tools=True)
+    warnings = validate_recommended_markdown(
+        ARTICLE,
+        recommended,
+        article=article,
+        opportunities=[_loop_opp(), _tools_opp()],
+    )
+    assert isinstance(warnings, list)
+    loop_body = next(
+        s.body for s in article.sections if s.heading == "What is an agent loop?"
+    )
+    new_secs = {s.heading: s.body for s in parse_sections(recommended)}
+    assert new_secs["What is an agent loop?"] != loop_body
+    assert "returns the observation" in new_secs["How tool calling works"]
 
 
 def test_ungrounded_or_invalid_opportunities_dropped():

@@ -363,7 +363,13 @@ def _parse_opportunities(raw: Any, article: Article) -> list[Opportunity]:
 _RECOMMEND_PROMPT = """You are the AEO recommendation engine for a Hashnode Markdown article.
 
 You optimize the FULL document for answer-engine visibility. Python will only
-validate structure and grounding — you own all semantic decisions.
+validate structure, grounding, and the applied-change contract — you own all
+semantic decisions. The heading inventory in the questions payload is navigation
+ONLY; section meaning and gap judgment stay with you.
+
+GOAL: Produce MATERIALLY USEFUL AEO improvements — new answer-relevant information
+an AI could not get (or could get only less accurately) from CURRENT as written.
+Do NOT restate, paraphrase, or expand information that is already present.
 
 INPUTS:
 1) CURRENT ARTICLE — the complete Hashnode Markdown (read and reason about ALL of it)
@@ -375,22 +381,18 @@ INPUTS:
 CRITICAL PRODUCT RULES:
 1. FULL-DOCUMENT OPTIMIZATION — Inspect the entire article before deciding changes.
    Do NOT optimize only the introduction. The introduction is NOT the default place
-   for improvements.
-2. QUESTION → SECTION PRINCIPLE — For EACH selected question:
-   - Does the article answer it well?
-   - If not, what is the gap (missing/weak/unclear)?
-   - Find the EXISTING section (H1–H6 heading already in CURRENT) where the answer
-     logically belongs.
-   - Apply the smallest useful grounded edit IN THAT SECTION.
-   Prefer improving that section over moving information into the intro.
+   for improvements. Do NOT dump improvements into the intro.
+2. QUESTION → SECTION PRINCIPLE — For EACH selected question with a real gap:
+   find the EXISTING section (H1–H6 already in CURRENT) that owns the concept and
+   apply the smallest useful grounded edit THERE. Prefer that section over the intro.
    Different questions SHOULD touch different sections when evidence supports it.
    Do NOT artificially concentrate changes near the beginning.
 3. GROUNDING — Use only the CURRENT article text plus the supplied visibility
    observations. Do NOT invent facts, statistics, citations, sources, examples,
    implementation details, or fake search claims.
-4. MINIMALITY — Prefer improving existing sentences/paragraphs or short clarifications.
-   Rewrite only when needed for a real question-level gap. No keyword stuffing or
-   artificial SEO.
+4. MINIMALITY — Prefer improve sentence → expand paragraph → one short paragraph →
+   larger rewrite only if needed. Maximize answerability per meaningful change,
+   not Markdown churn. No keyword stuffing or artificial SEO.
 5. AEO AIM — Help an AI system identify concepts, answer the selected questions from
    the article, connect answers to the correct section, and distinguish related concepts.
 6. RECOMMENDED_MARKDOWN must be the COMPLETE improved article Markdown ONLY:
@@ -401,6 +403,81 @@ CRITICAL PRODUCT RULES:
    - No arbitrary new major sections; no deleting major sections; no moving content
      between unrelated sections
    - Do NOT use "**Direct answer:**" template blocks
+7. NOT EVERY QUESTION NEEDS A CHANGE — Strong/already-sufficient answers get NO
+   opportunity and NO filler. Do not force every selected question into an opportunity.
+
+REQUIRED INTERNAL PROCEDURE — follow these 8 passes BEFORE producing JSON.
+Do not skip passes. Do not start writing RECOMMENDED until PASS 1–6 are done.
+
+PASS 1 — FULL ARTICLE MAP:
+Read the complete CURRENT article. Identify every H1–H6 and what each section teaches.
+Do NOT start by editing the intro. Do NOT write recommended_markdown until you have
+mapped the full article. The Python heading inventory is navigation only.
+
+PASS 2 — EVALUATE EVERY SELECTED QUESTION as STRONG / WEAK / MISSING:
+- STRONG: article already answers it well → leave unchanged; NO opportunity; NO AEO filler.
+- WEAK: identify exactly what is missing for answerability; the existing section where
+  that info belongs; a targeted local improvement there.
+- MISSING: only if the needed info is grounded in CURRENT or visibility evidence;
+  otherwise NO invent and NO opportunity that would require unsupported information.
+Do not force every question into an opportunity.
+
+PASS 3 — MATERIAL IMPROVEMENT TEST (mandatory gate for every proposed edit):
+Ask: "What can an AI answer after this change that it could not answer, or could
+answer materially less accurately, before?"
+ACCEPT: distinctions, relationships, constraints, consequences, missing context,
+grounded Q-needed info, ambiguity fixes that change answerability.
+REJECT: rewording without new info; repeating what code already shows; paraphrasing
+a prior paragraph; generic AEO filler; keyword stuffing; longer-for-longer prose;
+restating code demos in prose.
+Concrete rule: if removing the new sentence would NOT materially reduce answerability
+for the selected question, do NOT make the change.
+
+RESTATEMENT VS MATERIAL EXAMPLE (tool-result / messages.append / tool_call_id):
+- BAD (restatement ≠ opportunity): CURRENT already shows appending a tool result with
+  role/content/tool_call_id. Adding prose that only restates "append the tool result
+  to messages with tool_call_id" is NOT a material improvement — reject it.
+- GOOD (material = opportunity): CURRENT shows the append pattern but never explains
+  that tool_call_id must match the original tool request so the model can bind the
+  result to the right call. Adding that relationship IS new answer-relevant info —
+  accept it in the correct existing section.
+
+PASS 4 — CORRECT EXISTING SECTION (question → gap → owning section → local change):
+Place each accepted edit in the EXISTING section that already owns the concept.
+Examples of ownership (adapt to CURRENT headings; do not invent headings):
+- tool-schema questions → Tool schemas (or equivalent)
+- execute / execute_code → Implementing execute_code (or equivalent)
+- tool-result feedback → Feeding the result back… (or equivalent)
+- history → Why the message history matters (or equivalent)
+- finish → The finish tool (or equivalent)
+- security → There is already a security problem (or equivalent)
+Intro / H1 only when the information genuinely belongs there — never as a dump.
+
+PASS 5 — SMALLEST USEFUL EDIT:
+Prefer: improve an existing sentence → expand an existing paragraph → add one short
+paragraph → larger rewrite only if required for a real gap.
+Maximize answerability per meaningful change; minimize Markdown churn.
+
+PASS 6 — STRUCTURED OPPORTUNITY only for changes you will actually apply:
+Emit an opportunity ONLY when you will apply that edit in recommended_markdown.
+Fields: question, gap, target_heading, recommended_change, evidence_quote, answerability.
+- gap = the real answerability problem (not a restatement excuse)
+- recommended_change = the actual edit you will apply
+- evidence_quote = verbatim substring from CURRENT supporting the change
+No idea-only opportunities. No opportunities for STRONG questions.
+
+PASS 7 — CONSTRUCT RECOMMENDED.md:
+recommended_markdown = CURRENT + only the selected meaningful grounded changes from
+PASS 6. Opportunities define the allowed changes — do NOT freely rewrite after listing
+opportunities. Preserve sections you did not deliberately improve.
+
+PASS 8 — SELF-CHECK before JSON (must all be true):
+For every substantive edit, answer: which question? what gap? correct section?
+material improvement (PASS 3)? grounded? not oversized?
+Also verify:
+- bidirectional opportunity ↔ applied edit consistency (see contract below)
+- STRONG questions untouched; no intro dump; no filler / restatement edits
+- full article considered; no invented facts; structure/order/voice preserved
 
 APPLIED-CHANGE CONTRACT (critical — Python enforces this):
 Opportunities are records of changes you ACTUALLY applied in recommended_markdown,
@@ -414,28 +491,17 @@ NOT ideas you considered. Bidirectional consistency is required:
 - Minor whitespace / Markdown normalization alone is NOT a substantive edit and
   must not produce opportunity records.
 
-FOR EACH QUESTION whose gap you actually fix in recommended_markdown, emit:
+FOR EACH QUESTION whose material gap you actually fix in recommended_markdown, emit:
 - question
-- gap (what is missing/weak for answer engines)
+- gap (what is missing/weak for answer engines — a real answerability problem)
 - target_heading (MUST be an existing H1–H6 heading from CURRENT, exact text)
 - recommended_change (description of the edit you applied in that section)
 - evidence_quote (MUST be copied verbatim from CURRENT and support the change)
 - answerability: strong | weak | missing
+  (prefer weak|missing for emitted opportunities; strong questions usually have none)
 
-Then produce recommended_markdown (full article) and change_explanations (short bullets).
-
-SELF-CHECK BEFORE RETURNING (must all be true):
-- I inspected the whole article, not just the intro
-- I considered the logically relevant EXISTING section for each question
-- Improvements are located where the information belongs
-- Changes are NOT intro-concentrated
-- Multiple sections are touched when questions span topics
-- Every opportunity maps to an applied section edit in recommended_markdown
-- Every substantive recommended_markdown section edit has a matching opportunity
-- Every evidence_quote is verbatim from CURRENT
-- Structure, order, and voice are preserved
-- No unnecessary rewriting; no invented facts
-- No opportunity rows for gaps I did not actually edit
+Then produce recommended_markdown (full article) and change_explanations (short bullets
+describing only material applied edits).
 
 Respond with JSON ONLY:
 {{
