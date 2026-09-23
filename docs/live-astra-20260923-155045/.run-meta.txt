@@ -1,7 +1,0 @@
-MODEL=openai-gpt-6-astra
-OUT=/workspace/pr49-aeo/docs/live-astra-20260923-155045
-MD=/workspace/pr49-aeo/fixtures/agents-z2h12-live.md
-DOMAIN=nik-hil.hashnode.dev
-URI=https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation.md
-SOURCE=remote_md_saved_to_fixtures/agents-z2h12-live.md
-STARTED=2026-09-23 10:20:46 Asia

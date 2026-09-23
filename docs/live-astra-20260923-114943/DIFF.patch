@@ -1,15 +1,15 @@
 --- CURRENT.md
 +++ RECOMMENDED.md
-@@ -1382,7 +1382,7 @@
+@@ -1387,7 +1387,7 @@
  | Permissions | **Shared** |
  | Hooks | **Shared** |
  | Memory object | **Shared** |
 -| Tools | Same tool set |
-+| Tools | Same core tools; `spawn_subagent` is available only when `depth < max_depth` |
++| Tools | Same core tools; `spawn_subagent` is only advertised when `depth < max_depth` |
  | MCP connections | Available through inherited tool configuration |
  | Depth | Incremented |
  | Result | Child returns to parent |
-@@ -1396,7 +1396,6 @@
+@@ -1401,7 +1401,6 @@
  ```
  
  * * *

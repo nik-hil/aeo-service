@@ -25,6 +25,7 @@ class Article:
     sections: list[Section]
     metadata: dict[str, str] = field(default_factory=dict)
     target_domain: str | None = None
+    target_url: str | None = None
     brand_tokens: list[str] = field(default_factory=list)
 
     @property
@@ -39,11 +40,22 @@ class Article:
         return "\n\n".join(p for p in parts if p and p.strip())
 
 
+def _absolute_http_url(value: str | None) -> str | None:
+    """Return value only when it is an absolute http(s) URL (never invent from paths)."""
+    if not value:
+        return None
+    cleaned = value.strip()
+    if not cleaned.startswith(("http://", "https://")):
+        return None
+    return cleaned
+
+
 def load_hashnode_markdown(
     path: str | Path | None = None,
     *,
     text: str | None = None,
     target_domain: str | None = None,
+    target_url: str | None = None,
     brand_tokens: list[str] | None = None,
 ) -> Article:
     """Load Hashnode Markdown from a file path or raw string."""
@@ -71,6 +83,11 @@ def load_hashnode_markdown(
         host = urlparse(domain).hostname
         domain = host or domain
 
+    # Exact article URL for page-level visibility (not derived from local path).
+    page_url = _absolute_http_url(
+        target_url or metadata.get("canonical_url") or metadata.get("url")
+    )
+
     tokens = list(brand_tokens or [])
     if not tokens:
         # Derive light brand tokens from title words (skip stop-ish shorts).
@@ -96,5 +113,6 @@ def load_hashnode_markdown(
         sections=sections,
         metadata=metadata,
         target_domain=domain,
+        target_url=page_url,
         brand_tokens=tokens,
     )

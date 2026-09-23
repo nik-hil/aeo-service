@@ -1,3 +1,8 @@
+---
+canonical_url: https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation
+url: https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation
+---
+
 # Agents Zero to Hero #12: Building AI Subagents with Context Isolation
 
 ## Agents Zero to Hero #12: Building AI Subagents with Context Isolation
@@ -1382,7 +1387,7 @@ This is worth summarizing explicitly.
 | Permissions | **Shared** |
 | Hooks | **Shared** |
 | Memory object | **Shared** |
-| Tools | Same core tools; `spawn_subagent` is available only when `depth < max_depth` |
+| Tools | Same core tools; `spawn_subagent` is only advertised when `depth < max_depth` |
 | MCP connections | Available through inherited tool configuration |
 | Depth | Incremented |
 | Result | Child returns to parent |

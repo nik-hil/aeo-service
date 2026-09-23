@@ -1,0 +1,621 @@
+{
+  "title": "Agents Zero to Hero #12: Building AI Subagents with Context Isolation",
+  "source_path": "fixtures/agents-z2h12-live.md",
+  "section_headings": [
+    "Agents Zero to Hero #12: Building AI Subagents with Context Isolation",
+    "Agents Zero to Hero #12: Building AI Subagents with Context Isolation",
+    "What is an AI subagent?",
+    "Why do AI agents need subagents?",
+    "The key idea: context isolation",
+    "How does `spawn_subagent()` work?",
+    "The parent-child relationship",
+    "Why does the child need a fresh context?",
+    "Subagents and context compaction solve different problems",
+    "How is `spawn_subagent` exposed to the model?",
+    "How does the parent receive the result?",
+    "Why not expose the entire child conversation?",
+    "The child still has the same tools",
+    "What does \"shared workspace\" mean?",
+    "Shared workspace, isolated context",
+    "Why share permissions and hooks?",
+    "The biggest danger: recursive spawning",
+    "How does the depth guard work?",
+    "Why is the tool only advertised at permitted depth?",
+    "What happens if the model tries anyway?",
+    "A concrete parent-child example",
+    "What does the actual demo do?",
+    "How are subagents different from parallel tool calls?",
+    "Subagents are a form of context architecture",
+    "v0.8 \u2014 Memory",
+    "v0.9 \u2014 Compaction",
+    "v0.10 \u2014 Skills",
+    "v0.12 \u2014 Subagents",
+    "Subagents versus skills",
+    "Subagents versus MCP",
+    "A useful mental model: delegation as a context firewall",
+    "Why the child should receive a scoped task",
+    "The parent remains the orchestrator",
+    "Testing subagent delegation",
+    "Testing the depth guard",
+    "The architecture after v0.12",
+    "What is shared and what is isolated?",
+    "Why not isolate the workspace too?",
+    "But shared workspace creates coordination challenges",
+    "Why depth is not the same as concurrency",
+    "Cost is another important boundary",
+    "Subagents are not automatically better",
+    "The journey so far",
+    "What's next?",
+    "Final takeaway"
+  ],
+  "model": "openai-gpt-6-astra",
+  "questions": [
+    {
+      "question": "How do subagents reduce context overload in an AI coding agent, and how is that different from context compaction?",
+      "importance": "high",
+      "reason": "A realistic architecture question targeting the article's central distinction between shrinking a conversation and separating subtask work.",
+      "article_topics_or_evidence": "Children start with fresh context and a standalone task; parents receive only results. Compaction reduces existing context, while delegation keeps intermediate subtask details out.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How can I implement a spawn_subagent tool using my existing agent loop instead of adding another framework?",
+      "importance": "high",
+      "reason": "Captures concrete developer intent. The article explains the implementation pattern, though it does not provide a complete standalone implementation.",
+      "article_topics_or_evidence": "spawn_subagent reuses run_agent with a fresh conversation and incremented depth. The child's finish(answer) becomes a parent tool result containing subagent_result.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "When is delegating a coding task to a subagent worth the extra cost and latency?",
+      "importance": "high",
+      "reason": "Addresses a practical adoption decision with specific examples, without implying delegation always improves performance.",
+      "article_topics_or_evidence": "Delegation adds model calls, latency, token usage, and orchestration overhead. Trivial variable renaming is contrasted with independently analyzing an authentication subsystem.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "In a coding agent with subagents, what should be shared between parent and child, and what should stay isolated?",
+      "importance": "high",
+      "reason": "Targets a core design question and distinguishes context isolation from filesystem or permission isolation.",
+      "article_topics_or_evidence": "The described architecture shares workspace, permissions, hooks, memory, and tool infrastructure while separating message histories, tasks, and reasoning loops. Shared policy prevents delegation from bypassing governance.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How do I prevent subagents from recursively spawning more agents, and does a depth limit also limit concurrency?",
+      "importance": "high",
+      "reason": "Addresses runaway recursion and a closely related misconception about what depth limits actually control.",
+      "article_topics_or_evidence": "depth and max_depth bound delegation generations. Tool-schema filtering and runtime guards enforce the boundary. Child count, concurrency, budgets, and timeouts require separate controls.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How should I write a subagent task when the child cannot see the parent's conversation history?",
+      "importance": "high",
+      "reason": "A specific, actionable question about reliable delegation that is directly answered by the article's instruction examples.",
+      "article_topics_or_evidence": "The task parameter must be a complete, standalone instruction. Authentication examples specify the inspection scope, expected summary, and a do-not-modify constraint.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How are subagents different from asking one AI agent to make multiple parallel tool calls?",
+      "importance": "medium",
+      "reason": "Resolves a distinct architectural misconception without treating subagents as automatically concurrent.",
+      "article_topics_or_evidence": "Multiple tool calls remain within one agent context. A subagent has a separate message history, reasoning loop, iteration budget, and tool interactions.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "What are the tradeoffs of letting coding subagents edit the same workspace instead of giving each one a separate workspace?",
+      "importance": "medium",
+      "reason": "Addresses practical collaboration and conflict risks. The article supports the tradeoff analysis but only outlines future coordination mechanisms.",
+      "article_topics_or_evidence": "Shared files make child changes immediately visible to the parent; separate workspaces require artifact transfer. Overlapping edits can conflict, with locks, worktrees, patches, and ownership suggested as future options.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "How can I test subagent delegation and recursion limits without making real LLM API calls?",
+      "importance": "medium",
+      "reason": "A realistic testing question with concrete evidence, distinct from implementing the delegation mechanism itself.",
+      "article_topics_or_evidence": "tests/test_subagents.py uses a fake model without an API key. A parent-child-parent sequence verifies three model calls, while max_depth=0 verifies that no child is created.",
+      "source": "llm_generated"
+    },
+    {
+      "question": "Can a subagent load skills and use MCP tools while keeping its conversation separate from the parent?",
+      "importance": "medium",
+      "reason": "Answers a specific integration question about combining delegation with existing knowledge and external-tool capabilities.",
+      "article_topics_or_evidence": "The child can call load_skill(\"python-style\") and access MCP tools available through inherited tool configuration while retaining a separate conversation.",
+      "source": "llm_generated"
+    }
+  ],
+  "queries_selected": [
+    "How do subagents reduce context overload in an AI coding agent, and how is that different from context compaction?",
+    "How can I implement a spawn_subagent tool using my existing agent loop instead of adding another framework?",
+    "When is delegating a coding task to a subagent worth the extra cost and latency?",
+    "In a coding agent with subagents, what should be shared between parent and child, and what should stay isolated?",
+    "How do I prevent subagents from recursively spawning more agents, and does a depth limit also limit concurrency?",
+    "How should I write a subagent task when the child cannot see the parent's conversation history?",
+    "How are subagents different from asking one AI agent to make multiple parallel tool calls?",
+    "What are the tradeoffs of letting coding subagents edit the same workspace instead of giving each one a separate workspace?",
+    "How can I test subagent delegation and recursion limits without making real LLM API calls?",
+    "Can a subagent load skills and use MCP tools while keeping its conversation separate from the parent?"
+  ],
+  "queries_candidate_count": 10,
+  "query_quality_notes": "All ten candidates are realistic, relevant, specific, and sufficiently distinct to retain. The implementation question is supported at the architectural level rather than by complete code; workspace coordination mechanisms are future options, not implemented features. No unrelated questions or awkward heading transforms were identified.",
+  "visibility": {
+    "provider": "digitalocean_web_search",
+    "model": "openai-gpt-6-astra",
+    "notes": "OBSERVED via DigitalOcean Inference Responses API + web_search. API observation only \u2014 does NOT measure consumer ChatGPT/Gemini/Perplexity UI.",
+    "mention_rate": 1.0,
+    "citation_rate": 1.0,
+    "target_in_sources_rate": 1.0,
+    "target_page_in_sources_rate": 0.0,
+    "target_page_citation_rate": 0.0,
+    "query_coverage": 1.0,
+    "observations": [
+      {
+        "query": "How do subagents reduce context overload in an AI coding agent, and how is that different from context compaction?",
+        "answer": "**Subagents reduce context overload by keeping a subtask\u2019s detailed work out of the main agent\u2019s context. Context compaction reduces overload by summarizing material already in an agent\u2019s context.** They are complementary, not interchangeable.\n\n### How subagents help\n\nA coding agent accumulates file contents, search results, command output, failed attempts, and conversation history. That can exhaust its context window\u2014and make relevant information harder to use even before the hard limit is reached. [Anthropic describes this as a finite \u201cattention budget.\u201d](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)\n\nWith context-isolated subagents:\n\n1. The parent delegates a bounded task, such as \u201cinvestigate why the authentication tests fail.\u201d\n2. The child works in a **separate context**, with the instructions and information needed for that task.\n3. Its intermediate file reads, searches, and test output stay in that context.\n4. It returns a concise finding or result, rather than its entire working history.\n\nThe parent can therefore coordinate the overall coding task without carrying every investigative detail. The benefit comes from **context isolation**, not necessarily parallel execution or using a different model.\n\n### How this differs from compaction\n\n| | Subagents | Context compaction |\n|---|---|---|\n| **Mechanism** | Separate work into distinct contexts | Replace accumulated history with a shorter summary |\n| **Effect on the parent** | Prevents much of the subtask\u2019s detail from entering its context | Reduces detail already present |\n| **Best suited to** | Bounded investigations, code exploration, reviews | Continuing a long-running conversation or task |\n| **Main risk** | The delegation or returned report omits important information | The summary loses details needed later |\n\nFor example, a subagent can inspect 30 files and return the three relevant locations plus a diagnosis. Compaction instead lets the main agent inspect those files",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #12 Building AI Subagents with Context Isolation",
+          "\"nik-hil.hashnode.dev\" \"12\" \"subagents\"",
+          "Anthropic effective context engineering sub agents compaction context isolation"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How can I implement a spawn_subagent tool using my existing agent loop instead of adding another framework?",
+        "answer": "Implement `spawn_subagent` as **a tool that invokes your existing agent loop with a fresh conversation and returns only the child\u2019s final result**. You do not need a second framework\u2014or even a separate process.\n\n```text\nParent agent\n  \u2514\u2500 spawn_subagent(task)\n       \u2514\u2500 existing agent loop, fresh context\n            \u251c\u2500 tool calls and observations stay local\n            \u2514\u2500 final summary \u2192 parent\u2019s tool result\n```\n\nThis builds directly on the series\u2019 original [LLM \u2192 tool \u2192 observation loop](https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling).\n\n## 1. Make your loop reusable\n\nIf your loop currently depends on global `messages` or a global tool registry, move those into per-run arguments:\n\n```python\nrun_agent(\n    messages=...,\n    tools=...,\n    tool_schemas=...,\n    permissions=...,\n    workspace=...,\n    max_steps=...,\n)\n```\n\nThe important boundary is:\n\n| Reuse | Create fresh for each child |\n|---|---|\n| Model client and loop implementation | Message history |\n| Tool implementations | Tool-call observations |\n| Workspace, if intentional | Scratch state and step counter |\n| Permission policy, or stricter | Final-result accumulator |\n\n**Do not copy the parent\u2019s whole transcript.** Pass a self-contained task containing the relevant facts, constraints, and expected output.\n\n## 2. Wrap the loop in a tool\n\nHere is an illustrative adapter\u2014not a verbatim implementation from the article. It assumes your loop returns an object with `status` and `final_text`.\n\n```python\nMAX_DEPTH = 1  # Parent at 0; children at 1 cannot delegate.\n\ndef make_spawn_subagent(\n    *,\n    run_agent,\n    depth,\n    base_tools,\n    base_schemas,\n    permissions,\n    workspace,\n):\n    def spawn_subagent(task: str) -> dict:\n        if depth >= MAX_DEPTH:\n            return {\"status\": \"error\", \"error\": \"Delegation depth exceeded\"}\n\n        if not isinstance(task, str) or not task.strip():\n            return {\"status\": \"error\", \"error\": \"A nonempty task is r",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #12 Building AI Subagents with Context Isolation spawn_subagent",
+          "\"nik-hil.hashnode.dev/agents-zero-to-hero-12\"",
+          "\"Building AI Subagents with Context Isolation\""
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "When is delegating a coding task to a subagent worth the extra cost and latency?",
+        "answer": "**Delegation is worth it when a subtask can be specified briefly, requires substantial independent work, and returns a compact, verifiable result.** The benefit must exceed the cost of briefing the subagent, its additional model calls, and reviewing or integrating its output.\n\nI found other installments of *Agents Zero to Hero* on the target domain, but couldn\u2019t retrieve **#12: Building AI Subagents with Context Isolation**. So the guidance below is an independent assessment, not a verified summary of that article.\n\n### When it pays off\n\n| Delegate when\u2026 | Coding example | Why it helps |\n|---|---|---|\n| **The work produces lots of disposable context.** | Search an unfamiliar subsystem, inspect logs, or investigate test failures; return relevant files and findings. | The parent avoids carrying every search result and file read through subsequent turns. This is the primary use case described in [Claude Code\u2019s subagent documentation](https://code.claude.com/docs/en/subagents). |\n| **The task has clear boundaries and acceptance criteria.** | Implement one adapter against a defined interface, with specified tests. | A short handoff is sufficient, and checking the result is cheaper than repeating the work. [Anthropic\u2019s coding guidance](https://code.claude.com/docs/en/best-practices.md) emphasizes executable checks such as tests and builds. |\n| **Useful work can happen concurrently.** | Investigate independent failure causes while the parent implements an already-understood fix. | Parallel execution can offset startup latency\u2014provided the parent genuinely has other work to do. [Parallel-agent guidance](https://code.claude.com/docs/en/agents) distinguishes independent tasks and warns that concurrency multiplies token usage. |\n| **A focused configuration offers a real advantage.** | Use a read-only reviewer or a cheaper model for routine repository exploration. | Restricted tools, specialized instructions, or lower model prices can justify delegation. These are explicit bene",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent",
+            "title": "Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "site:nik-hil.hashnode.dev \"Agents Zero to Hero #12\"",
+          "site:nik-hil.hashnode.dev \"Building AI Subagents\"",
+          "site:code.claude.com/docs subagents when use latency context overhead"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "In a coding agent with subagents, what should be shared between parent and child, and what should stay isolated?",
+        "answer": "**Share the work contract and governance; isolate the working context.** A child should operate on a clearly scoped task under the parent\u2019s security constraints\u2014not inherit the parent\u2019s entire conversation or silently expand its authority.\n\nFor *Agents Zero to Hero #12*, the accessible [Hashnode discussion](https://hashnode.com/posts/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation/6ab141e5635992281f15c328) identifies the central design as **shared workspace, isolated context**. That is a useful baseline, with an important filesystem caveat.\n\n### What should be shared?\n\n| Share | Appropriate boundary |\n|---|---|\n| **Task and relevant context** | Give the child its objective, necessary background, relevant paths, constraints, and acceptance criteria\u2014not the whole parent transcript. |\n| **Security policy** | Carry forward workspace restrictions, permission checks, and approval requirements. A child may have fewer privileges, but delegation should not grant additional authority. The series\u2019 [permissions article](https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act) correctly puts enforcement in the harness rather than the model. |\n| **Project artifacts** | Share access to the necessary code and durable outputs. A common workspace makes child edits available to the parent, subject to coordination. |\n| **Results and evidence** | Return a concise report: completion status, findings, changed files, tests run, failures, and unresolved questions. Keep detailed logs available separately. |\n| **Operational oversight** | As a design recommendation, aggregate usage and audit events across children, and propagate cancellation. Delegation must not bypass the overall budget. |\n\n### What should stay isolated?\n\n- **Conversation history and scratch context:** each child gets its own message list, exploration, intermediate tool output, and local hypotheses.\n- **Execution state:** local iteration counters, completion flags,",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Building AI Agent File Tools: A Coding Agent from Scratch",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent",
+            "title": "Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #12 Building AI Subagents with Context Isolation",
+          "site:nik-hil.hashnode.dev \"12\" \"subagents\"",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How do I prevent subagents from recursively spawning more agents, and does a depth limit also limit concurrency?",
+        "answer": "**Prevent recursive delegation in the harness\u2014not just in the prompt. And no: a depth limit does not also limit concurrency.**\n\n### Prevent subagents from spawning more agents\n\nUse two complementary controls:\n\n1. **Remove the spawning tool (such as `run_agent`) from subagents\u2019 available tools.**\n2. **Enforce a depth check at the actual spawning boundary**, so an unexpected tool call cannot bypass the restriction.\n\nFor example, with the root at depth `0`:\n\n```python\nMAX_DEPTH = 1  # root \u2192 child allowed; child \u2192 grandchild denied\n\ndef spawn_agent(parent, task):\n    if parent.depth >= MAX_DEPTH:\n        return {\"error\": \"Maximum delegation depth reached\"}\n\n    return run_agent(\n        task=task,\n        depth=parent.depth + 1,\n        tools=tools_without_spawning,\n    )\n```\n\nThis is illustrative code, not a verified excerpt from article #12. Keep depth in trusted runtime state; don\u2019t let the model choose or reset it. This follows the series\u2019 explicit principle that **the model proposes actions, while the harness enforces permissions**. [Source: article #6](https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act)\n\n### Depth and concurrency are separate limits\n\n| Control | What it limits |\n|---|---|\n| **Maximum depth** | How many nested delegation levels are allowed |\n| **Concurrency cap** | How many subagents may run simultaneously |\n| **Spawn/task budget** | How many subagents may be created over the entire job |\n\nA depth limit of `1` can still allow the root to create **100 sibling subagents**. Whether those execute sequentially or simultaneously depends on the scheduler\u2014not the depth guard.\n\nTo bound parallel execution, add a **shared semaphore or bounded worker pool**. To prevent unlimited sequential spawning, add a separate total-spawn budget, plus time/token/cost budgets as needed.\n\n### What this means for article #12\n\nThe article\u2019s [public discussion](https://hashnode.com/posts/agents-zero-to-hero-12-building-ai-subagen",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #12 Building AI Subagents with Context Isolation depth recursion concurrency",
+          "\"nik-hil.hashnode.dev/agents-zero-to-hero-12\"",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How should I write a subagent task when the child cannot see the parent's conversation history?",
+        "answer": "Write it as a **self-contained work order\u2014not a continuation of the conversation**. The child should be able to act using only the task text and explicitly identified resources.\n\n### Include these six things\n\n1. **Objective:** One concrete result to produce.\n2. **Relevant context:** Requirements, prior decisions, and observations the parent already knows. Summarize what matters; don\u2019t copy the entire conversation.\n3. **Inputs and locations:** Exact file paths, symbols, URLs, data, or error messages. Avoid \u201cthe file above\u201d or \u201cthe issue we discussed.\u201d\n4. **Scope and constraints:** Whether to investigate or edit, what may change, and what must remain untouched.\n5. **Completion criteria:** Tests, checks, or evidence that establish success.\n6. **Return format:** What the parent needs back\u2014findings, changed files, verification results, and unresolved questions.\n\nIf necessary information is missing, tell the child to **report the blocker rather than invent requirements**.\n\n### Example\n\n**Weak task**\n> Fix the validation bug we discussed and test it.\n\n**Self-contained task** *(illustrative paths and requirements)*\n```text\nObjective:\nFix the signup endpoint accepting an empty email address.\n\nContext:\nPOST /signup currently accepts {\"email\": \"\", \"password\": \"valid-password\"}.\nRequired behavior: return HTTP 400 for missing, empty, or whitespace-only\nemail values. Preserve behavior for valid email addresses.\n\nInputs:\nInspect src/api/signup.py and tests/test_signup.py.\nPaths are relative to the repository root.\n\nScope:\nImplement the smallest fix and add regression tests.\nDo not change password validation, dependencies, or unrelated endpoints.\nThe workspace may contain other work; do not overwrite unrelated changes.\n\nVerification:\nRun pytest tests/test_signup.py.\nReport the command and actual result. If execution is unavailable,\nstate that explicitly.\n\nReturn:\n- Brief summary of the fix\n- Files changed\n- Tests run and results\n- Any remaining risks or blockers\n\nIf the stated file",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #12 Building AI Subagents with Context Isolation",
+          "\"nik-hil.hashnode.dev/agents-zero-to-hero-12\"",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How are subagents different from asking one AI agent to make multiple parallel tool calls?",
+        "answer": "**Parallel tool calls delegate operations; subagents delegate a task and the decisions needed to complete it.** The key difference is **separate agent loops and context**, not whether work happens simultaneously.\n\n| Aspect | One agent making parallel tool calls | Subagents |\n|---|---|---|\n| Who decides the next step? | The main agent interprets results and chooses follow-up actions. | Each subagent can interpret its results, choose tools, and continue independently. |\n| Context | Tool results normally return to the main agent\u2019s conversation. | Intermediate results stay in each subagent\u2019s separate context; typically only a final report returns. |\n| Instructions and capabilities | Calls are coordinated under the main agent\u2019s configuration. | Workers can have specialized prompts, models, and restricted tool access. |\n| Concurrency | Several operations execute concurrently. | Several multi-step investigations can execute concurrently\u2014or subagents can run sequentially. |\n\nAnthropic\u2019s [subagent SDK documentation](https://code.claude.com/docs/en/agent-sdk/subagents) explicitly describes separate agent instances, fresh conversations, and intermediate tool calls remaining inside the worker\u2019s context.\n\n### A concrete example\n\nSuppose you ask an agent to investigate authentication failures.\n\n**Parallel tool calls:**\n- Search application logs.\n- Read the authentication configuration.\n- Fetch recent deployment information.\n\nThose operations run together. The **main agent** receives their outputs and decides what to investigate next.\n\n**Subagents:**\n- \u201cInvestigate whether the failures originate in the application.\u201d\n- \u201cInvestigate whether deployment or infrastructure changes caused them.\u201d\n\nEach worker can perform multiple searches, read relevant files, follow leads, and return findings with evidence. The main agent synthesizes their reports without needing every log line or file they inspected. This is precisely the context-management benefit described in [Claude Code\u2019s subagent d",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #12 Building AI Subagents with Context Isolation",
+          "\"nik-hil\" \"12\" \"subagents\"",
+          "site.code.claude.com docs subagents own context window"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "What are the tradeoffs of letting coding subagents edit the same workspace instead of giving each one a separate workspace?",
+        "answer": "**A shared workspace makes delegation simpler and results immediately usable, but turns coordination into a correctness problem.** Separate workspaces cost more to set up and integrate, but make concurrent edits easier to review, test, and undo.\n\nThe key distinction for *\u201cBuilding AI Subagents with Context Isolation\u201d* is that **context isolation is not filesystem isolation**: a child can have its own conversation history while still changing files used by the parent and other children. Claude Code\u2019s documentation likewise treats [subagent contexts](https://code.claude.com/docs/en/sub-agents) and [worktree isolation](https://code.claude.com/docs/en/worktrees) as separate mechanisms.\n\n### Main tradeoffs\n\n| Concern | Shared workspace | Separate workspace per subagent |\n|---|---|---|\n| **Setup and resources** | One checkout and development environment; less initialization and cleanup. | Additional working directories, dependency setup, and cleanup. Git worktrees reduce duplication by sharing repository history. |\n| **Sharing results** | Changes are immediately available to the parent and subsequent children; no merge step. | Changes must be returned as patches, commits, or merges. Other agents do not automatically see them. |\n| **Concurrent edits** | Agents can overwrite each other\u2019s work or edit based on stale reads. Exact-match edits may fail rather than overwrite, but are not inherently concurrency-safe. | Agents cannot directly overwrite each other\u2019s working files. Conflicts move to an explicit integration step. |\n| **Testing** | Tests may run against a mixture of unfinished changes, making failures\u2014and successes\u2014hard to attribute. | Each agent can test its own changes against a known baseline. The merged result still requires testing. |\n| **Review and rollback** | Changes become intermingled; undoing one agent\u2019s work can damage another\u2019s. | Per-agent diffs and commits make review, rejection, and rollback easier. |\n| **Failure containment** | A mistaken deletion or ",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent",
+            "title": "Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "site:nik-hil.hashnode.dev \"Agents Zero to Hero #12\"",
+          "\"nik-hil.hashnode.dev\" \"Context Isolation\"",
+          "site:code.claude.com worktrees subagents same files conflicts"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "How can I test subagent delegation and recursion limits without making real LLM API calls?",
+        "answer": "**Use deterministic fakes at the LLM boundary, while keeping the delegation and depth-checking code real.** That lets you test orchestration without API keys, network access, or model variability.\n\nI located the [discussion for article #12](https://hashnode.com/posts/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation/6ab141e5635992281f15c328), but couldn\u2019t retrieve its full implementation. The examples below are therefore testing patterns\u2014not verified repository-specific code.\n\n### 1. Test delegation with a stub child runner\n\nFor a unit test of the delegation wrapper, replace the function that actually runs the child with a mock returning a fixed summary.\n\nAssert that the wrapper:\n\n- Passes the delegated task and intended configuration.\n- Increments depth by exactly one.\n- Creates fresh conversation state rather than passing the parent\u2019s history.\n- Returns the child\u2019s summary in the expected tool-result format.\n\nPatch the runner **where the delegation module looks it up**, not necessarily where it was originally defined. Python\u2019s [`unittest.mock` documentation](https://docs.python.org/3/library/unittest.mock.html#where-to-patch) explains this distinction.\n\n### 2. Test the full flow with scripted model responses\n\nFor an integration-style test, don\u2019t mock delegation itself. Replace the completion client used by **both parent and children**, and script this sequence:\n\n```text\nParent response \u2192 request delegation(\"Inspect the parser\")\nChild response  \u2192 finish with \"Parser accepts empty input\"\nParent response \u2192 finish with the child\u2019s finding\n```\n\nUse response objects matching the interface your agent consumes. A minimal completion fake can record request snapshots:\n\n```python\nfrom copy import deepcopy\n\nclass ScriptedCompletions:\n    def __init__(self, replies):\n        self.replies = iter(replies)\n        self.requests = []\n\n    def create(self, **kwargs):\n        self.requests.append(deepcopy(kwargs))\n        try:\n            return next(self.replies)\n",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent",
+            "title": "Agents Zero to Hero #4: Precise Code Editing and Search for an AI Coding Agent",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "\"Agents Zero to Hero #12\" \"Subagents\"",
+          "site:nik-hil.hashnode.dev \"subagents\" \"12\"",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      },
+      {
+        "query": "Can a subagent load skills and use MCP tools while keeping its conversation separate from the parent?",
+        "answer": "**Yes\u2014conversation isolation does not prevent a subagent from loading skills or using MCP tools.** The key is to separate its **conversation state** from its **available capabilities**:\n\n- **Separate conversation:** Give the child its own message history, initialized with the delegated task rather than the parent\u2019s full transcript.\n- **Skills:** Make skill discovery/loading available to the child; loaded instructions go into the child\u2019s context.\n- **MCP tools:** Expose the permitted MCP tools to the child. Tool calls and results stay in its conversation.\n- **Return boundary:** Send the child\u2019s final result or summary back to the parent, rather than merging its entire transcript.\n\n**The important caveat is that context isolation is not filesystem or security isolation.** The indexed [discussion of Article #12](https://hashnode.com/posts/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation/6ab141e5635992281f15c328) explicitly describes a shared-workspace/isolated-context design and raises the risk of overlapping file writes. Tool access also needs independent permission enforcement\u2014the series\u2019 [Article #6](https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act) distinguishes what the model requests from what the harness allows.\n\n**Verification limit:** Search surfaced Article #12\u2019s discussion, but not its full body. So the architecture supports **yes**, but I could not verify the article\u2019s exact skill-loading and MCP wiring.\n\n## Highlights:\n- Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling: # Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling Building an AI agent sounds deceptively simple. Call an LLM. Give it a prompt. Get an answer. But that...\n- Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act: # Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act ## Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to",
+        "mentioned": true,
+        "cited": true,
+        "target_domain_in_sources": true,
+        "target_page_in_sources": false,
+        "target_page_cited": false,
+        "source_urls": [
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools"
+        ],
+        "citations": [
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
+            "title": "Agents Zero to Hero #1: Building an AI Agent from Scratch with Tool Calling",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
+            "title": "Agents Zero to Hero #6: Teaching an AI Agent When It Is Allowed to Act",
+            "type": "url_citation"
+          },
+          {
+            "url": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
+            "title": "Agents Zero to Hero #2: Giving an AI Agent Eyes and Hands \u2014 Filesystem Tools",
+            "type": "url_citation"
+          }
+        ],
+        "search_queries": [
+          "Agents Zero to Hero #12 Building AI Subagents with Context Isolation skills MCP",
+          "\"nik-hil.hashnode.dev/agents-zero-to-hero-12\"",
+          "https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation"
+        ],
+        "had_web_search_call": true,
+        "error": null,
+        "measures_consumer_ui": false,
+        "provenance": "api_observation"
+      }
+    ]
+  },
+  "opportunities": [
+    {
+      "question": "In a coding agent with subagents, what should be shared between parent and child, and what should stay isolated?",
+      "gap": "CLARITY GAP: The summary table says parent and child have the same tool set without noting the depth-dependent exception for spawn_subagent. This can imply that a child inherits the parent's ability to delegate even at the depth limit.",
+      "target_heading": "What is shared and what is isolated?",
+      "recommended_change": "Qualify the Tools row to distinguish shared core tools from the depth-dependent availability of spawn_subagent.",
+      "evidence_quote": "It only adds the `spawn_subagent` schema when:\n\n```python\nif depth < max_depth:\n```",
+      "answerability": "weak",
+      "source": "llm_generated"
+    }
+  ],
+  "recommendations": {
+    "opportunities": [
+      {
+        "question": "In a coding agent with subagents, what should be shared between parent and child, and what should stay isolated?",
+        "gap": "CLARITY GAP: The summary table says parent and child have the same tool set without noting the depth-dependent exception for spawn_subagent. This can imply that a child inherits the parent's ability to delegate even at the depth limit.",
+        "target_heading": "What is shared and what is isolated?",
+        "recommended_change": "Qualify the Tools row to distinguish shared core tools from the depth-dependent availability of spawn_subagent.",
+        "evidence_quote": "It only adds the `spawn_subagent` schema when:\n\n```python\nif depth < max_depth:\n```",
+        "answerability": "weak",
+        "source": "llm_generated"
+      }
+    ],
+    "section_edits": [
+      {
+        "target_heading": "What is shared and what is isolated?",
+        "replacement_body": "\nThis is worth summarizing explicitly.\n\n| Component | Parent / Child |\n| --- | --- |\n| Message history | **Isolated** |\n| Agent reasoning loop | Separate |\n| Task | Different |\n| Workspace | **Shared** |\n| Permissions | **Shared** |\n| Hooks | **Shared** |\n| Memory object | **Shared** |\n| Tools | Same core tools; `spawn_subagent` is only advertised when `depth < max_depth` |\n| MCP connections | Available through inherited tool configuration |\n| Depth | Incremented |\n| Result | Child returns to parent |\n\nThe most important boundary is:\n\n```text\nconversation = isolated\nworkspace = shared\npolicy = shared\n```\n\n* * *\n\n"
+      }
+    ],
+    "change_explanations": [
+      "Qualified the shared-tools summary with the existing depth restriction so it does not imply that every child can spawn another agent."
+    ],
+    "validation_warnings": [],
+    "model": "openai-gpt-6-astra",
+    "source": "llm_generated",
+    "recommended_markdown_chars": 27367
+  },
+  "quality_eval": {
+    "passed": true,
+    "summary": "The questions are realistic, relevant, specific, and sufficiently distinct, with no awkward heading-to-question transformations. The recommendation makes a small but useful improvement: it clarifies that parent and child share core tools while spawn_subagent is advertised only below the depth limit. This directly improves the shared-versus-isolated answer and is grounded in the original article. The remaining questions were already addressed and do not require additional edits. No invented facts, statistics, citations, or unsupported claims are introduced.",
+    "question_feedback": [
+      "All ten questions reflect plausible developer needs and are answerable from the article.",
+      "Questions about shared components and workspace tradeoffs overlap in subject matter but have distinct intents: inheritance boundaries versus artifact sharing and coordination.",
+      "The combined questions about compaction and context overload, and recursion limits and concurrency, connect related concepts naturally rather than mechanically transforming headings."
+    ],
+    "recommendation_feedback": [
+      "The revised Tools row answers the shared-versus-isolated question more precisely by replacing the unconditional 'Same tool set' with the documented depth-dependent exception.",
+      "The wording correctly describes schema advertisement without suggesting that hiding the tool replaces the separate runtime guard.",
+      "The improvement is localized; it does not materially change answers to the other nine questions, which the original already covers.",
+      "The opportunity's 'weak' answerability label overstates the gap: the original provides a substantial answer, but its summary table needs a qualification."
+    ],
+    "unsupported_claims": [],
+    "unnecessary_changes": [
+      "A blank line was removed between the separator and 'Why not isolate the workspace too?'. This is harmless but unrelated to the substantive correction."
+    ],
+    "explanations": [
+      "PASS \u2014 Questions are natural, specific, relevant, and sufficiently distinct.",
+      "PASS \u2014 The recommendation resolves a misleading simplification in a directly relevant summary table.",
+      "PASS \u2014 The added condition, depth < max_depth, is explicitly supported by the original article.",
+      "PASS \u2014 The edit preserves readability, structure, examples, and authorial voice without unnecessary expansion.",
+      "PASS \u2014 No unsupported factual additions or fabricated evidence are introduced."
+    ],
+    "model": "openai-gpt-6-astra",
+    "source": "llm_generated"
+  },
+  "llm_used": true,
+  "retrieval_used": true,
+  "auto_publish": false,
+  "diff_preview": "--- CURRENT.md\n+++ RECOMMENDED.md\n@@ -1387,7 +1387,7 @@\n | Permissions | **Shared** |\n | Hooks | **Shared** |\n | Memory object | **Shared** |\n-| Tools | Same tool set |\n+| Tools | Same core tools; `spawn_subagent` is only advertised when `depth < max_depth` |\n | MCP connections | Available through inherited tool configuration |\n | Depth | Incremented |\n | Result | Child returns to parent |\n@@ -1401,7 +1401,6 @@\n ```\n \n * * *\n-\n # Why not isolate the workspace too?\n \n That would be a different architecture.\n"
+}
+EXIT=0
