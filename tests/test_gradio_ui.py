@@ -132,12 +132,12 @@ def test_opportunities_card_not_raw_json():
     assert "CLARITY GAP" in html
     assert "llm_generated" not in html
     assert "Grounded" in html
-    assert "Validated" in html
+    assert "✓ Validated" in html
 
 
 def test_opportunity_badge_validated_when_quality_passed():
     html = gradio_app._opportunities_html(_report())
-    assert "Validated" in html
+    assert "✓ Validated" in html
     assert "Unvalidated" not in html
     assert "Quality skipped" not in html
 
@@ -146,7 +146,7 @@ def test_opportunity_badge_quality_skipped():
     r = _report(quality_eval=None)
     html = gradio_app._opportunities_html(r)
     assert "Quality skipped" in html
-    assert "Validated" not in html
+    assert "✓ Validated" not in html
     assert "Unvalidated" not in html
 
 
@@ -163,7 +163,7 @@ def test_opportunity_badge_unvalidated_when_quality_failed():
     )
     html = gradio_app._opportunities_html(r)
     assert "Unvalidated" in html
-    assert "Validated" not in html
+    assert "✓ Validated" not in html
     assert "Quality skipped" not in html
 
 
