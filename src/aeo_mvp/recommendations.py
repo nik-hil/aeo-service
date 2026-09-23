@@ -1,7 +1,8 @@
 """LLM full-document AEO recommendations + deterministic Markdown validation.
 
-Python validates headings, evidence quotes, structure, and anti-intro-concentration
-plumbing checks — no Direct-answer templates, no semantic scoring.
+Python validates headings, evidence quotes, structure, anti-intro-concentration,
+and the applied-change contract (opportunity ↔ RECOMMENDED section edits) —
+no Direct-answer templates, no semantic scoring.
 """
 
 from __future__ import annotations
@@ -149,6 +150,13 @@ def _body_for_heading(markdown: str, heading: str) -> str | None:
     return None
 
 
+def _substantive_body_change(before: str | None, after: str | None) -> bool:
+    """True when section bodies differ beyond whitespace/Markdown normalization."""
+    if before is None or after is None:
+        return False
+    return _ws_canonical(before) != _ws_canonical(after)
+
+
 def validate_recommended_markdown(
     original: str,
     recommended: str,
@@ -156,7 +164,13 @@ def validate_recommended_markdown(
     article: Article,
     opportunities: list[Opportunity],
 ) -> list[str]:
-    """Deterministic safety checks. Returns warnings; raises LLMError on hard failures."""
+    """Deterministic safety checks. Returns warnings; raises LLMError on hard failures.
+
+    Bidirectional applied-change contract:
+    - Every opportunity's ``target_heading`` body must change in RECOMMENDED vs CURRENT.
+    - Every substantive section body change in RECOMMENDED must have ≥1 opportunity
+      targeting that heading. Whitespace-only normalization is not substantive.
+    """
     warnings: list[str] = []
     if not (recommended or "").strip():
         raise LLMError("recommended_markdown is empty")
@@ -233,34 +247,45 @@ def validate_recommended_markdown(
         if not (opp.recommended_change or "").strip():
             raise LLMError(f"recommended_change required for opportunity {opp.question!r}")
 
-    # Anti-intro-concentration (lightweight structural plumbing):
-    # If opportunities claim multiple non-intro target headings, those section bodies
-    # in RECOMMENDED must differ from CURRENT (edits landed where claimed).
+    # Applied-change invariant (forward): every opportunity must land as a real
+    # section body edit in RECOMMENDED. Whitespace-only diffs are not applied edits.
     intro = _intro_heading(article)
-    claimed = []
+    claimed: list[str] = []
+    unchanged_targets: list[str] = []
     for opp in opportunities:
         canon = _exact_heading_match(article, opp.target_heading)
-        if canon:
-            claimed.append(canon)
-    non_intro = [h for h in claimed if intro is None or h.lower() != intro.lower()]
-    unique_non_intro = list(dict.fromkeys(non_intro))
-    if len(unique_non_intro) >= 1:
-        unchanged = []
-        for h in unique_non_intro:
-            before = _body_for_heading(original, h)
-            after = _body_for_heading(recommended, h)
-            if before is not None and after is not None and _ws_canonical(before) == _ws_canonical(after):
-                unchanged.append(h)
-        if unchanged and len(unique_non_intro) >= 2:
-            raise LLMError(
-                "Opportunities target non-intro sections but RECOMMENDED bodies are "
-                f"unchanged for: {unchanged}. Full-document question→section edits required."
-            )
-        if unchanged:
-            warnings.append(
-                "Named target_heading body unchanged in RECOMMENDED: "
-                + ", ".join(unchanged)
-            )
+        if not canon:
+            continue
+        claimed.append(canon)
+        before = _body_for_heading(original, canon)
+        after = _body_for_heading(recommended, canon)
+        if not _substantive_body_change(before, after):
+            unchanged_targets.append(canon)
+    if unchanged_targets:
+        unique_unchanged = list(dict.fromkeys(unchanged_targets))
+        raise LLMError(
+            "Opportunities must correspond to applied RECOMMENDED edits; "
+            f"target section body unchanged for: {unique_unchanged}. "
+            "Omit opportunities that were considered but not applied."
+        )
+
+    # Applied-change invariant (reverse): every substantive section body change
+    # must be attributable to ≥1 opportunity targeting that heading.
+    claimed_lower = {h.lower() for h in claimed}
+    unattributed: list[str] = []
+    for sec in orig_secs:
+        before = sec.body
+        after = _body_for_heading(recommended, sec.heading)
+        if not _substantive_body_change(before, after):
+            continue
+        if sec.heading.lower() not in claimed_lower:
+            unattributed.append(sec.heading)
+    if unattributed:
+        raise LLMError(
+            "RECOMMENDED has substantive section edits without matching opportunities "
+            f"for: {unattributed}. Emit an opportunity for each applied section change, "
+            "or leave that section unchanged."
+        )
 
     # If ≥3 opportunities exist and ALL target only the intro/H1 while article has
     # multiple H2+ sections, reject artificial intro concentration.
@@ -377,11 +402,23 @@ CRITICAL PRODUCT RULES:
      between unrelated sections
    - Do NOT use "**Direct answer:**" template blocks
 
-FOR EACH QUESTION that has a meaningful gap, emit a structured opportunity with:
+APPLIED-CHANGE CONTRACT (critical — Python enforces this):
+Opportunities are records of changes you ACTUALLY applied in recommended_markdown,
+NOT ideas you considered. Bidirectional consistency is required:
+- If you emit an opportunity → you MUST edit that target_heading's section body in
+  recommended_markdown (the applied recommended_change must land there).
+- If you edit a section body in recommended_markdown → you MUST emit a matching
+  opportunity with that exact existing target_heading.
+- If you consider a gap but do NOT edit that section → do NOT emit that opportunity.
+- If there are no substantive edits → return opportunities: [] (do not invent rows).
+- Minor whitespace / Markdown normalization alone is NOT a substantive edit and
+  must not produce opportunity records.
+
+FOR EACH QUESTION whose gap you actually fix in recommended_markdown, emit:
 - question
 - gap (what is missing/weak for answer engines)
 - target_heading (MUST be an existing H1–H6 heading from CURRENT, exact text)
-- recommended_change (what to change in that section)
+- recommended_change (description of the edit you applied in that section)
 - evidence_quote (MUST be copied verbatim from CURRENT and support the change)
 - answerability: strong | weak | missing
 
@@ -393,9 +430,12 @@ SELF-CHECK BEFORE RETURNING (must all be true):
 - Improvements are located where the information belongs
 - Changes are NOT intro-concentrated
 - Multiple sections are touched when questions span topics
+- Every opportunity maps to an applied section edit in recommended_markdown
+- Every substantive recommended_markdown section edit has a matching opportunity
 - Every evidence_quote is verbatim from CURRENT
 - Structure, order, and voice are preserved
 - No unnecessary rewriting; no invented facts
+- No opportunity rows for gaps I did not actually edit
 
 Respond with JSON ONLY:
 {{
