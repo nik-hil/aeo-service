@@ -1,28 +1,24 @@
-# AI search visibility (DigitalOcean)
+# AI search visibility (DigitalOcean) — plumbing only
 
 ## Provider
 
-DigitalOcean Inference **Responses API** with the server-side **`web_search`** tool.
+DigitalOcean Inference **Responses API** + server-side **`web_search`**.
 
-Auth: `AEO_LLM_API_KEY` only (base URL / model via `AEO_LLM_BASE_URL`, `AEO_LLM_MODEL`).
+Auth: `AEO_LLM_API_KEY` only.
 
-## What is recorded per query
+## Recorded per query (OBSERVED)
 
-- query text
-- model answer
-- mention (brand/title tokens in answer, or target domain in sources)
-- citation (target domain in structured citation URLs)
-- target-domain-in-sources
-- source URLs + citation objects
-- aggregate mention / citation / target-in-sources rates
+- query, answer, mention, citation, target-domain-in-sources
+- source URLs, citations, search_queries
+- rates: mention, citation, target-in-sources, query_coverage
+
+No semantic judgment of whether the question was “good” — that is LLM-owned upstream.
 
 ## Flags
 
-- `llm_used`: true only after a successful Responses HTTP call
-- `retrieval_used`: true only when the response contained web_search tool evidence (`web_search_call`, search queries, sources, or citations)
-
-Config alone never sets these flags.
+- `llm_used`: Responses HTTP call executed
+- `retrieval_used`: web_search tool evidence present
 
 ## Not measured
 
-Consumer ChatGPT, Gemini, or Perplexity ranking UIs.
+Consumer ChatGPT / Gemini / Perplexity ranking UIs.

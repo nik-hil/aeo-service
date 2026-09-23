@@ -1,21 +1,22 @@
 # AEO MVP — Hashnode Markdown PoC
 
-Small **Answer Engine Optimization** proof of concept for **Hashnode Markdown only**.
+Small **Answer Engine Optimization** proof of concept for **Hashnode Markdown**.
 
-Flow:
+**Core principle:** the LLM owns semantic intelligence (questions, opportunities,
+recommended Markdown, quality eval). Python owns plumbing (Markdown parse,
+JSON/schema validation, DO `web_search` visibility metrics, DIFF, safety).
 
 ```text
 Hashnode Markdown
-  → article understanding
-  → topic-specific query discovery
-  → AI-search visibility (DigitalOcean Responses + web_search)
-  → opportunity analysis
-  → grounded recommendations
-  → CURRENT.md vs RECOMMENDED.md
+  → LLM question discovery + LLM quality pass (5–10)
+  → OBSERVED AI-search visibility (DigitalOcean Responses + web_search)
+  → LLM opportunities + full RECOMMENDED.md
+  → LLM quality evaluation
+  → CURRENT.md / RECOMMENDED.md / DIFF / report.json
   → Gradio report
 ```
 
-Does **not** auto-publish to Hashnode or any CMS. Visibility is an **API observation**, not consumer ChatGPT / Gemini / Perplexity UI.
+Does **not** auto-publish. Visibility is an **API observation**, not consumer ChatGPT UI.
 
 ## Setup
 
@@ -32,30 +33,47 @@ cp .env.example .env
 |----------|---------|
 | `AEO_LLM_API_KEY` | **Only** LLM credential (DigitalOcean Inference) |
 | `AEO_LLM_BASE_URL` | Default `https://inference.do-ai.run/v1` |
-| `AEO_LLM_MODEL` | Default `openai-gpt-4o` |
+| `AEO_LLM_MODEL` | Default `openai-gpt-5.6-luna` (experiment) |
 | `AEO_API_KEY` | Optional service auth (separate from LLM) |
 
-Removed: `OPENAI_API_KEY`, `DO_MODEL_ACCESS_KEY`, `MODEL_ACCESS_KEY`, `PERPLEXITY_API_KEY`, and multi-key fallback chains.
+Removed / not used: `OPENAI_API_KEY`, `DO_MODEL_ACCESS_KEY`, `MODEL_ACCESS_KEY`, `PERPLEXITY_API_KEY`.
 
-## Run Gradio
+### Model IDs (DO Inference catalog)
+
+| Role | Model ID |
+|------|----------|
+| Default experiment | `openai-gpt-5.6-luna` |
+| One-shot stronger compare | `openai-gpt-6-astra` |
+
+Wire via `AEO_LLM_MODEL` only. Confirm with `GET /v1/models` on your key if catalog names change. See [`docs/MODELS.md`](docs/MODELS.md).
+
+## Live CLI (CoS / machine with key)
 
 ```bash
-source .venv/bin/activate
+export AEO_LLM_API_KEY=...
+export AEO_LLM_MODEL=openai-gpt-5.6-luna   # or openai-gpt-6-astra
+python -m aeo_mvp.cli path/to/article.md \
+  --domain nik-hil.hashnode.dev \
+  --live \
+  --out docs/live-run/
+```
+
+Writes `CURRENT.md`, `RECOMMENDED.md`, `DIFF.patch`, `report.json` (`llm_used`, `retrieval_used`, `model`, questions, opportunities, quality_eval). `auto_publish` is always false.
+
+Dry visibility (still needs LLM for questions/recs):
+
+```bash
+python -m aeo_mvp.cli path/to/article.md --out out/   # no --live
+```
+
+## Gradio
+
+```bash
 python ui/gradio/app.py
 ```
 
-One screen: ARTICLE · AI VISIBILITY · OPPORTUNITIES · CURRENT vs RECOMMENDED · DIFF.
-
-Dry-run is on by default (no live spend). Uncheck dry-run and set `AEO_LLM_API_KEY` for live DigitalOcean web_search.
-
-## Run pipeline in Python
-
-```python
-from aeo_mvp import run_pipeline
-
-report = run_pipeline("examples/sample_article.md", dry_run=True, write_artifacts_dir="out")
-print(report.to_dict())
-```
+Sections: ARTICLE · AI VISIBILITY (OBSERVED) · QUESTIONS (LLM-GENERATED) ·
+OPPORTUNITIES · CURRENT vs RECOMMENDED · DIFF · QUALITY EVALUATION.
 
 ## Tests
 
@@ -64,24 +82,9 @@ pytest -q
 python -m compileall -q src ui
 ```
 
-Optional live DO test: set `AEO_LIVE_RETRIEVAL_TEST=true` and `AEO_LLM_API_KEY`.
-
-## Package layout
-
-```text
-src/aeo_mvp/
-  article.py           # load_hashnode_markdown
-  markdown.py          # fence-aware H1–H6 sections
-  queries.py           # article-specific discover_queries
-  visibility.py        # DO Responses + web_search only
-  recommendations.py   # opportunities + grounded recs
-  llm.py               # thin client; llm_used / retrieval_used from execution
-  pipeline.py          # obvious product flow
-  config.py
-ui/gradio/app.py       # thin UI
-```
-
 ## Docs
 
-- [`docs/OVERVIEW.md`](docs/OVERVIEW.md) — product flow and honesty limits
-- [`docs/VISIBILITY.md`](docs/VISIBILITY.md) — DigitalOcean web_search notes
+- [`docs/ADR-001-llm-semantics.md`](docs/ADR-001-llm-semantics.md) — LLM vs Python ownership
+- [`docs/OVERVIEW.md`](docs/OVERVIEW.md)
+- [`docs/VISIBILITY.md`](docs/VISIBILITY.md)
+- [`docs/MODELS.md`](docs/MODELS.md)

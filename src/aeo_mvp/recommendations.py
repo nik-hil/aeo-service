@@ -1,88 +1,75 @@
-"""Opportunity analysis and grounded recommendations.
+"""LLM opportunity analysis + full recommended Markdown + change explanations.
 
-Flow per opportunity (from #46 lessons, reimplemented simply):
-  question → answerability → evidence → gap → recommended change
-
-Constraints (from #45 lessons, reimplemented simply):
-  - evidence quotes must appear in the article
-  - no H1 mega-section targeting for body edits
-  - do not pile all ops onto one section
-  - no cite_miss / covered_gap_ids hidden coupling
-  - distinguish observed (visibility) vs generated (recommendations)
+Python validates headings, evidence quotes, Markdown safety — no Direct-answer
+templates, no heuristic section scoring.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from aeo_mvp.article import Article
-from aeo_mvp.markdown import append_under_heading, find_section, parse_sections
+from aeo_mvp.llm import LLMClient, LLMError
+from aeo_mvp.markdown import extract_title, find_section, parse_sections
 from aeo_mvp.queries import Query, QuerySet
-from aeo_mvp.visibility import VisibilityObservation, VisibilityReport
+from aeo_mvp.visibility import VisibilityReport
 
 Answerability = Literal["strong", "weak", "missing"]
 
 _WS_RE = re.compile(r"\s+")
-_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
-_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9+#.-]{2,}", re.I)
-_STOP = frozenset(
-    {
-        "the",
-        "and",
-        "for",
-        "with",
-        "from",
-        "this",
-        "that",
-        "your",
-        "our",
-        "into",
-        "about",
-        "using",
-        "have",
-        "will",
-        "are",
-        "was",
-        "were",
-        "what",
-        "when",
-        "where",
-        "which",
-        "how",
-        "who",
-        "why",
-        "can",
-        "does",
-        "did",
-        "not",
-        "but",
-        "you",
-        "all",
-        "any",
-        "more",
-        "than",
-        "also",
-        "just",
-        "like",
-        "such",
-        "only",
-        "a",
-        "an",
-        "of",
-        "to",
-        "in",
-        "on",
-        "at",
-        "by",
-        "or",
-        "as",
-        "is",
-        "it",
-        "be",
-    }
-)
+_DIRECT_ANSWER_RE = re.compile(r"\*\*Direct answer:\*\*", re.I)
+
+
+class SupportsRespondJSON(Protocol):
+    def respond_json(self, prompt: str, *, max_output_tokens: int = 4096) -> Any: ...
+
+    @property
+    def model(self) -> str: ...
+
+
+@dataclass
+class Opportunity:
+    question: str
+    answerability: Answerability
+    evidence_quote: str
+    target_heading: str
+    problem: str
+    recommended_change: str
+    source: Literal["llm_generated"] = "llm_generated"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "question": self.question,
+            "answerability": self.answerability,
+            "evidence_quote": self.evidence_quote,
+            "target_heading": self.target_heading,
+            "problem": self.problem,
+            "recommended_change": self.recommended_change,
+            "source": self.source,
+        }
+
+
+@dataclass
+class RecommendationBundle:
+    opportunities: list[Opportunity] = field(default_factory=list)
+    recommended_markdown: str = ""
+    change_explanations: list[str] = field(default_factory=list)
+    validation_warnings: list[str] = field(default_factory=list)
+    model: str = ""
+    source: str = "llm_generated"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "opportunities": [o.to_dict() for o in self.opportunities],
+            "change_explanations": list(self.change_explanations),
+            "validation_warnings": list(self.validation_warnings),
+            "model": self.model,
+            "source": self.source,
+            "recommended_markdown_chars": len(self.recommended_markdown),
+        }
 
 
 def _ws_canonical(text: str) -> str:
@@ -90,363 +77,248 @@ def _ws_canonical(text: str) -> str:
 
 
 def evidence_quote_in_article(quote: str, article_text: str) -> bool:
-    """True when quote is a real substring (whitespace-canonical)."""
     q = _ws_canonical(quote)
     if len(q) < 12:
         return False
     return q in _ws_canonical(article_text)
 
 
-def _tokens(text: str) -> set[str]:
-    out: set[str] = set()
-    for m in _TOKEN_RE.finditer(text or ""):
-        t = m.group(0).lower().strip(".-")
-        if len(t) >= 3 and t not in _STOP:
-            out.add(t)
+def _heading_exists(article: Article, heading: str) -> bool:
+    return find_section(article.sections, heading) is not None
+
+
+def _count_direct_answer_labels(markdown: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for sec in parse_sections(markdown):
+        n = len(_DIRECT_ANSWER_RE.findall(sec.body or ""))
+        if n:
+            counts[sec.heading] = n
+    return counts
+
+
+def validate_recommended_markdown(
+    original: str,
+    recommended: str,
+    *,
+    article: Article,
+    opportunities: list[Opportunity],
+) -> list[str]:
+    """Deterministic safety checks. Returns warnings; raises LLMError on hard failures."""
+    warnings: list[str] = []
+    if not (recommended or "").strip():
+        raise LLMError("recommended_markdown is empty")
+
+    orig_title = extract_title(original)
+    new_title = extract_title(recommended)
+    if orig_title and new_title and _ws_canonical(orig_title) != _ws_canonical(new_title):
+        raise LLMError(
+            f"Title must be preserved (original={orig_title!r}, recommended={new_title!r})"
+        )
+
+    orig_heads = {s.heading for s in parse_sections(original) if s.level >= 2}
+    new_heads = {s.heading for s in parse_sections(recommended) if s.level >= 2}
+    missing = orig_heads - new_heads
+    if missing:
+        raise LLMError(f"Major sections deleted in recommended Markdown: {sorted(missing)}")
+
+    da = _count_direct_answer_labels(recommended)
+    for heading, n in da.items():
+        if n > 1:
+            raise LLMError(
+                f"Malformed/duplicated **Direct answer:** blocks under {heading!r} (count={n})"
+            )
+    if da:
+        warnings.append(
+            "recommended_markdown contains **Direct answer:** labels; "
+            "prefer natural prose edits without that template"
+        )
+
+    article_text = article.plain_text()
+    for opp in opportunities:
+        if opp.target_heading and not _heading_exists(article, opp.target_heading):
+            raise LLMError(f"target_heading does not exist: {opp.target_heading!r}")
+        if opp.evidence_quote and not evidence_quote_in_article(
+            opp.evidence_quote, article_text
+        ):
+            raise LLMError(
+                f"evidence_quote not found in original article for question {opp.question!r}"
+            )
+
+    # Obvious duplicate consecutive paragraphs
+    paras = [p.strip() for p in recommended.split("\n\n") if p.strip()]
+    for i in range(1, len(paras)):
+        if paras[i] == paras[i - 1] and len(paras[i]) > 40:
+            raise LLMError("Obvious duplicate paragraph additions in recommended Markdown")
+
+    return warnings
+
+
+def _parse_opportunities(raw: Any, article: Article) -> list[Opportunity]:
+    if isinstance(raw, dict):
+        items = raw.get("opportunities") or raw.get("questions") or []
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        raise LLMError("Expected opportunities array or object")
+
+    article_text = article.plain_text()
+    out: list[Opportunity] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        q = str(item.get("question") or "").strip()
+        if not q:
+            continue
+        ans = str(item.get("answerability") or "missing").strip().lower()
+        if ans not in ("strong", "weak", "missing"):
+            ans = "missing"
+        heading = str(item.get("target_heading") or "").strip()
+        if heading and not _heading_exists(article, heading):
+            # LLM chose a bad heading — reject this opportunity (Python plumbing)
+            continue
+        quote = str(item.get("evidence_quote") or "").strip()
+        if quote and not evidence_quote_in_article(quote, article_text):
+            # Unsupported quote — drop quote rather than invent; mark weaker
+            quote = ""
+            if ans == "strong":
+                ans = "weak"
+        out.append(
+            Opportunity(
+                question=q,
+                answerability=ans,  # type: ignore[arg-type]
+                evidence_quote=quote,
+                target_heading=heading,
+                problem=str(item.get("problem") or "").strip(),
+                recommended_change=str(
+                    item.get("recommended_change") or item.get("proposed_change") or ""
+                ).strip(),
+                source="llm_generated",
+            )
+        )
     return out
 
 
-def _sentences(text: str) -> list[str]:
-    parts = _SENT_SPLIT.split((text or "").strip())
-    return [p.strip() for p in parts if len(p.strip()) >= 20]
+_RECOMMEND_PROMPT = """You are an Answer Engine Optimization editor for Hashnode Markdown.
 
+You will receive:
+1) The ORIGINAL article Markdown
+2) FINAL user questions (LLM-generated)
+3) OBSERVED AI-search visibility results (answers, citations, URLs) — factual API observations
 
-def _best_evidence(article: Article, question: str) -> tuple[str | None, str | None]:
-    """Return (evidence_quote, target_heading) grounded in article text."""
-    q_tokens = _tokens(question)
-    if not q_tokens:
-        return None, None
+Tasks:
+A) For each question, produce a structured opportunity:
+   - question
+   - answerability: strong | weak | missing
+   - evidence_quote: exact substring from the ORIGINAL article (or empty if none)
+   - target_heading: an EXISTING heading from the article (choose by meaning; do not invent)
+   - problem: specific gap vs what answer engines need
+   - recommended_change: what to change in that section (natural prose guidance)
 
-    # Prefer non-H1 sections so we never default everything to the mega H1 body.
-    candidates = [s for s in article.sections if s.level >= 2] or list(article.sections)
-    best: tuple[float, str, str] | None = None  # score, quote, heading
+B) Produce a COMPLETE recommended_markdown: the full article Markdown after the
+   smallest useful grounded edits. Preserve meaning, tone, and structure.
+   - Do NOT invent facts, statistics, citations, examples, or SEO filler.
+   - Do NOT use "**Direct answer:**" template blocks.
+   - Do NOT delete major sections or change the H1 title.
+   - Prefer clarifying lead sentences and tightening existing claims.
 
-    for sec in candidates:
-        for sent in _sentences(sec.body):
-            overlap = len(q_tokens & _tokens(sent))
-            if overlap <= 0:
-                continue
-            score = overlap / max(1, len(q_tokens))
-            # Prefer shorter grounded quotes.
-            score -= min(0.2, len(sent) / 2000.0)
-            if best is None or score > best[0]:
-                best = (score, sent, sec.heading)
+C) Provide change_explanations: short bullets of what changed and why.
 
-    if best is None:
-        # Fall back to intro sentences but still attach a non-H1 heading if possible.
-        for sent in _sentences(article.intro):
-            overlap = len(q_tokens & _tokens(sent))
-            if overlap <= 0:
-                continue
-            heading = candidates[0].heading if candidates else (
-                article.sections[0].heading if article.sections else article.title
-            )
-            # Avoid using H1 as target when H2+ exist.
-            h1 = next((s for s in article.sections if s.level == 1), None)
-            if h1 and heading == h1.heading and len(article.sections) > 1:
-                heading = next(
-                    (s.heading for s in article.sections if s.level >= 2),
-                    heading,
-                )
-            return sent, heading
-        return None, None
+Respond with JSON ONLY:
+{{
+  "opportunities": [
+    {{
+      "question": "...",
+      "answerability": "strong|weak|missing",
+      "evidence_quote": "...",
+      "target_heading": "...",
+      "problem": "...",
+      "recommended_change": "..."
+    }}
+  ],
+  "recommended_markdown": "... full markdown ...",
+  "change_explanations": ["...", "..."]
+}}
 
-    return best[1], best[2]
+ORIGINAL ARTICLE:
+---
+{article}
+---
 
+QUESTIONS (LLM-GENERATED):
+{questions}
 
-def _answerability(evidence: str | None, question: str) -> Answerability:
-    if not evidence:
-        return "missing"
-    overlap = len(_tokens(question) & _tokens(evidence))
-    if overlap >= 3:
-        return "strong"
-    if overlap >= 1:
-        return "weak"
-    return "missing"
-
-
-@dataclass
-class Opportunity:
-    question: str
-    answerability: Answerability
-    target_heading: str
-    evidence_quote: str
-    problem: str
-    observed_mention: bool | None = None
-    observed_cited: bool | None = None
-    source: Literal["observed", "generated"] = "generated"
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "question": self.question,
-            "answerability": self.answerability,
-            "target_heading": self.target_heading,
-            "evidence_quote": self.evidence_quote,
-            "problem": self.problem,
-            "observed_mention": self.observed_mention,
-            "observed_cited": self.observed_cited,
-            "source": self.source,
-        }
-
-
-@dataclass
-class Recommendation:
-    question: str
-    answerability: Answerability
-    target_heading: str
-    evidence_quote: str
-    problem: str
-    proposed_change: str
-    source: Literal["observed", "generated"] = "generated"
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "question": self.question,
-            "answerability": self.answerability,
-            "target_heading": self.target_heading,
-            "evidence_quote": self.evidence_quote,
-            "problem": self.problem,
-            "proposed_change": self.proposed_change,
-            "source": self.source,
-        }
-
-
-def analyze_opportunities(
-    article: Article,
-    queries: QuerySet | list[Query] | list[str],
-    visibility: VisibilityReport | None = None,
-) -> list[Opportunity]:
-    """Build opportunities from article questions + optional visibility observations."""
-    if isinstance(queries, QuerySet):
-        q_texts = [q.text for q in queries.selected]
-        section_hint = {
-            q.text: q.source_section for q in queries.selected if q.source_section
-        }
-    else:
-        q_texts = [q if isinstance(q, str) else q.text for q in queries]
-        section_hint = {}
-
-    vis_by_q: dict[str, VisibilityObservation] = {}
-    if visibility:
-        for o in visibility.observations:
-            vis_by_q[o.query] = o
-
-    article_text = article.plain_text()
-    opportunities: list[Opportunity] = []
-    heading_counts: dict[str, int] = {}
-
-    for q in q_texts:
-        evidence, heading = _best_evidence(article, q)
-        if heading is None:
-            heading = section_hint.get(q) or (
-                next(
-                    (s.heading for s in article.sections if s.level >= 2),
-                    article.sections[0].heading if article.sections else article.title,
-                )
-            )
-        # Enforce no all-ops-on-one-section: rotate if a heading is overloaded.
-        if heading_counts.get(heading, 0) >= 2:
-            for s in article.sections:
-                if s.level >= 2 and heading_counts.get(s.heading, 0) < 2:
-                    heading = s.heading
-                    break
-        heading_counts[heading] = heading_counts.get(heading, 0) + 1
-
-        # Never target H1 for body edits when H2+ sections exist (mega-section guard).
-        h1 = next((s for s in article.sections if s.level == 1), None)
-        if (
-            h1
-            and heading == h1.heading
-            and any(s.level >= 2 for s in article.sections)
-        ):
-            alt = next(s.heading for s in article.sections if s.level >= 2)
-            heading = alt
-            heading_counts[heading] = heading_counts.get(heading, 0) + 1
-
-        ans = _answerability(evidence, q)
-        quote = evidence or ""
-        if quote and not evidence_quote_in_article(quote, article_text):
-            quote = ""
-            ans = "missing"
-
-        obs = vis_by_q.get(q)
-        if ans == "strong" and (obs is None or (obs.mentioned and not obs.error)):
-            problem = "Answer is present; tighten the lead sentence for extractability."
-        elif ans == "weak":
-            problem = (
-                "Partial answer exists but lacks a direct, quotable response "
-                f"to “{q.rstrip('?')}?”."
-            )
-        else:
-            problem = (
-                f"Article does not directly answer “{q.rstrip('?')}?” "
-                f"under “{heading}”."
-            )
-
-        if obs and obs.error is None:
-            if not obs.mentioned and not obs.target_domain_in_sources:
-                problem += " AI-search observation: no mention or target domain in sources."
-            elif not obs.cited:
-                problem += " AI-search observation: appeared in sources but not cited."
-            source: Literal["observed", "generated"] = "observed"
-            observed_mention = obs.mentioned
-            observed_cited = obs.cited
-        else:
-            source = "generated"
-            observed_mention = None
-            observed_cited = None
-
-        # Skip fully strong + already cited unless we still want light polish —
-        # keep weak/missing and uncited observed gaps.
-        if ans == "strong" and source == "observed" and observed_cited:
-            continue
-        if ans == "strong" and source == "generated" and not problem.startswith("Answer"):
-            continue
-
-        opportunities.append(
-            Opportunity(
-                question=q,
-                answerability=ans,
-                target_heading=heading,
-                evidence_quote=quote,
-                problem=problem,
-                observed_mention=observed_mention,
-                observed_cited=observed_cited,
-                source=source,
-            )
-        )
-
-    # Prefer weak/missing first; keep a focused set.
-    opportunities.sort(
-        key=lambda o: (
-            0 if o.answerability == "missing" else 1 if o.answerability == "weak" else 2,
-            0 if o.source == "observed" else 1,
-            o.question,
-        )
-    )
-    return opportunities[:12]
-
-
-def _propose_change(opp: Opportunity, article: Article) -> str:
-    """Grounded, specific proposed Markdown addition — no generic SEO fluff."""
-    sec = find_section(article.sections, opp.target_heading)
-    topic = opp.question.rstrip("?").strip()
-    if opp.evidence_quote:
-        return (
-            f"**Direct answer:** {opp.evidence_quote.strip()}\n\n"
-            f"Expanded for the question “{topic}?”: keep the quote above as the "
-            f"lead sentence under “{opp.target_heading}”, then add one concrete "
-            f"example from the surrounding section"
-            + (
-                f" (currently ~{len(sec.body.split())} words)."
-                if sec and sec.body
-                else "."
-            )
-        )
-    return (
-        f"**Add a direct answer** under “{opp.target_heading}” that opens with "
-        f"one sentence answering “{topic}?”, using only facts already in this "
-        f"article. Do not invent statistics or citations."
-    )
-
-
-def _pick_heading(article: Article, preferred: str, used: dict[str, int], *, cap: int = 2) -> str | None:
-    """Choose a non-H1 heading under the per-section cap, or None if exhausted."""
-    h1 = next((s for s in article.sections if s.level == 1), None)
-    body = [s for s in article.sections if s.level >= 2] or list(article.sections)
-
-    def ok(h: str) -> bool:
-        if h1 and h == h1.heading and any(s.level >= 2 for s in article.sections):
-            return False
-        return used.get(h, 0) < cap
-
-    if preferred and ok(preferred):
-        return preferred
-    for s in body:
-        if ok(s.heading):
-            return s.heading
-    return None
+OBSERVED VISIBILITY (API — not consumer ChatGPT UI):
+{visibility}
+"""
 
 
 def generate_recommendations(
     article: Article,
-    opportunities: list[Opportunity],
-) -> list[Recommendation]:
-    """Turn opportunities into specific grounded recommendations."""
-    recs: list[Recommendation] = []
-    used_headings: dict[str, int] = {}
-    for opp in opportunities:
-        heading = _pick_heading(article, opp.target_heading, used_headings, cap=2)
-        if heading is None:
-            continue
-        used_headings[heading] = used_headings.get(heading, 0) + 1
+    queries: QuerySet | list[Query] | list[str],
+    visibility: VisibilityReport | None = None,
+    *,
+    client: SupportsRespondJSON | None = None,
+) -> RecommendationBundle:
+    """LLM analyzes opportunities and returns full recommended Markdown."""
+    llm: SupportsRespondJSON = client or LLMClient()
+    if client is None and isinstance(llm, LLMClient) and not llm.available():
+        raise LLMError("AEO_LLM_API_KEY required for recommendations (no template fallback)")
 
-        adj = Opportunity(
-            question=opp.question,
-            answerability=opp.answerability,
-            target_heading=heading,
-            evidence_quote=opp.evidence_quote,
-            problem=opp.problem,
-            observed_mention=opp.observed_mention,
-            observed_cited=opp.observed_cited,
-            source=opp.source,
-        )
-        recs.append(
-            Recommendation(
-                question=adj.question,
-                answerability=adj.answerability,
-                target_heading=adj.target_heading,
-                evidence_quote=adj.evidence_quote,
-                problem=adj.problem,
-                proposed_change=_propose_change(adj, article),
-                source=adj.source,
-            )
-        )
-    return recs
+    if isinstance(queries, QuerySet):
+        q_payload = [
+            {
+                "question": q.text,
+                "importance": q.importance,
+                "reason": q.reason,
+                "article_topics_or_evidence": q.article_topics_or_evidence,
+            }
+            for q in queries.selected
+        ]
+    else:
+        q_payload = [
+            {"question": q if isinstance(q, str) else q.text} for q in queries
+        ]
 
+    vis_payload: dict[str, Any]
+    if visibility is None:
+        vis_payload = {"observations": [], "notes": "no visibility run"}
+    else:
+        vis_payload = visibility.to_dict()
 
-def apply_recommendations(markdown: str, recommendations: list[Recommendation]) -> str:
-    """Produce RECOMMENDED.md by appending grounded snippets under target headings.
+    raw = llm.respond_json(
+        _RECOMMEND_PROMPT.format(
+            article=article.markdown,
+            questions=json.dumps(q_payload, indent=2),
+            visibility=json.dumps(vis_payload, indent=2)[:60000],
+        ),
+        max_output_tokens=8192,
+    )
+    if not isinstance(raw, dict):
+        raise LLMError("Recommendations response must be a JSON object")
 
-    Does not auto-publish. Skips recommendations that would target H1 when H2+
-    exist. At most **one** ``**Direct answer:**`` block per heading (no duplicate
-    label stacking). Caps total edits per heading at 2 for non-quote additions.
-    """
-    sections = parse_sections(markdown)
-    h1 = next((s for s in sections if s.level == 1), None)
-    has_h2 = any(s.level >= 2 for s in sections)
-    out = markdown
-    per_heading: dict[str, int] = {}
-    direct_answer_headings: set[str] = set()
+    opportunities = _parse_opportunities(raw, article)
+    recommended = str(raw.get("recommended_markdown") or "").strip()
+    if not recommended:
+        raise LLMError("LLM did not return recommended_markdown")
 
-    for rec in recommendations:
-        heading = rec.target_heading
-        if h1 and has_h2 and heading == h1.heading:
-            continue
-        if per_heading.get(heading, 0) >= 2:
-            continue
-        sec = find_section(parse_sections(out), heading)
-        if sec is None:
-            continue
+    explanations = [
+        str(x).strip()
+        for x in (raw.get("change_explanations") or [])
+        if str(x).strip()
+    ]
 
-        # Prefer a single grounded quote lead — never stack "**Direct answer:**".
-        quote = (rec.evidence_quote or "").strip()
-        if quote:
-            if heading in direct_answer_headings or "**Direct answer:**" in (sec.body or ""):
-                continue
-            addition = f"**Direct answer:** {quote}"
-            direct_answer_headings.add(heading)
-        else:
-            snippet = rec.proposed_change.strip()
-            if not snippet:
-                continue
-            # Instructional proposals without evidence: one short line, no Direct-answer label.
-            addition = snippet.split("\n\n")[0].strip()
-            if addition.lower().startswith("**direct answer:**"):
-                if heading in direct_answer_headings or "**Direct answer:**" in (sec.body or ""):
-                    continue
-                direct_answer_headings.add(heading)
+    warnings = validate_recommended_markdown(
+        article.markdown,
+        recommended,
+        article=article,
+        opportunities=opportunities,
+    )
 
-        out = append_under_heading(out, heading, addition)
-        per_heading[heading] = per_heading.get(heading, 0) + 1
-    return out
+    return RecommendationBundle(
+        opportunities=opportunities,
+        recommended_markdown=recommended,
+        change_explanations=explanations,
+        validation_warnings=warnings,
+        model=getattr(llm, "model", "") or "",
+        source="llm_generated",
+    )

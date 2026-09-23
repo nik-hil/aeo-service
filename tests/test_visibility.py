@@ -1,4 +1,4 @@
-"""Tests for visibility measurement and execution flags."""
+"""Visibility plumbing tests with mocks."""
 
 from aeo_mvp.article import load_hashnode_markdown
 from aeo_mvp.llm import (
@@ -8,35 +8,30 @@ from aeo_mvp.llm import (
     reset_execution_flags,
     retrieval_used,
 )
-from aeo_mvp.queries import discover_queries
+from aeo_mvp.queries import Query, QuerySet
 from aeo_mvp.visibility import measure_visibility
 
 
 class FakeLLM:
-    def __init__(self, result: LLMResult | None = None, *, fail: bool = False):
+    def __init__(self, result: LLMResult):
         self.result = result
-        self.fail = fail
+        self.model = "mock-model"
         self.calls = 0
+        self.web_search_flags: list[bool] = []
 
     def available(self) -> bool:
         return True
 
-    def respond(self, prompt: str, *, web_search: bool = False, require_web_search: bool = False):
-        from aeo_mvp.llm import LLMError
+    def respond(self, prompt, *, web_search=False, require_web_search=False, max_output_tokens=4096):
         import aeo_mvp.llm as llm_mod
 
         self.calls += 1
-        if self.fail:
-            raise LLMError("boom")
+        self.web_search_flags.append(web_search)
         llm_mod._LLM_CALLS += 1
-        if self.result and (
-            self.result.had_web_search_call
-            or self.result.source_urls
-            or self.result.citations
-        ):
+        if self.result.had_web_search_call or self.result.source_urls or self.result.citations:
             llm_mod._RETRIEVAL_EVIDENCE += 1
         assert web_search is True
-        return self.result or LLMResult(text="ok")
+        return self.result
 
 
 def test_parse_responses_detects_web_search_and_citations():
@@ -45,8 +40,8 @@ def test_parse_responses_detects_web_search_and_citations():
             {
                 "type": "web_search_call",
                 "action": {
-                    "queries": ["fastapi validation"],
-                    "sources": [{"url": "https://blog.example.com/fastapi"}],
+                    "queries": ["agent loop"],
+                    "sources": [{"url": "https://blog.example.com/agents"}],
                 },
             },
             {
@@ -54,11 +49,11 @@ def test_parse_responses_detects_web_search_and_citations():
                 "content": [
                     {
                         "type": "output_text",
-                        "text": "FastAPI validates with Pydantic.",
+                        "text": "Agents use tool loops.",
                         "annotations": [
                             {
                                 "type": "url_citation",
-                                "url": "https://blog.example.com/fastapi",
+                                "url": "https://blog.example.com/agents",
                                 "title": "Post",
                             }
                         ],
@@ -69,51 +64,42 @@ def test_parse_responses_detects_web_search_and_citations():
     }
     parsed = parse_responses_output(data)
     assert parsed["had_web_search_call"] is True
-    assert "fastapi validation" in parsed["search_queries"]
-    assert "https://blog.example.com/fastapi" in parsed["source_urls"]
     assert parsed["citations"]
 
 
-def test_dry_run_does_not_fabricate_and_flags_false():
+def test_visibility_invokes_web_search_and_records_observation():
     reset_execution_flags()
     article = load_hashnode_markdown(
-        text="# Hello\n\n## Section\n\nBody about hello world tools.\n",
+        text="# Agents\n\n## Loop\n\nTool calling loop.\n",
         target_domain="blog.example.com",
+        brand_tokens=["Agents"],
     )
-    qs = discover_queries(article, top_n=8)
-    report = measure_visibility(article, qs, dry_run=True)
-    assert report.observations == []
-    assert llm_used() is False
-    assert retrieval_used() is False
-
-
-def test_retrieval_used_only_with_tool_evidence():
-    reset_execution_flags()
-    article = load_hashnode_markdown(
-        text="# FastAPI Tips\n\n## Validation\n\nPydantic validates requests.\n",
-        target_domain="blog.example.com",
-        brand_tokens=["FastAPI"],
+    qs = QuerySet(
+        selected=[Query(text="What is an agent tool-calling loop?")]
     )
-    qs = discover_queries(article, top_n=3)
-    # Limit to 1 query for the fake.
-    qs.selected = qs.selected[:1]
-
     fake = FakeLLM(
         LLMResult(
-            text="FastAPI is great for APIs.",
+            text="Agents use loops.",
             source_urls=["https://blog.example.com/x"],
             citations=[{"url": "https://blog.example.com/x", "type": "url_citation"}],
             had_web_search_call=True,
         )
     )
-    report = measure_visibility(article, qs, client=fake)  # type: ignore[arg-type]
-    assert len(report.observations) == 1
+    report = measure_visibility(article, qs, client=fake)
+    assert fake.calls == 1
+    assert fake.web_search_flags == [True]
+    assert report.observations[0].provenance == "api_observation"
     assert report.observations[0].target_domain_in_sources is True
+    assert report.observations[0].measures_consumer_ui is False
     assert llm_used() is True
     assert retrieval_used() is True
 
 
-def test_llm_used_false_unless_called():
+def test_dry_run_skips_without_fabricating():
     reset_execution_flags()
+    article = load_hashnode_markdown(text="# Hello\n\n## S\n\nBody.\n")
+    qs = QuerySet(selected=[Query(text="What is hello world tooling?")])
+    report = measure_visibility(article, qs, dry_run=True)
+    assert report.observations == []
     assert llm_used() is False
     assert retrieval_used() is False

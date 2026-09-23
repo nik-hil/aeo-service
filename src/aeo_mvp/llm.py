@@ -2,12 +2,14 @@
 
 Uses only AEO_LLM_API_KEY / AEO_LLM_BASE_URL / AEO_LLM_MODEL.
 Tracks whether an LLM call and/or web_search tool evidence actually occurred.
+Python plumbing only — no semantic judgment.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -17,6 +19,8 @@ import httpx
 from aeo_mvp.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.I)
 
 
 class LLMError(RuntimeError):
@@ -32,9 +36,9 @@ class LLMResult:
     citations: list[dict[str, Any]] = field(default_factory=list)
     had_web_search_call: bool = False
     llm_called: bool = True
+    model: str = ""
 
 
-# Execution flags — set only when a real call / tool evidence happens.
 _LLM_CALLS = 0
 _RETRIEVAL_EVIDENCE = 0
 
@@ -52,6 +56,30 @@ def llm_used() -> bool:
 def retrieval_used() -> bool:
     """True only when tool evidence (web_search_call / sources / citations) was seen."""
     return _RETRIEVAL_EVIDENCE > 0
+
+
+def extract_json(text: str) -> Any:
+    """Parse JSON from model text (raw or fenced). Raises LLMError on failure."""
+    raw = (text or "").strip()
+    if not raw:
+        raise LLMError("Empty LLM response; expected JSON")
+    candidates = [raw]
+    m = _JSON_FENCE_RE.search(raw)
+    if m:
+        candidates.insert(0, m.group(1).strip())
+    # Object/array slice fallback
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start = raw.find(opener)
+        end = raw.rfind(closer)
+        if start >= 0 and end > start:
+            candidates.append(raw[start : end + 1])
+    errors: list[str] = []
+    for c in candidates:
+        try:
+            return json.loads(c)
+        except json.JSONDecodeError as exc:
+            errors.append(str(exc))
+    raise LLMError(f"Could not parse JSON from LLM response: {errors[:2]}")
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -224,6 +252,7 @@ class LLMClient:
         *,
         web_search: bool = False,
         require_web_search: bool = False,
+        max_output_tokens: int = 4096,
     ) -> LLMResult:
         global _LLM_CALLS, _RETRIEVAL_EVIDENCE
         if not self.api_key:
@@ -237,7 +266,7 @@ class LLMClient:
         payload: dict[str, Any] = {
             "model": self.model,
             "input": prompt,
-            "max_output_tokens": 1024,
+            "max_output_tokens": max(256, min(int(max_output_tokens), 16384)),
             "stream": False,
         }
         if web_search:
@@ -294,4 +323,18 @@ class LLMClient:
             citations=list(parsed["citations"]),
             had_web_search_call=bool(parsed["had_web_search_call"]),
             llm_called=True,
+            model=self.model,
         )
+
+    def respond_json(
+        self,
+        prompt: str,
+        *,
+        max_output_tokens: int = 4096,
+    ) -> Any:
+        result = self.respond(
+            prompt,
+            web_search=False,
+            max_output_tokens=max_output_tokens,
+        )
+        return extract_json(result.text)

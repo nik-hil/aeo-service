@@ -1,4 +1,4 @@
-"""End-to-end pipeline tests with mocks (no live network)."""
+"""End-to-end pipeline with mocked LLM (no network)."""
 
 from pathlib import Path
 
@@ -8,38 +8,124 @@ from aeo_mvp.pipeline import run_pipeline
 FIXTURE = Path(__file__).resolve().parents[1] / "examples" / "sample_article.md"
 
 
-def test_pipeline_dry_run_flow_and_artifacts(tmp_path):
+class E2EMock:
+    """Sequenced mock: discover → quality questions → recommend → evaluate."""
+
+    def __init__(self):
+        self.model = "mock-e2e"
+        self.step = 0
+
+    def available(self) -> bool:
+        return True
+
+    def respond(self, *args, **kwargs):
+        raise AssertionError("visibility should be dry-run in this test")
+
+    def respond_json(self, prompt: str, *, max_output_tokens: int = 4096):
+        import aeo_mvp.llm as llm_mod
+
+        llm_mod._LLM_CALLS += 1
+        self.step += 1
+        questions = {
+            "questions": [
+                {
+                    "question": "What is an agent loop for tool calling?",
+                    "importance": "high",
+                    "reason": "core",
+                    "article_topics_or_evidence": "The agent loop",
+                },
+                {
+                    "question": "How does tool calling use schemas?",
+                    "importance": "high",
+                    "reason": "mechanism",
+                    "article_topics_or_evidence": "How tool calling works",
+                },
+                {
+                    "question": "Which tools belong in a minimal harness?",
+                    "importance": "medium",
+                    "reason": "practical",
+                    "article_topics_or_evidence": "Choosing tools",
+                },
+                {
+                    "question": "What failure modes appear in agent loops?",
+                    "importance": "medium",
+                    "reason": "risks",
+                    "article_topics_or_evidence": "Common failure modes",
+                },
+                {
+                    "question": "What should come after basic tool calling?",
+                    "importance": "low",
+                    "reason": "roadmap",
+                    "article_topics_or_evidence": "Next steps",
+                },
+            ],
+            "notes": "ok",
+        }
+        if self.step in (1, 2):
+            return questions
+        if self.step == 3:
+            md = Path(FIXTURE).read_text(encoding="utf-8")
+            recommended = md.replace(
+                "The agent loop is the control flow that lets a model call tools, see results, and decide whether to continue.",
+                "The agent loop is the control flow that lets a model call tools, see results, and decide whether to continue. "
+                "It keeps invoking tools until the task is finished.",
+                1,
+            )
+            if recommended == md:
+                recommended = md.rstrip() + "\n\n_Clarified agent-loop definition for answer engines._\n"
+            return {
+                "opportunities": [
+                    {
+                        "question": "What is an agent loop for tool calling?",
+                        "answerability": "weak",
+                        "evidence_quote": (
+                            "The agent loop is the control flow that lets a model call tools, "
+                            "see results, and decide whether to continue."
+                        ),
+                        "target_heading": "What is an agent loop?",
+                        "problem": "Could state the loop more directly for extractability.",
+                        "recommended_change": "Clarify the lead definition.",
+                    }
+                ],
+                "recommended_markdown": recommended,
+                "change_explanations": ["Clarified agent loop wording."],
+            }
+        return {
+            "passed": True,
+            "summary": "Questions are realistic; edit is small.",
+            "question_feedback": ["specific"],
+            "recommendation_feedback": ["grounded"],
+            "unsupported_claims": [],
+            "unnecessary_changes": [],
+            "explanations": ["pass"],
+        }
+
+
+def test_pipeline_e2e_mock_writes_artifacts(tmp_path):
     reset_execution_flags()
     report = run_pipeline(
         FIXTURE,
         dry_run=True,
         write_artifacts_dir=tmp_path,
+        client=E2EMock(),  # type: ignore[arg-type]
     )
-    assert report.article.title
-    assert report.queries.selected
-    assert report.opportunities or report.recommendations is not None
-    assert report.current_markdown
-    assert report.recommended_markdown
     assert report.auto_publish is False
-    assert report.llm_used is False
-    assert report.retrieval_used is False
+    assert report.llm_used is True
+    assert report.retrieval_used is False  # dry_run visibility
+    assert 5 <= len(report.queries.selected) <= 10
+    assert report.quality_eval is not None
+    assert report.quality_eval.passed is True
     assert (tmp_path / "CURRENT.md").is_file()
     assert (tmp_path / "RECOMMENDED.md").is_file()
     assert (tmp_path / "DIFF.patch").is_file()
-    # Flags match actual execution, not config.
+    assert (tmp_path / "report.json").is_file()
+    d = report.to_dict()
+    assert d["model"] == "mock-e2e"
+    assert d["auto_publish"] is False
+    assert "How does Repository work?" not in d["queries_selected"]
+
+
+def test_flags_false_until_called():
+    reset_execution_flags()
     assert llm_used() is False
     assert retrieval_used() is False
-
-
-def test_pipeline_report_dict_shape():
-    report = run_pipeline(text=FIXTURE.read_text(encoding="utf-8"), dry_run=True)
-    d = report.to_dict()
-    assert "queries_selected" in d
-    assert "visibility" in d
-    assert d["auto_publish"] is False
-    assert d["llm_used"] is False
-
-
-def test_no_auto_publish_constant():
-    report = run_pipeline(FIXTURE, dry_run=True)
-    assert report.auto_publish is False

@@ -4,8 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aeo-mvp"
-version = "0.2.0"
-description = "Hashnode Markdown Answer Engine Optimization (AEO) proof of concept"
+version = "0.3.0"
+description = "Hashnode Markdown Answer Engine Optimization (AEO) proof of concept — LLM semantics, Python plumbing"
+
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
