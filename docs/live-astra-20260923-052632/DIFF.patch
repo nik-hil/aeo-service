@@ -1,0 +1,26 @@
+--- CURRENT.md
++++ RECOMMENDED.md
+@@ -412,6 +412,8 @@
+ )
+ ```
+ 
++The `tool_call_id` links this result to the original assistant tool request, not just to a tool name. If the model requests multiple calls—even to the same tool—each result must carry the ID of the call it answers.
++
+ Now the model can observe what happened.
+ 
+ For example:
+@@ -543,6 +545,8 @@
+ ```
+ 
+ At this stage there are essentially no meaningful security boundaries.
++
++A separate process is not a sandbox: `subprocess` does not automatically restrict file or network access. The ten-second timeout is a runtime limit, not an access-control boundary. Permissions and policy checks belong in the harness before tool dispatch; sandboxing must constrain the environment where the code actually runs, rather than rely on the model following instructions.
+ 
+ That is intentional.
+ 
+@@ -696,4 +700,4 @@
+ 
+ It is to understand what the frameworks are doing for us.
+ 
+-One Git tag at a time.
++One Git tag at a time.
