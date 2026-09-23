@@ -334,41 +334,41 @@ def _prompt_from_generate() -> str:
     return client.prompts[0]
 
 
-def test_recommend_prompt_embeds_eight_pass_material_procedure():
-    """Prompt contract: 8-pass procedure + rebalanced materiality / stop rules."""
+def test_recommend_prompt_embeds_systematic_decision_method():
+    """Prompt contract: full decision method for sufficient answerability."""
     prompt = _prompt_from_generate()
     for marker in (
-        "PASS 1",
-        "PASS 2",
-        "PASS 3",
-        "PASS 4",
-        "PASS 5",
-        "PASS 6",
-        "PASS 7",
-        "PASS 8",
-        "THE MOST IMPORTANT TEST",
-        "STRONG",
-        "NEEDS CLARIFICATION",
-        "NEEDS INFORMATION",
-        "MARGINAL ANSWER VALUE",
-        "STOPPING RULE",
-        "DO NOT OVER-CORRECT",
+        "STEP 1",
+        "STEP 2",
+        "STEP 3",
+        "STEP 4",
+        "STEP 5",
+        "STEP 6",
+        "STEP 7",
+        "STEP 8",
+        "STEP 9",
+        "SUFFICIENT ANSWERABILITY WITH THE SMALLEST USEFUL CHANGE",
+        "INTERNAL ANSWER SUMMARY",
+        "NO GAP",
+        "CLARITY GAP",
+        "INFORMATION GAP",
+        "BEFORE / AFTER TEST",
+        "COUNTERFACTUAL TEST",
+        "STOPPING RULE PER QUESTION",
+        "DO NOT BECOME TOO CONSERVATIVE",
         "CALIBRATED EXAMPLES",
         "APPLIED-CHANGE CONTRACT",
+        "CONSISTENCY CHECK",
     ):
         assert marker in prompt, f"missing prompt marker: {marker}"
     assert "tool_call_id" in prompt
     assert "NOT EVERY QUESTION NEEDS A CHANGE" in prompt
     assert "navigation" in prompt.lower()
-    # Exact removal test wording from materiality rebalance
-    assert (
-        "If this sentence or paragraph were removed, would the AI's answer"
-        in prompt
-    )
+    assert "If I remove this edit, would an AI's answer become materially less" in prompt
 
 
 def test_strong_already_sufficient_allows_empty_opportunities():
-    """Already-sufficient → no opportunity required (empty ops + CURRENT ok)."""
+    """1. NO GAP → no opportunity / no edit (empty ops + CURRENT ok)."""
     article = load_hashnode_markdown(text=ARTICLE)
     qs = QuerySet(
         selected=[
@@ -386,67 +386,94 @@ def test_strong_already_sufficient_allows_empty_opportunities():
     )
     assert bundle.opportunities == []
     assert bundle.recommended_markdown.strip() == ARTICLE.strip()
-
-
-def test_prompt_rejects_mere_restatement_as_meaningful_change():
-    """Pure paraphrase / restatement ≠ meaningful recommendation (prompt contract)."""
     prompt = _prompt_from_generate()
-    assert "BAD paraphrase" in prompt or "paraphrase" in prompt.lower()
-    assert "BAD restatement" in prompt or "restatement" in prompt.lower()
-    assert "If this sentence or paragraph were removed" in prompt
-    assert "rewording the same meaning is not an opportunity" in prompt.lower() or (
-        "rewording the same meaning" in prompt
-    )
+    assert "NO GAP" in prompt
+    assert "no opportunity, no edit" in prompt
 
 
-def test_prompt_rejects_visible_code_restatement():
-    """Narrating visible code / messages.append already present → reject (prompt)."""
+def test_prompt_clarity_gap_allows_meaningful_clarification():
+    """2. CLARITY GAP → meaningful clarification allowed (prompt + weak opp path)."""
     prompt = _prompt_from_generate()
-    assert "messages.append" in prompt
-    assert "narrating visible code" in prompt.lower() or "visible code" in prompt
-    assert "sends the result" in prompt or "sends result" in prompt
-    assert "BAD restatement" in prompt
+    assert "CLARITY GAP" in prompt
+    assert "local clarification allowed" in prompt
+    assert 'Map emitted answerability to "weak"' in prompt or "weak" in prompt
 
 
-def test_prompt_keeps_missing_relationship_as_opportunity():
-    """Missing relationship (e.g. tool_call_id why) → KEEP opportunity (prompt)."""
+def test_prompt_information_gap_allows_grounded_addition():
+    """3. INFORMATION GAP → grounded addition allowed; ungrounded → no invent."""
+    prompt = _prompt_from_generate()
+    assert "INFORMATION GAP" in prompt
+    assert "add only if grounded" in prompt
+    assert "do not invent" in prompt
+
+
+def test_prompt_rejects_visible_code_narration():
+    """4. Visible-code narration → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD visible-code narration" in prompt
+    assert "append tool result" in prompt or "appends tool" in prompt
+    assert "no meaningful answer value" in prompt
+
+
+def test_prompt_rejects_paraphrase():
+    """5. Paraphrase → reject."""
+    prompt = _prompt_from_generate()
+    assert "BAD paraphrase" in prompt
+    assert "LLM makes decisions" in prompt or "same meaning" in prompt
+    assert "COUNTERFACTUAL TEST" in prompt
+    assert "BEFORE / AFTER TEST" in prompt
+    assert "sounds better" in prompt or "more SEO" in prompt
+
+
+def test_prompt_keeps_missing_relationship():
+    """6. Missing relationship → keep."""
     prompt = _prompt_from_generate()
     assert "GOOD missing relationship" in prompt
     assert "tool_call_id" in prompt
-    assert "links the result to the original tool request" in prompt
+    assert "associates the returned result" in prompt or "specific tool request" in prompt
 
 
-def test_prompt_keeps_distinction_constraint_and_fact_connection():
-    """Important distinction/constraint and connecting existing facts → KEEP."""
+def test_prompt_keeps_connecting_existing_facts():
+    """7. Connecting existing facts → keep."""
     prompt = _prompt_from_generate()
-    assert "GOOD boundary / distinction" in prompt or "execution boundary" in prompt
     assert "GOOD connecting existing facts" in prompt
-    assert "enables retry" in prompt
-    assert "NEW INFORMATION" in prompt
-    assert "relationship between existing facts" in prompt
+    assert "revise and retry" in prompt or "failed result" in prompt
 
 
-def test_prompt_partial_answer_clarification_still_qualifies():
-    """Partial answer needing clarification still qualifies — do not over-correct."""
+def test_prompt_stop_after_sufficiency():
+    """8. Stop after sufficiency."""
     prompt = _prompt_from_generate()
-    assert "DO NOT OVER-CORRECT" in prompt
-    assert "only edit when the article has zero information" in prompt
-    assert "NEEDS CLARIFICATION" in prompt
-    assert "partial-answer" in prompt.lower() or "Partial answers" in prompt
+    assert "STOPPING RULE PER QUESTION" in prompt
+    assert "sufficiently complete and unambiguous → STOP" in prompt
+    assert "internal answer summary" in prompt.lower() or "INTERNAL ANSWER SUMMARY" in prompt
 
 
-def test_prompt_stop_after_sufficiency_no_redundant_second_edit():
-    """After one useful clarification, redundant second paragraph → STOP."""
+def test_prompt_rejects_second_redundant_edit():
+    """9. Second redundant edit → reject."""
     prompt = _prompt_from_generate()
-    assert "STOP after sufficiency" in prompt or "STOPPING RULE" in prompt
-    assert "second paragraph restating" in prompt or "No polish edits" in prompt
-    assert "sufficiently answerable → STOP" in prompt or (
-        "now sufficiently answerable → STOP" in prompt
-    )
+    assert "BAD polish after sufficiency" in prompt
+    assert "second paragraph restating" in prompt or "second, independent" in prompt
+    assert "Do not keep editing because words could still be improved" in prompt
+
+
+def test_prompt_article_code_contradiction_check():
+    """10. Article/code contradiction + competing-explanation check."""
+    prompt = _prompt_from_generate()
+    assert "contradictions with code" in prompt
+    assert "competing explanations" in prompt or "two competing explanations" in prompt
+    assert "finish tool" in prompt
+
+
+def test_prompt_do_not_become_too_conservative():
+    """Partial answers can still need real improvement."""
+    prompt = _prompt_from_generate()
+    assert "DO NOT BECOME TOO CONSERVATIVE" in prompt
+    assert "only edit when absolutely no information exists" in prompt
+    assert "tool-call message" in prompt or "subsequent tool result" in prompt
 
 
 def test_implicit_gap_targets_existing_local_section():
-    """Partial-answer / implicit gap → targeted local improvement in owning section."""
+    """CLARITY / implicit gap → targeted local improvement in owning section."""
     article = load_hashnode_markdown(text=ARTICLE)
     recommended = _good_recommended(edit_loop=False, edit_tools=True)
     warnings = validate_recommended_markdown(
@@ -461,7 +488,7 @@ def test_implicit_gap_targets_existing_local_section():
 
 
 def test_missing_grounded_element_allows_local_addition():
-    """NEEDS INFORMATION / missing grounded element → local addition under heading."""
+    """INFORMATION GAP → local grounded addition under correct heading."""
     article = load_hashnode_markdown(text=ARTICLE)
     qs = QuerySet(selected=[Query(text="What is an agent loop in tool-calling systems?")])
     payload = {
@@ -496,7 +523,7 @@ def test_missing_grounded_element_allows_local_addition():
 
 
 def test_partial_clarification_opportunity_maps_to_weak():
-    """NEEDS CLARIFICATION partial gap → weak opportunity + local section edit."""
+    """CLARITY GAP → weak opportunity + local section edit."""
     article = load_hashnode_markdown(text=ARTICLE)
     qs = QuerySet(selected=[Query(text="How do tool schemas drive function calls?")])
     payload = {
@@ -530,9 +557,8 @@ def test_partial_clarification_opportunity_maps_to_weak():
 
 
 def test_second_redundant_edit_after_sufficiency_not_required():
-    """After sufficiency, empty additional ops for other strong Qs remain valid."""
+    """After sufficiency, no redundant second section edit required."""
     article = load_hashnode_markdown(text=ARTICLE)
-    # One material fix applied; second selected question judged STRONG → one opp only
     qs = QuerySet(
         selected=[
             Query(text="What is an agent loop in tool-calling systems?"),
@@ -560,7 +586,6 @@ def test_second_redundant_edit_after_sufficiency_not_required():
         article, qs, VisibilityReport(), client=ScriptedLLM(payload)
     )
     assert len(bundle.opportunities) == 1
-    # Tools section left unchanged (no redundant second edit)
     tools_before = next(
         s.body for s in article.sections if s.heading == "How tool calling works"
     )
@@ -573,7 +598,7 @@ def test_second_redundant_edit_after_sufficiency_not_required():
 
 
 def test_meaningful_ops_can_modify_multiple_sections():
-    """Multiple meaningful gaps → multi-section edits still allowed."""
+    """11. Multiple genuine gaps can still modify multiple sections."""
     article = load_hashnode_markdown(text=ARTICLE)
     recommended = _good_recommended(edit_loop=True, edit_tools=True)
     warnings = validate_recommended_markdown(

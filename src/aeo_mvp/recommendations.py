@@ -367,15 +367,17 @@ validate structure, grounding, and the applied-change contract — you own all
 semantic decisions. The heading inventory in the questions payload is navigation
 ONLY; section meaning and gap judgment stay with you.
 
-GOAL — MARGINAL ANSWER VALUE (not max/min edits or length):
-Make each selected question sufficiently answerable from the article, then STOP
-when the next edit would only add polish, repetition, or stylistic variation.
-Keep rejecting restatements, paraphrases, and narrating visible code — but DO
-emit opportunities for genuine partial-answer gaps (missing relationships,
-distinctions, constraints, consequences, limitations, dependencies, ambiguity).
+GOAL — SUFFICIENT ANSWERABILITY WITH THE SMALLEST USEFUL CHANGE:
+Optimize for making each selected question sufficiently answerable from the
+article, using the smallest useful grounded edit, then STOP. Do NOT optimize for
+max/min edits, article length, opportunity count, diff size, or keyword count.
+Correct output may have 0, 2, 5, or more meaningful changes depending on CURRENT.
 
-Do NOT interpret materiality as "only edit when the article has zero information."
-Partial answers that need a critical under-explained relationship still qualify.
+Reject restatements, paraphrases, visible-code narration, and polish. Still emit
+opportunities for genuine CLARITY / INFORMATION gaps (relationships, distinctions,
+constraints, consequences, limitations, dependencies, ambiguity, grounded missing
+detail). Do NOT become too conservative: partial answers can still need real
+improvement.
 
 INPUTS:
 1) CURRENT ARTICLE — the complete Hashnode Markdown (read and reason about ALL of it)
@@ -388,9 +390,8 @@ CRITICAL PRODUCT RULES:
 1. FULL-DOCUMENT OPTIMIZATION — Inspect the entire article before deciding changes.
    Do NOT optimize only the introduction. The introduction is NOT the default place
    for improvements. Do NOT dump improvements into the intro.
-2. QUESTION → SECTION PRINCIPLE — For EACH selected question with a real gap:
-   find the EXISTING section (H1–H6 already in CURRENT) that owns the concept and
-   apply the smallest useful grounded edit THERE. Prefer that section over the intro.
+2. QUESTION → SECTION PRINCIPLE — Place every accepted change in the EXISTING section
+   (H1–H6 already in CURRENT) that owns the concept. Prefer that section over the intro.
    Different questions SHOULD touch different sections when evidence supports it.
    Do NOT artificially concentrate changes near the beginning.
 3. GROUNDING — Use only the CURRENT article text plus the supplied visibility
@@ -409,115 +410,115 @@ CRITICAL PRODUCT RULES:
    - No arbitrary new major sections; no deleting major sections; no moving content
      between unrelated sections
    - Do NOT use "**Direct answer:**" template blocks
-7. NOT EVERY QUESTION NEEDS A CHANGE — Already-sufficient answers get NO opportunity
-   and NO filler. Do not force every selected question into an opportunity.
-   No target opportunity count, section count, or diff size. Good output may have
-   2, 4, 6+ opportunities depending on the article.
+7. NOT EVERY QUESTION NEEDS A CHANGE — NO GAP questions get NO opportunity and NO filler.
+   Do not force every selected question into an opportunity.
 
-REQUIRED INTERNAL PROCEDURE — follow these 8 passes BEFORE producing JSON.
-Do not skip passes. Do not start writing RECOMMENDED until PASS 1–6 are done.
+REQUIRED DECISION METHOD — follow these steps for EACH selected question before
+producing final JSON. Do not skip steps. Do not start writing RECOMMENDED until
+steps 1–6 are done for all questions.
 
-PASS 1 — LOCATE THE ANSWER (full article map):
-Read the complete CURRENT article. Identify every H1–H6 and where each selected
-question's answer lives across those sections. Do NOT assume the intro. Do NOT
-start by editing the intro. Do NOT write recommended_markdown until the full
-article is mapped. The Python heading inventory is navigation only.
+STEP 1 — FIND THE CURRENT ANSWER:
+Read the COMPLETE CURRENT article. Locate where the question is answered (possibly
+across multiple sections). Do NOT assume the introduction contains the answer.
+The Python heading inventory is navigation only.
 
-PASS 2 — SUFFICIENCY CLASS for every selected question:
-- STRONG → already sufficiently answerable → no change; NO opportunity; NO filler.
-- NEEDS CLARIFICATION → local clarification of an implicit relationship, distinction,
-  constraint, consequence, limitation, dependency, or ambiguity. Emit an opportunity
-  for the smallest local fix in the owning section. Map answerability to "weak".
-- NEEDS INFORMATION → add only if grounded in CURRENT or visibility evidence;
-  else leave unchanged (NO invent). Map answerability to "missing" when you emit.
+STEP 2 — WRITE AN INTERNAL ANSWER SUMMARY:
+Before deciding whether to edit, mentally answer the question using CURRENT only.
+Ask: What would an AI have to say to answer this question correctly?
+Compare that required answer with what CURRENT actually supports.
+This prevents edits driven only by wording similarity.
+
+STEP 3 — IDENTIFY THE SMALLEST REAL GAP — classify as exactly one of:
+- NO GAP: article already answers sufficiently → no opportunity, no edit.
+- CLARITY GAP: info exists but an important relationship, distinction, constraint,
+  consequence, dependency, limitation, or ambiguity prevents a strong answer →
+  local clarification allowed. Map emitted answerability to "weak".
+- INFORMATION GAP: important answer element genuinely absent → add only if grounded
+  in CURRENT or supplied visibility evidence; if it cannot be grounded → do not invent,
+  do not create the opportunity. Map emitted answerability to "missing".
 Do not force every question into an opportunity.
 
-PASS 3 — THE MOST IMPORTANT TEST (mandatory gate for every proposed edit):
-Ask exactly: "If this sentence or paragraph were removed, would the AI's answer
-to the selected question become materially less accurate, less complete, or more
-ambiguous?"
-- YES → keep the edit
-- NO → reject (repetition, paraphrase, narrating visible code, polish, generic
+STEP 4 — THE BEFORE / AFTER TEST (for every proposed edit):
+What specific part of the answer is better after this edit? Must be concrete.
+GOOD: explains why X↔Y; distinguishes X from Y; makes a limitation explicit; makes a
+causal relationship clear; adds a necessary grounded detail; removes ambiguity that
+could cause an incorrect answer.
+BAD alone (reject): clearer / more descriptive / sounds better / more SEO / more
+context / summarizes the code.
+
+STEP 5 — COUNTERFACTUAL TEST (primary stopping / keep-or-reject criterion):
+Ask exactly: If I remove this edit, would an AI's answer become materially less
+accurate, less complete, or more ambiguous?
+- YES → KEEP
+- NO → REJECT (repetition, paraphrase, narrating visible code, polish, generic
   explanation, unnecessary expansion)
 
-"NEW INFORMATION" is broader than inventing a new fact. Useful edits include:
-relationship between existing facts, distinction, consequence, limitation,
-constraint, causal connection, ambiguity fix, or context needed to interpret an
-example — whenever the change materially improves the answer.
+CALIBRATED EXAMPLES (teach these judgment standards):
+1. BAD visible-code narration → REJECT: code already shows append tool result and
+   prose says the harness sends the result back; proposing "harness appends tool
+   result so model can see it" adds no meaningful answer value.
+2. GOOD missing relationship → KEEP: code shows tool_call_id but never explains
+   purpose; explain that tool_call_id associates the returned result with the
+   specific tool request (matters when there are multiple calls).
+3. BAD paraphrase → REJECT: "model decides / harness controls how" rewritten as
+   "LLM makes decisions / harness controls execution" — same meaning, no opportunity.
+4. GOOD important boundary → KEEP: schemas + TOOLS registry leave the
+   model→harness→function boundary implicit; making that boundary explicit improves
+   answerability.
+5. GOOD connecting existing facts → KEEP: tool failure and preserved history exist
+   separately; connect them causally — a failed result in conversation lets the model
+   revise and retry.
+6. BAD polish after sufficiency → STOP / REJECT second: one useful clarification
+   makes the question answerable; a second paragraph restating the same point is
+   redundant — no additional opportunity for that question.
 
-CALIBRATED EXAMPLES (apply this judgment):
-1. BAD restatement → REJECT: CURRENT already shows tool-result messages.append and
-   that the harness sends the result back. Proposing "executes then sends result
-   back" only restates what is present — not an opportunity.
-2. GOOD missing relationship → KEEP: CURRENT shows tool_call_id but never why.
-   Explaining that tool_call_id links the result to the original tool request
-   materially improves answerability — emit opportunity in the owning section.
-3. BAD paraphrase → REJECT: CURRENT says the model decides / harness controls;
-   rewording the same meaning is not an opportunity.
-4. GOOD boundary / distinction → KEEP: CURRENT shows schemas + TOOLS registry but
-   never the model→harness→Python execution boundary. Clarifying that boundary
-   is a material distinction — emit opportunity.
-5. GOOD connecting existing facts → KEEP: CURRENT states a tool can error and that
-   history is retained, but never connects them. Explaining that an error in
-   history enables retry is a material causal connection — emit opportunity.
-6. STOP after sufficiency: after one useful clarification makes the question
-   answerable, a second paragraph restating it in different words → STOP
-   (no additional opportunity for that question).
+DO NOT BECOME TOO CONSERVATIVE:
+Do NOT interpret this method as "only edit when absolutely no information exists."
+Partial answers can require real improvement. Example that still qualifies: history
+contains tool calls/results but does not explain that an assistant tool-call message
+must remain associated with the subsequent tool result — legitimate clarification
+when the selected question depends on that.
 
-DO NOT OVER-CORRECT:
-Materiality is NOT "edit only when the article has zero information on the topic."
-Example that still qualifies: conversation state exists, but tool-call vs
-tool-result message ordering is unexplained — that partial-answer gap needs a
-local clarification.
+STEP 6 — STOPPING RULE PER QUESTION:
+1. Determine the current answer (from STEPs 1–2)
+2. Identify the smallest real answerability gap (STEP 3)
+3. Make the smallest useful edit that passes STEPs 4–5
+4. Reconsider the question with the proposed edit in mind
+5. If now sufficiently complete and unambiguous → STOP for that question
+6. Do not make another edit unless a second, independent answerability gap remains
+Do not keep editing because words could still be improved.
 
-PASS 4 — CORRECT EXISTING SECTION (question → gap → owning section → local change):
-Place each accepted edit in the EXISTING section that already owns the concept.
-Examples of ownership (adapt to CURRENT headings; do not invent headings):
-- tool-schema questions → Tool schemas (or equivalent)
-- execute / execute_code → Implementing execute_code (or equivalent)
-- tool-result feedback → Feeding the result back… (or equivalent)
-- history → Why the message history matters (or equivalent)
-- finish → The finish tool (or equivalent)
+STEP 7 — SECTION PLACEMENT:
+Place every accepted change in the existing section that owns the concept
+(adapt to CURRENT headings; do not invent headings):
+- tool schemas → Tool schemas (or equivalent)
+- execution → Implementing execute_code (or equivalent)
+- tool results → Feeding the result back… (or equivalent)
+- conversation state → Why the message history matters (or equivalent)
+- completion → The finish tool (or equivalent)
 - security → There is already a security problem (or equivalent)
-Intro / H1 only when the information genuinely belongs there — never as a dump.
+Only modify the intro when missing info genuinely belongs there. Do not move content
+into the intro merely for AI visibility.
 
-PASS 5 — SMALLEST USEFUL EDIT + STOPPING RULE (per question):
-1. Find the current answer in CURRENT
-2. Identify the smallest real answerability gap
-3. Fix that gap with the smallest useful edit (improve sentence → expand paragraph
-   → one short paragraph → larger rewrite only if required)
-4. Re-evaluate as if reading the proposed document
-5. If the question is now sufficiently answerable → STOP for that question
-6. No polish edits; no second redundant clarification in different words
-Maximize answerability per meaningful change; minimize Markdown churn.
+STEP 8 — COMPLETE DOCUMENT CONSTRUCTION:
+RECOMMENDED.md = CURRENT.md + accepted meaningful changes only.
+Do not independently rewrite the rest. Do not make extra edits while constructing
+final Markdown. Opportunities define the allowed changes.
 
-PASS 6 — STRUCTURED OPPORTUNITY only for changes you will actually apply:
-Emit an opportunity ONLY when you will apply that edit in recommended_markdown.
-Fields: question, gap, target_heading, recommended_change, evidence_quote, answerability.
-- gap = the real answerability problem (not a restatement excuse)
-- recommended_change = the actual edit you will apply
-- evidence_quote = verbatim substring from CURRENT supporting the change
-No idea-only opportunities. No opportunities for STRONG questions.
-No opportunities for rejected paraphrases / code narration / polish.
+STEP 9 — CONSISTENCY CHECK (before final JSON):
+For every substantive edit verify: selected question, exact gap, why it materially
+improves the answer (BEFORE/AFTER + COUNTERFACTUAL), correct section, grounded,
+not redundant, no additional edit needed for that question.
+Whole-article checks: contradictions with code; duplicate explanations; conflicting
+descriptions of the same mechanism; unnecessary repetition; intro-heavy changes;
+invented information. Do not leave two competing explanations (e.g. completion when
+no tool calls vs finish tool — clarify the relationship rather than add another
+paragraph). Also verify bidirectional opportunity ↔ applied-edit consistency below.
 
-PASS 7 — CONSTRUCT RECOMMENDED.md:
-recommended_markdown = CURRENT + only the selected meaningful grounded changes from
-PASS 6. Opportunities define the allowed changes — do NOT freely rewrite after listing
-opportunities. Preserve sections you did not deliberately improve.
-
-PASS 8 — SELF-CHECK before JSON (must all be true):
-For every substantive edit, answer: which question? what gap? correct section?
-passes the MOST IMPORTANT TEST (PASS 3)? grounded? not oversized? stopped after
-sufficiency (no redundant second edit for that question)?
-Also verify:
-- bidirectional opportunity ↔ applied edit consistency (see contract below)
-- STRONG questions untouched; no intro dump; no filler / restatement / paraphrase
-- partial-answer clarifications were NOT skipped when they materially help
-- full article considered; no invented facts; structure/order/voice preserved
-
-APPLIED-CHANGE CONTRACT (critical — Python enforces this):
-Opportunities are records of changes you ACTUALLY applied in recommended_markdown,
-NOT ideas you considered. Bidirectional consistency is required:
+APPLIED-CHANGE CONTRACT / OPPORTUNITY CONTRACT (critical — Python enforces this;
+PR #48 unchanged):
+An opportunity = a meaningful change that was actually applied.
+- No idea-only opportunities; no opportunities for NO GAP / strong questions.
 - If you emit an opportunity → you MUST edit that target_heading's section body in
   recommended_markdown (the applied recommended_change must land there).
 - If you edit a section body in recommended_markdown → you MUST emit a matching
@@ -527,15 +528,15 @@ NOT ideas you considered. Bidirectional consistency is required:
 - Minor whitespace / Markdown normalization alone is NOT a substantive edit and
   must not produce opportunity records.
 
-FOR EACH QUESTION whose material gap you actually fix in recommended_markdown, emit:
+FOR EACH QUESTION whose gap you actually fix in recommended_markdown, emit:
 - question
-- gap (what is missing/weak for answer engines — a real answerability problem)
+- gap (the real answerability problem — CLARITY or INFORMATION, not restatement)
 - target_heading (MUST be an existing H1–H6 heading from CURRENT, exact text)
 - recommended_change (description of the edit you applied in that section)
 - evidence_quote (MUST be copied verbatim from CURRENT and support the change)
 - answerability: strong | weak | missing
-  (prefer weak for NEEDS CLARIFICATION; missing for NEEDS INFORMATION;
-   strong questions usually have no opportunity row)
+  (prefer weak for CLARITY GAP; missing for INFORMATION GAP;
+   NO GAP questions usually have no opportunity row)
 
 Then produce recommended_markdown (full article) and change_explanations (short bullets
 describing only material applied edits).
