@@ -1,0 +1,15 @@
+---
+description: Tests, fixtures, and paid-call guardrails
+globs:
+  - tests/**/*.py
+  - src/aeo_mvp/cli.py
+  - .env.example
+alwaysApply: false
+---
+# Tests and cost
+
+- Unit/integration tests must not require live paid LLM/web_search. Inject mocks.
+- Optional live pytest gate stays default **off** (`AEO_LIVE_RETRIEVAL_TEST=false` in `.env.example`).
+- CLI: dry path without `--live`; paid `web_search` only with explicit `--live`.
+- Demo paths should succeed with fixtures when keys are absent where possible.
+- After prompt/pipeline changes, do not leave stale misleading live artifact folders without regenerating under an authorized live run.

@@ -1,0 +1,29 @@
+---
+description: LLM vs Python ownership and recommendation shape
+globs:
+  - src/aeo_mvp/**/*.py
+  - docs/ADR*.md
+alwaysApply: false
+---
+# LLM semantics / Python plumbing
+
+Follow `docs/ADR-001-llm-semantics.md`.
+
+## LLM must do
+- Discover 5–10 realistic user questions (+ quality pass)
+- Full-document opportunity analysis → complete `recommended_markdown`
+- Quality evaluation of questions + recommendation
+
+## Recommendations shape
+- Read the **entire** CURRENT article before editing.
+- Per question: gap → existing `target_heading` → minimal grounded edit there.
+- Introduction is **not** the default edit target.
+- Different questions should touch different sections when evidence supports it.
+- Opportunities include: `question`, `gap`, `target_heading`, `recommended_change`, `evidence_quote` (verbatim from CURRENT).
+- Opportunities record edits **actually applied** in RECOMMENDED, not brainstorms.
+
+## Python must do (only)
+- Fence-aware Markdown parse; JSON/schema validation; clamps
+- DO Responses + `web_search` plumbing and rates
+- Safety: title preserved; headings not deleted; section order preserved; evidence in CURRENT; no frontmatter/`---` in RECOMMENDED; opportunity ↔ applied section edit consistency; DIFF
+- Reject heuristic offline question paths, heading→question templates, TF-IDF/round-robin section picks, intro-only optimization, `**Direct answer:**` string templates

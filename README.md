@@ -90,3 +90,4 @@ python -m compileall -q src ui
 - [`docs/VISIBILITY.md`](docs/VISIBILITY.md)
 - [`docs/MODELS.md`](docs/MODELS.md)
 - [`docs/grok-bot-flow.md`](docs/grok-bot-flow.md) — Grok Bot cost/reliability flow playbook
+- Cursor rules/skills under [`.cursor/`](.cursor/)
