@@ -89,3 +89,4 @@ python -m compileall -q src ui
 - [`docs/OVERVIEW.md`](docs/OVERVIEW.md)
 - [`docs/VISIBILITY.md`](docs/VISIBILITY.md)
 - [`docs/MODELS.md`](docs/MODELS.md)
+- [`docs/grok-bot-flow.md`](docs/grok-bot-flow.md) — Grok Bot cost/reliability flow playbook
