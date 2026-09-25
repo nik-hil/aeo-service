@@ -11,7 +11,7 @@
     "ok": 13,
     "fail": 0
   },
-  "caveat": "Hashnode .md endpoints for #9 and #10 are truncated vs HTML; those RECOMMENDED files track the truncated source.",
+  "caveat": "Articles #9 and #10 were republished under new Hashnode slugs with full Markdown; truncated recommendation files were replaced. See RERUN-NOTES.md.",
   "article_count": 13,
   "articles": [
     {
@@ -96,23 +96,25 @@
     },
     {
       "n": 9,
-      "slug": "agents-zero-to-hero-9-teaching-an-ai-agent-to-manage-its-context",
-      "title": "Agents Zero to Hero #9: Teaching an AI Agent to Manage Its Context",
-      "source_md_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-9-teaching-an-ai-agent-to-manage-its-context.md",
-      "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-9-teaching-an-ai-agent-to-manage-its-context",
-      "recommended_file": "agents-zero-to-hero-9-teaching-an-ai-agent-to-manage-its-context-RECOMMENDED.md",
-      "bytes": 5516,
-      "source_truncated_vs_html": true
+      "slug": "agents-zero-to-hero-9-building-context-compaction-for-ai-agents",
+      "title": "Agents Zero to Hero #9: Building Context Compaction for AI Agents",
+      "source_md_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-9-building-context-compaction-for-ai-agents.md",
+      "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-9-building-context-compaction-for-ai-agents",
+      "recommended_file": "agents-zero-to-hero-9-building-context-compaction-for-ai-agents-RECOMMENDED.md",
+      "bytes": 28451,
+      "source_truncated_vs_html": false,
+      "replaced_truncated_slug": "agents-zero-to-hero-9-teaching-an-ai-agent-to-manage-its-context"
     },
     {
       "n": 10,
-      "slug": "agents-zero-to-hero-10-teaching-an-ai-agent-to-load-skills-on-demand",
-      "title": "Agents Zero to Hero #10: Teaching an AI Agent to Load Skills on Demand",
-      "source_md_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-10-teaching-an-ai-agent-to-load-skills-on-demand.md",
-      "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-10-teaching-an-ai-agent-to-load-skills-on-demand",
-      "recommended_file": "agents-zero-to-hero-10-teaching-an-ai-agent-to-load-skills-on-demand-RECOMMENDED.md",
-      "bytes": 1290,
-      "source_truncated_vs_html": true
+      "slug": "agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents",
+      "title": "Agents Zero to Hero #10: Building On-Demand Skills for AI Agents",
+      "source_md_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents.md",
+      "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents",
+      "recommended_file": "agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents-RECOMMENDED.md",
+      "bytes": 24766,
+      "source_truncated_vs_html": false,
+      "replaced_truncated_slug": "agents-zero-to-hero-10-teaching-an-ai-agent-to-load-skills-on-demand"
     },
     {
       "n": 11,

@@ -11,9 +11,16 @@ Each `*-RECOMMENDED.md` file in this directory is **paste-ready** for the matchi
 
 Do **not** edit `src/`, `ui/`, tests, or dependencies to apply these changes — paste into Hashnode only.
 
-## Truncation caveat (#9 and #10)
+## #9 and #10 (new slugs)
 
-For posts **#9** (context management) and **#10** (skills on demand), the Hashnode `.md` endpoint used as AEO input is truncated compared with the HTML article. The RECOMMENDED files for those two posts follow that truncated source. Re-run AEO against full Markdown (or HTML-derived Markdown) before treating #9/#10 as complete replacements of the live HTML posts.
+Posts **#9** and **#10** were republished under new Hashnode slugs. Use these md URLs / RECOMMENDED files (not the old truncated slugs):
+
+| n | md URL | RECOMMENDED file |
+| --- | --- | --- |
+| 9 | https://nik-hil.hashnode.dev/agents-zero-to-hero-9-building-context-compaction-for-ai-agents.md | `agents-zero-to-hero-9-building-context-compaction-for-ai-agents-RECOMMENDED.md` |
+| 10 | https://nik-hil.hashnode.dev/agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents.md | `agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents-RECOMMENDED.md` |
+
+See `RERUN-NOTES.md` for the slug-change history.
 
 ## Series
 

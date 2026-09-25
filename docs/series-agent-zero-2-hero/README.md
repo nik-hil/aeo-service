@@ -13,11 +13,17 @@ Paste-ready Hashnode Markdown for the **Agents Zero to Hero** series, produced b
 
 - `APPLY.md` — how to publish each file back to Hashnode
 - `MANIFEST.json` — file inventory and per-article metadata
+- `RERUN-NOTES.md` — #9/#10 slug republish and truncated-file replacement
 - 13 `*-RECOMMENDED.md` files — optimized Markdown, one per series post
 
-## Caveat
+## #9 and #10 republish
 
-Hashnode `.md` endpoints for **#9** and **#10** are truncated relative to the HTML articles. The corresponding `*-RECOMMENDED.md` files track that truncated source (they are not full-article rewrites of the HTML).
+Articles **#9** and **#10** were republished on Hashnode under new slugs with full Markdown (the original posts were truncated mid-sentence). Live AEO was re-run against the full sources. Old truncated recommendation filenames were removed; see `RERUN-NOTES.md`.
+
+| n | New slug / md URL |
+| --- | --- |
+| 9 | https://nik-hil.hashnode.dev/agents-zero-to-hero-9-building-context-compaction-for-ai-agents.md |
+| 10 | https://nik-hil.hashnode.dev/agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents.md |
 
 ## Docs only
 
