@@ -1,0 +1,18 @@
+---
+description: AI visibility measurement honesty
+globs:
+  - src/aeo_mvp/visibility.py
+  - docs/VISIBILITY.md
+alwaysApply: false
+---
+# Visibility (OBSERVED)
+
+See `docs/VISIBILITY.md`.
+
+- Provider: DigitalOcean Inference Responses API + server-side `web_search`.
+- Auth: `AEO_LLM_API_KEY` only.
+- Per query record: query, answer, mention, citation, target-domain-in-sources, source URLs, rates.
+- `llm_used` = Responses HTTP call executed.
+- `retrieval_used` = web_search tool evidence present (not merely `--live` flag).
+- No semantic judgment of question quality here — that is LLM-owned upstream.
+- Do not measure or claim consumer ChatGPT / Gemini / Perplexity UI ranking.

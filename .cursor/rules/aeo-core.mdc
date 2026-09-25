@@ -1,0 +1,16 @@
+---
+description: Core AEO Hashnode Markdown PoC constraints (always on)
+alwaysApply: true
+---
+# aeo-service core
+
+- Product is a **Hashnode Markdown** AEO PoC — not a commercial AI-visibility SaaS clone and not a generic multi-site crawler.
+- **LLM owns semantics** (questions, opportunities, full RECOMMENDED.md, quality eval). **Python owns plumbing** (parse, schema validation, DO `web_search` visibility metrics, DIFF, safety). See `docs/ADR-001-llm-semantics.md`.
+- Do **not** auto-publish to Hashnode/CMS.
+- Visibility metrics are **OBSERVED** DigitalOcean Responses + `web_search` API results. Never claim they reproduce ChatGPT, Gemini, or Perplexity consumer ranking UIs.
+- Label clearly: **OBSERVED** vs **LLM-GENERATED**.
+- Single LLM credential: `AEO_LLM_API_KEY`. Do not reintroduce multi-key fallback chains (`OPENAI_API_KEY`, `DO_MODEL_ACCESS_KEY`, etc.).
+- Model selection only via `AEO_LLM_MODEL` (see `docs/MODELS.md` / `.env.example`).
+- Prefer fixture/demo paths in tests and demos. Paid live retrieval is opt-in (`--live` / explicit flags). No silent paid retries.
+- Never commit secrets, log API keys, or put keys in reports/docs artifacts.
+- Do not merge PRs unless the user explicitly asked to merge.
