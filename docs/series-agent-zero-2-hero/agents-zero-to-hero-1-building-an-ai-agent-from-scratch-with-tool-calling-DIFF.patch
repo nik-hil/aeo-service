@@ -1,0 +1,56 @@
+--- agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling-CURRENT.md
++++ agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling-RECOMMENDED.md
+@@ -280,12 +280,11 @@
+ finish(...)
+ ```
+ 
+-The harness then knows it can terminate the loop.
++The function returns the answer; the harness is responsible for recognizing `finish` and terminating the loop. The earlier high-level loop sketch only shows the no-tool-call stopping condition, not this explicit completion handling.
+ 
+ This becomes very useful as the agent starts performing multi-step work.
+ 
+ * * *
+-
+ # Running the agent
+ 
+ The main function looks like this:
+@@ -412,6 +411,8 @@
+ )
+ ```
+ 
++`tool_call_id` links this result to the specific assistant tool call that requested it, so results remain associated with the right requests when there is more than one call.
++
+ Now the model can observe what happened.
+ 
+ For example:
+@@ -437,10 +438,9 @@
+ 
+ > The code failed. I need to try again.
+ 
+-That second possibility is where agent behavior really starts becoming interesting.
+-
+-* * *
+-
++That retry is another model decision, not an automatic rerun inside `execute_code`: the error stays in the conversation, so the model can revise the code and request another execution.
++
++* * *
+ # Why the message history matters
+ 
+ The model does not remember tool executions automatically.
+@@ -465,7 +465,7 @@
+ ...
+ ```
+ 
+-The message history is therefore a critical part of the harness.
++Preserve the assistant tool-call message before its tool result, rather than keeping only the result. That pairing preserves both the requested action and its outcome for the next model decision.
+ 
+ Later, this will evolve into a much larger problem:
+ 
+@@ -483,7 +483,6 @@
+ But the foundation is already present here.
+ 
+ * * *
+-
+ # The complete flow
+ 
+ Imagine the user asks:

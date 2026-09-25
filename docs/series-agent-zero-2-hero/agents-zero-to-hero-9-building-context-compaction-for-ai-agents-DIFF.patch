@@ -1,0 +1,60 @@
+--- agents-zero-to-hero-9-building-context-compaction-for-ai-agents-CURRENT.md
++++ agents-zero-to-hero-9-building-context-compaction-for-ai-agents-RECOMMENDED.md
+@@ -234,7 +234,7 @@
+ 
+ The summary preserves important information from older interactions.
+ 
+-The recent turns are kept verbatim because they represent the agent's current working state.
++The recent turns represent the agent's current working state, but only clean user/assistant text is kept verbatim. Tool calls and results, even recent ones, are folded into the summary instead.
+ 
+ Conceptually:
+ 
+@@ -250,7 +250,6 @@
+ This is much safer than simply deleting the oldest messages.
+ 
+ * * *
+-
+ # How does the agent decide when to compact context?
+ 
+ The implementation uses a configurable character budget.
+@@ -362,12 +361,12 @@
+           │
+           ├── older middle → summarize
+           │
+-          └── recent tail → preserve
+-```
+-
+-The default configuration keeps the most recent six messages.
+-
+-The older middle is passed to a summarizer.
++          └── recent tail → preserve clean text; summarize tool traffic
++```
++
++The default configuration uses the most recent six messages as the recent tail. Only clean user/assistant text from that tail is kept verbatim.
++
++The older middle, together with tool traffic from the recent tail, is passed to a summarizer.
+ 
+ The result becomes a new plain-text message:
+ 
+@@ -380,7 +379,6 @@
+ The new conversation is therefore much smaller.
+ 
+ * * *
+-
+ # Why summarize the middle instead of simply deleting it?
+ 
+ Because deletion loses information.
+@@ -833,9 +831,10 @@
+ ### Recent messages are preserved
+ 
+ ```text
+-recent tail → preserved
+-```
+-
++recent clean user/assistant text → preserved
++```
++
++Tool calls and results in the recent tail belong in the summary, not in the verbatim-preservation assertion.
+ ### Tool messages aren't left behind
+ 
+ ```text

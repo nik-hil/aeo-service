@@ -1,0 +1,37 @@
+--- agents-zero-to-hero-3-giving-an-ai-agent-a-shell-without-giving-it-your-machine-CURRENT.md
++++ agents-zero-to-hero-3-giving-an-ai-agent-a-shell-without-giving-it-your-machine-RECOMMENDED.md
+@@ -375,12 +375,11 @@
+        └── agent commands
+ ```
+ 
+-The agent operates from the workspace.
+-
+-That does not magically make the entire system secure, but it establishes a much better boundary than running everything from the host's arbitrary current directory.
+-
+-* * *
+-
++The agent operates from the workspace, but `cwd=WORKSPACE` alone is not a guarantee that commands cannot access files outside it. The separate argument checks reject absolute paths and arguments containing `..`; those checks, rather than the working-directory setting, reject the `cat` examples above.
++
++These controls are layers, not a complete sandbox.
++
++* * *
+ # Environment isolation
+ 
+ The subprocess environment is also restricted:
+@@ -526,7 +525,7 @@
+ 
+ # The tool returns structured execution data
+ 
+-A successful command returns:
++A command that runs returns structured execution data, whether it succeeds or fails:
+ 
+ ```python
+ {
+@@ -563,7 +562,6 @@
+ That means the model can potentially change strategy.
+ 
+ * * *
+-
+ # The difference between an assistant and an agent
+ 
+ This checkpoint makes the distinction much clearer.

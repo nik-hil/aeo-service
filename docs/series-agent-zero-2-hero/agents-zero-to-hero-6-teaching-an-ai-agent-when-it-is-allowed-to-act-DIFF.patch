@@ -1,0 +1,28 @@
+--- agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act-CURRENT.md
++++ agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act-RECOMMENDED.md
+@@ -357,7 +357,7 @@
+ 
+ Everything else is treated as potentially mutating.
+ 
+-That gives us an important architectural distinction:
++Read-only does not mean exempt from policy: hard security rules and path rules are checked first. Only calls that pass those checks reach this classification:
+ 
+ ```text
+                 Tools
+@@ -367,7 +367,7 @@
+    Read-only              Mutating
+        │                     │
+        ▼                     ▼
+-  Always allowed       Permission mode
++     Allow             Permission mode
+                               │
+                     ┌─────────┼─────────┐
+                     │         │         │
+@@ -379,7 +379,6 @@
+ This classification is simple, but it establishes a foundation that can become much more sophisticated later.
+ 
+ * * *
+-
+ # Hard security rules come first
+ 
+ One of the most important details in this implementation is the order in which permission checks happen.

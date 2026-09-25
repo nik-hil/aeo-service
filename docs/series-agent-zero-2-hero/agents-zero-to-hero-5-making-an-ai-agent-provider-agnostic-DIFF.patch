@@ -1,0 +1,18 @@
+--- agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic-CURRENT.md
++++ agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic-RECOMMENDED.md
+@@ -326,10 +326,11 @@
+     model = ...
+ ```
+ 
+-The provider layer owns that mapping.
+-
+-* * *
+-
++The provider layer owns that mapping for defaults. An explicit `LLM_MODEL` override takes precedence and is used as supplied, without translation by `get_model()`.
++
++When switching providers, unset `LLM_MODEL` to use the new provider's default, or update it to an identifier for that provider.
++
++* * *
+ # One client factory
+ 
+ The key abstraction is now:

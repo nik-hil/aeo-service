@@ -1,0 +1,27 @@
+--- agents-zero-to-hero-7-giving-an-ai-agent-a-middleware-layer-CURRENT.md
++++ agents-zero-to-hero-7-giving-an-ai-agent-a-middleware-layer-RECOMMENDED.md
+@@ -1024,12 +1024,13 @@
+ 
+ Eventually the core tool loop becomes a large collection of unrelated concerns.
+ 
+-Hooks allow the loop to remain conceptually simple:
++Hooks allow the loop to remain conceptually simple. After permission approval, it must still honor the pre-hook's decision before executing the tool:
+ 
+ ```python
+ allowed, reason, args = hooks.run_pre(...)
+-result = execute_tool(...)
+-result = hooks.run_post(...)
++if allowed:
++    result = execute_tool(...)
++    result = hooks.run_post(...)
+ ```
+ 
+ The complexity moves into independently testable components.
+@@ -1037,7 +1038,6 @@
+ That is a much healthier architecture.
+ 
+ * * *
+-
+ # Hooks are an extension point
+ 
+ This is perhaps the most important architectural lesson from v0.7.

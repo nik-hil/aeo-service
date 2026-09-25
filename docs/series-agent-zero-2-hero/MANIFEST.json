@@ -22,7 +22,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling",
       "recommended_file": "agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling-RECOMMENDED.md",
       "bytes": 13165,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-1-building-an-ai-agent-from-scratch-with-tool-calling-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 2,
@@ -32,7 +34,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools",
       "recommended_file": "agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools-RECOMMENDED.md",
       "bytes": 13969,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-2-giving-an-ai-agent-eyes-and-hands-filesystem-tools-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 3,
@@ -42,7 +46,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-3-giving-an-ai-agent-a-shell-without-giving-it-your-machine",
       "recommended_file": "agents-zero-to-hero-3-giving-an-ai-agent-a-shell-without-giving-it-your-machine-RECOMMENDED.md",
       "bytes": 13512,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-3-giving-an-ai-agent-a-shell-without-giving-it-your-machine-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 4,
@@ -52,7 +58,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent",
       "recommended_file": "agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent-RECOMMENDED.md",
       "bytes": 13978,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 5,
@@ -62,7 +70,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic",
       "recommended_file": "agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic-RECOMMENDED.md",
       "bytes": 15601,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-5-making-an-ai-agent-provider-agnostic-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 6,
@@ -72,7 +82,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act",
       "recommended_file": "agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act-RECOMMENDED.md",
       "bytes": 24148,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-6-teaching-an-ai-agent-when-it-is-allowed-to-act-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 7,
@@ -82,7 +94,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-7-giving-an-ai-agent-a-middleware-layer",
       "recommended_file": "agents-zero-to-hero-7-giving-an-ai-agent-a-middleware-layer-RECOMMENDED.md",
       "bytes": 25223,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-7-giving-an-ai-agent-a-middleware-layer-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 8,
@@ -92,7 +106,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-8-teaching-an-ai-agent-to-remember",
       "recommended_file": "agents-zero-to-hero-8-teaching-an-ai-agent-to-remember-RECOMMENDED.md",
       "bytes": 27128,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-8-teaching-an-ai-agent-to-remember-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 9,
@@ -103,7 +119,9 @@
       "recommended_file": "agents-zero-to-hero-9-building-context-compaction-for-ai-agents-RECOMMENDED.md",
       "bytes": 28451,
       "source_truncated_vs_html": false,
-      "replaced_truncated_slug": "agents-zero-to-hero-9-teaching-an-ai-agent-to-manage-its-context"
+      "replaced_truncated_slug": "agents-zero-to-hero-9-teaching-an-ai-agent-to-manage-its-context",
+      "diff_file": "agents-zero-to-hero-9-building-context-compaction-for-ai-agents-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 10,
@@ -114,7 +132,9 @@
       "recommended_file": "agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents-RECOMMENDED.md",
       "bytes": 24766,
       "source_truncated_vs_html": false,
-      "replaced_truncated_slug": "agents-zero-to-hero-10-teaching-an-ai-agent-to-load-skills-on-demand"
+      "replaced_truncated_slug": "agents-zero-to-hero-10-teaching-an-ai-agent-to-load-skills-on-demand",
+      "diff_file": "agents-zero-to-hero-10-building-on-demand-skills-for-ai-agents-DIFF.patch",
+      "identical_current_vs_recommended": true
     },
     {
       "n": 11,
@@ -124,7 +144,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-11-connecting-an-ai-agent-to-external-tools-with-mcp",
       "recommended_file": "agents-zero-to-hero-11-connecting-an-ai-agent-to-external-tools-with-mcp-RECOMMENDED.md",
       "bytes": 29948,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-11-connecting-an-ai-agent-to-external-tools-with-mcp-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 12,
@@ -134,7 +156,9 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-12-building-ai-subagents-with-context-isolation",
       "recommended_file": "agents-zero-to-hero-12-building-ai-subagents-with-context-isolation-RECOMMENDED.md",
       "bytes": 28995,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-12-building-ai-subagents-with-context-isolation-DIFF.patch",
+      "identical_current_vs_recommended": false
     },
     {
       "n": 13,
@@ -144,7 +168,18 @@
       "source_html_uri": "https://nik-hil.hashnode.dev/agents-zero-to-hero-13-building-a-verification-loop-for-ai-agents",
       "recommended_file": "agents-zero-to-hero-13-building-a-verification-loop-for-ai-agents-RECOMMENDED.md",
       "bytes": 26438,
-      "source_truncated_vs_html": false
+      "source_truncated_vs_html": false,
+      "diff_file": "agents-zero-to-hero-13-building-a-verification-loop-for-ai-agents-DIFF.patch",
+      "identical_current_vs_recommended": false
     }
-  ]
+  ],
+  "diffs": {
+    "notes": "DIFF-NOTES.md",
+    "manifest": "DIFF-MANIFEST.json",
+    "method": "python-difflib.unified_diff from CURRENT.md vs RECOMMENDED.md",
+    "count": 13,
+    "identical_articles": [
+      10
+    ]
+  }
 }

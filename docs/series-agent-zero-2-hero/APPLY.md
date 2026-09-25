@@ -11,6 +11,12 @@ Each `*-RECOMMENDED.md` file in this directory is **paste-ready** for the matchi
 
 Do **not** edit `src/`, `ui/`, tests, or dependencies to apply these changes — paste into Hashnode only.
 
+## DIFF.patch files (review only)
+
+Each article also has a matching `*-DIFF.patch` (see `DIFF-NOTES.md` / `DIFF-MANIFEST.json`). Use these only to review CURRENT → RECOMMENDED changes. **Publish the `*-RECOMMENDED.md` body**, not the patch file.
+
+Article **#10** has no line differences; its DIFF file is a short comment stating CURRENT == RECOMMENDED.
+
 ## #9 and #10 (new slugs)
 
 Posts **#9** and **#10** were republished under new Hashnode slugs. Use these md URLs / RECOMMENDED files (not the old truncated slugs):

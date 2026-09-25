@@ -1,0 +1,19 @@
+--- agents-zero-to-hero-8-teaching-an-ai-agent-to-remember-CURRENT.md
++++ agents-zero-to-hero-8-teaching-an-ai-agent-to-remember-RECOMMENDED.md
+@@ -291,7 +291,7 @@
+ MEMORY.remember(note)
+ ```
+ 
+-The implementation appends a timestamped entry:
++Whitespace-only notes are rejected with an error rather than written. For a non-empty note, the implementation appends a timestamped entry:
+ 
+ ```python
+ stamp = time.strftime("%Y-%m-%d %H:%M")
+@@ -317,7 +317,6 @@
+ This gives us persistent memory with almost no infrastructure.
+ 
+ * * *
+-
+ # Why append instead of overwrite?
+ 
+ The implementation intentionally appends notes:

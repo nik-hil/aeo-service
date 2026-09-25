@@ -1,0 +1,36 @@
+--- agents-zero-to-hero-13-building-a-verification-loop-for-ai-agents-CURRENT.md
++++ agents-zero-to-hero-13-building-a-verification-loop-for-ai-agents-RECOMMENDED.md
+@@ -204,6 +204,8 @@
+ }
+ ```
+ 
++These fields describe a completed test process. If the test run times out, the verifier instead returns `passed=False` and an `error` message, without `returncode` or `output`. That distinguishes a timeout from a completed run whose output the agent can inspect.
++
+ This makes the result part of the agent's context.
+ 
+ The LLM can now reason over:
+@@ -229,7 +231,6 @@
+ The agent decides the next action.
+ 
+ * * *
+-
+ # Why limit the test output?
+ 
+ A test suite can generate a huge amount of output.
+@@ -1121,7 +1122,7 @@
+ max_iterations=15
+ ```
+ 
+-which provides a basic termination boundary.
++which bounds iterations of the overall agent loop, not a dedicated count of repair attempts. This complements the verifier's default 60-second timeout: the timeout bounds an individual test run, while `max_iterations` bounds continued agent iterations even when fixes never produce passing tests.
+ 
+ A more advanced verification system could track:
+ 
+@@ -1139,7 +1140,6 @@
+     
+ 
+ * * *
+-
+ # What would a production verification loop need?
+ 
+ The educational implementation gives us the core abstraction:

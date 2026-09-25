@@ -1,0 +1,36 @@
+--- agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent-CURRENT.md
++++ agents-zero-to-hero-4-precise-code-editing-and-search-for-an-ai-coding-agent-RECOMMENDED.md
+@@ -588,10 +588,11 @@
+ execute_code(...)
+ ```
+ 
++Reading before editing matters because `old_block` must match the file's actual text, including indentation and formatting. After execution, the workflow still includes verification: search → inspect → edit → execute → verify, not just finding and replacing text.
++
+ This is increasingly close to what a developer does manually.
+ 
+ * * *
+-
+ # The harness is becoming an environment
+ 
+ The architecture now looks like:
+@@ -793,9 +794,9 @@
+ file tools → workspace checks
+ ```
+ 
+-That approach won't scale.
+-
+-What we really want is a central policy layer:
++That approach won't scale. To understand what the agent is allowed to do across the growing toolkit, we have to examine rules scattered across individual tool implementations.
++
++What we really want is a central policy layer—a shared permission decision before tool execution:
+ 
+ ```text
+ Tool call
+@@ -812,7 +813,6 @@
+ And it leads to the next major architectural step.
+ 
+ * * *
+-
+ # The next step: permissions
+ 
+ The repository roadmap calls the next governance milestone:

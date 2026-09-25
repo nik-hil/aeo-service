@@ -1,0 +1,66 @@
+--- agents-zero-to-hero-11-connecting-an-ai-agent-to-external-tools-with-mcp-CURRENT.md
++++ agents-zero-to-hero-11-connecting-an-ai-agent-to-external-tools-with-mcp-RECOMMENDED.md
+@@ -253,7 +253,7 @@
+ So communication looks conceptually like:
+ 
+ ```text
+-Client stdin
++Server stdin (client writes)
+      │
+      │ {"jsonrpc":"2.0", ...}
+      ▼
+@@ -261,7 +261,7 @@
+      │
+      │ {"jsonrpc":"2.0", ...}
+      ▼
+-Client stdout
++Server stdout (client reads)
+ ```
+ 
+ There is no HTTP server involved in this implementation.
+@@ -275,7 +275,6 @@
+ That makes the protocol mechanics easy to inspect.
+ 
+ * * *
+-
+ # 2\. Initialize the MCP connection
+ 
+ The first request is:
+@@ -1351,6 +1350,12 @@
+                        │   Tool registry  │
+                        └────────┬─────────┘
+                                 │
++                         Permission gate
++                                │
++                            Pre-hook
++                                │
++                            Execute
++                                │
+              ┌──────────────────┼──────────────────┐
+              │                  │                  │
+              ▼                  ▼                  ▼
+@@ -1361,14 +1366,10 @@
+              │                  │                  │
+              │                  │                  ▼
+              │                  │            MCP server
+-             │                  │
++             │                  │                  │
+              └──────────────────┼──────────────────┘
+                                 │
+-                         Permission gate
+-                                │
+-                            Pre-hook
+-                                │
+-                            Execute
++                              result
+                                 │
+                            Post-hook
+                                 │
+@@ -1392,7 +1393,6 @@
+ The project is starting to look less like a toy tool-calling script and more like an actual agent runtime.
+ 
+ * * *
+-
+ # What MCP changes about the "agent harness"
+ 
+ The original harness was essentially:

@@ -14,7 +14,15 @@ Paste-ready Hashnode Markdown for the **Agents Zero to Hero** series, produced b
 - `APPLY.md` — how to publish each file back to Hashnode
 - `MANIFEST.json` — file inventory and per-article metadata
 - `RERUN-NOTES.md` — #9/#10 slug republish and truncated-file replacement
-- 13 `*-RECOMMENDED.md` files — optimized Markdown, one per series post
+- `DIFF-NOTES.md` / `DIFF-MANIFEST.json` — how CURRENT→RECOMMENDED unified diffs were produced
+- 13 `*-RECOMMENDED.md` files — optimized Markdown, one per series post (paste these to Hashnode)
+- 13 `*-DIFF.patch` files — review-only unified diffs (CURRENT.md → RECOMMENDED.md); not the publish body
+
+## DIFF patches (review only)
+
+Each `*-DIFF.patch` sits next to its matching `*-RECOMMENDED.md`. Patches were generated with Python `difflib.unified_diff` from that article's `CURRENT.md` and `RECOMMENDED.md` (headers use `<slug>-CURRENT.md` → `<slug>-RECOMMENDED.md`). See `DIFF-NOTES.md`.
+
+Article **#10** is identical (CURRENT == RECOMMENDED); its `*-DIFF.patch` is a short comment noting no line differences.
 
 ## #9 and #10 republish
 
