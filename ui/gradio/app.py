@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -22,6 +23,26 @@ STATUS_DOMAIN_AND_MARKDOWN = (
     "Using Hashnode Markdown paste; target domain used for visibility only."
 )
 
+# Shown when a full article URL cannot be fetched (403 / network / non-200 / empty).
+UNABLE_TO_FETCH_PASTE_MARKDOWN = (
+    "Unable to fetch Markdown from the article URL. "
+    "Paste the Hashnode Markdown into the Markdown box, and clear the full "
+    "article URL (leave empty, or use a bare domain only for visibility)."
+)
+
+
+def _log(message: str) -> None:
+    """Progress lines for the terminal running ``python ui/gradio/app.py``."""
+    print(f"[aeo] {message}", file=sys.stdout, flush=True)
+
+
+def _unable_to_fetch_message(detail: str | None = None) -> str:
+    """User-facing fetch failure: paste Markdown; keep optional detail."""
+    detail = (detail or "").strip()
+    if not detail:
+        return UNABLE_TO_FETCH_PASTE_MARKDOWN
+    return f"{UNABLE_TO_FETCH_PASTE_MARKDOWN} Details: {detail}"
+
 _CSS = """
 /* Fixed-height CURRENT / RECOMMENDED / DIFF panes with vertical scroll */
 .aeo-md-scroll textarea {
@@ -35,6 +56,10 @@ _CSS = """
 }
 .aeo-md-scroll .cm-content {
   overflow-wrap: anywhere;
+}
+/* Keep Analyze progress visible next to the button (not only on far outputs) */
+.aeo-analyze-status {
+  min-height: 2.75rem;
 }
 """
 
@@ -76,6 +101,7 @@ def fetch_markdown_from_url(
     if not _is_absolute_http_url(cleaned):
         raise ValueError("Target must be an absolute http(s) URL to fetch Markdown.")
 
+    _log(f"fetch start: {cleaned}")
     own_client = client is None
     http = client or httpx.Client(timeout=_FETCH_TIMEOUT_S, follow_redirects=True)
     try:
@@ -94,16 +120,19 @@ def fetch_markdown_from_url(
                 resp = http.get(candidate, headers=headers)
             except httpx.HTTPError as exc:
                 last_error = f"Failed to fetch target URL: {exc}"
+                _log(f"fetch fail: {candidate} ({exc})")
                 continue
             if resp.status_code >= 400:
                 last_error = (
                     f"Failed to fetch target URL "
                     f"({resp.status_code} for {candidate})."
                 )
+                _log(f"fetch fail: {candidate} status={resp.status_code}")
                 continue
             text = (resp.text or "").strip()
             if not text:
                 last_error = f"Target URL returned empty Markdown ({candidate})."
+                _log(f"fetch fail: {candidate} status={resp.status_code} empty body")
                 continue
             content_type = (resp.headers.get("content-type") or "").lower()
             # Prefer explicit markdown / plain text; reject obvious HTML shells.
@@ -115,9 +144,18 @@ def fetch_markdown_from_url(
                         "Target URL returned HTML, not Markdown. "
                         "Use a Hashnode article URL or …/slug.md."
                     )
+                    _log(
+                        f"fetch fail: {candidate} status={resp.status_code} "
+                        f"html content-type={content_type or '—'}"
+                    )
                     continue
+            _log(
+                f"fetch success: {candidate} status={resp.status_code} "
+                f"chars={len(text)}"
+            )
             return text
-        raise ValueError(last_error)
+        _log(f"fetch fail: {last_error}")
+        raise ValueError(_unable_to_fetch_message(last_error))
     finally:
         if own_client:
             http.close()
@@ -144,9 +182,17 @@ def resolve_content_source(
     fetcher = fetch_fn or fetch_markdown_from_url
 
     if tgt and _is_absolute_http_url(tgt):
-        fetched = fetcher(tgt).strip()
+        try:
+            fetched = fetcher(tgt).strip()
+        except ValueError as exc:
+            detail = str(exc).strip()
+            if UNABLE_TO_FETCH_PASTE_MARKDOWN in detail:
+                raise
+            raise ValueError(_unable_to_fetch_message(detail)) from exc
         if not fetched:
-            raise ValueError("Target URL returned empty Markdown.")
+            raise ValueError(
+                _unable_to_fetch_message("Target URL returned empty Markdown.")
+            )
         note = STATUS_URL_IGNORES_PASTE if md else STATUS_URL
         return fetched, _canonical_article_url(tgt), note
 
@@ -289,7 +335,7 @@ def _quality_md(report) -> str:
 
 def _error_outputs(message: str):
     err = f"**Error:** {message}"
-    return err, err, err, err, err, "", "", "", err
+    return err, err, err, err, err, "", "", "", "", err
 
 
 def analyze(
@@ -306,15 +352,31 @@ def analyze(
     Absolute target URLs are fetched and used as Markdown; paste is ignored for
     that run. Bare domains keep legacy paste + visibility identity behavior.
     """
+    _log(
+        "Analyze clicked "
+        f"(dry_run={bool(dry_run)}, skip_quality_eval={bool(skip_eval)}, "
+        f"target={((target or '').strip() or '—')!r})"
+    )
     try:
         md, target_domain, status = resolve_content_source(
             markdown, target, fetch_fn=fetch_fn
         )
     except ValueError as exc:
+        _log(f"Analyze error (content source): {exc}")
         return _error_outputs(str(exc))
+
+    _log(
+        f"content source resolved: {status} "
+        f"(chars={len(md)}, target_domain={target_domain or '—'})"
+    )
 
     run = pipeline_fn or run_pipeline
     try:
+        _log(
+            "pipeline starting "
+            f"(visibility={'dry' if dry_run else 'live web_search'}, "
+            f"quality_eval={'skip' if skip_eval else 'on'})"
+        )
         result = run(
             text=md,
             target_domain=target_domain,
@@ -322,7 +384,17 @@ def analyze(
             skip_quality_eval=skip_eval,
         )
     except LLMError as exc:
+        _log(f"Analyze error (pipeline): {exc}")
         return _error_outputs(str(exc))
+    except Exception as exc:  # noqa: BLE001 — surface unexpected failures in terminal
+        _log(f"Analyze error (unexpected): {exc}")
+        return _error_outputs(str(exc))
+
+    _log(
+        "Analyze done "
+        f"(title={getattr(result.article, 'title', '')!r}, "
+        f"llm_used={result.llm_used}, retrieval_used={result.retrieval_used})"
+    )
     return (
         status,
         _article_md(result),
@@ -332,6 +404,7 @@ def analyze(
         result.current_markdown,
         result.recommended_markdown,
         result.diff or "(no diff)",
+        getattr(result, "summary_markdown", None) or "(no SUMMARY.md)",
         _quality_md(result),
     )
 
@@ -363,7 +436,13 @@ def build_app() -> gr.Blocks:
                 )
                 skip_eval = gr.Checkbox(label="Skip quality evaluation", value=False)
                 run_btn = gr.Button("Analyze", variant="primary")
-                status_out = gr.Markdown()
+                # Progress animation is pinned here (see show_progress_on below)
+                # so users see loading next to Analyze without scrolling.
+                status_out = gr.Markdown(
+                    value="",
+                    elem_id="aeo-analyze-status",
+                    elem_classes=["aeo-analyze-status"],
+                )
 
         gr.Markdown("## ARTICLE")
         article_out = gr.Markdown()
@@ -397,6 +476,14 @@ def build_app() -> gr.Blocks:
             max_lines=16,
             elem_classes=["aeo-md-scroll"],
         )
+        gr.Markdown("## SUMMARY.md *(publish review)*")
+        summary_out = gr.Code(
+            label="SUMMARY.md",
+            language="markdown",
+            lines=16,
+            max_lines=16,
+            elem_classes=["aeo-md-scroll"],
+        )
         gr.Markdown("## QUALITY EVALUATION *(LLM-GENERATED)*")
         qual_out = gr.Markdown()
 
@@ -412,8 +499,11 @@ def build_app() -> gr.Blocks:
                 current_out,
                 recommended_out,
                 diff_out,
+                summary_out,
                 qual_out,
             ],
+            show_progress="full",
+            show_progress_on=status_out,
         )
     return demo
 

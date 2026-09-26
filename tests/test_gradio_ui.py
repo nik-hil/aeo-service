@@ -44,6 +44,7 @@ def _fake_report(*, title: str = "Fetched Title"):
         current_markdown="# CURRENT from pipeline\n",
         recommended_markdown="# RECOMMENDED from pipeline\n",
         diff="(no diff)",
+        summary_markdown="# Publish pack SUMMARY\n\nMock SUMMARY.\n",
         model="gpt",
         llm_used=False,
         retrieval_used=False,
@@ -93,6 +94,38 @@ def test_resolve_url_without_paste():
     assert status == gradio_app.STATUS_URL
 
 
+def test_resolve_url_fetch_failure_tells_user_to_paste_markdown():
+    def boom(_url: str) -> str:
+        raise ValueError("Failed to fetch target URL (403 for https://x.md).")
+
+    with pytest.raises(ValueError, match="Unable to fetch Markdown") as excinfo:
+        gradio_app.resolve_content_source(
+            "",
+            "https://example.hashnode.dev/post.md",
+            fetch_fn=boom,
+        )
+    msg = str(excinfo.value)
+    assert "Paste the Hashnode Markdown" in msg
+    assert "clear the full article URL" in msg
+    assert "403" in msg
+
+
+def test_analyze_url_fetch_failure_surfaces_paste_guidance():
+    def boom(_url: str) -> str:
+        raise ValueError("Failed to fetch target URL (403 for https://x.md).")
+
+    outs = gradio_app.analyze(
+        "",
+        "https://example.hashnode.dev/post.md",
+        True,
+        True,
+        fetch_fn=boom,
+    )
+    assert "Unable to fetch Markdown" in outs[0]
+    assert "Paste the Hashnode Markdown" in outs[0]
+    assert "clear the full article URL" in outs[0]
+
+
 def test_resolve_bare_domain_uses_paste():
     md, target, status = gradio_app.resolve_content_source(
         "# Paste\n", "example.com"
@@ -122,6 +155,7 @@ def test_analyze_url_with_leftover_markdown_uses_fetch_not_paste():
 
     assert outs[0] == gradio_app.STATUS_URL_IGNORES_PASTE
     assert "From URL" in outs[1]
+    assert "Mock SUMMARY" in outs[8]
     pipeline.assert_called_once()
     kwargs = pipeline.call_args.kwargs
     assert kwargs["text"] == fetched.strip()
@@ -145,12 +179,30 @@ def test_analyze_markdown_only_still_works():
     assert pipeline.call_args.kwargs["target_domain"] is None
 
 
-def test_analyze_both_empty_returns_error():
+def test_analyze_logs_progress_to_stdout(capsys):
+    pipeline = MagicMock(return_value=_fake_report(title="Paste Title"))
+    paste = "# Only paste\n\nBody.\n"
+
+    gradio_app.analyze(paste, "", True, True, pipeline_fn=pipeline)
+
+    out = capsys.readouterr().out
+    assert "[aeo] Analyze clicked" in out
+    assert "content source resolved" in out
+    assert "STATUS_MARKDOWN" not in out  # log human status text, not constant name
+    assert "Using Hashnode Markdown paste" in out
+    assert "pipeline starting" in out
+    assert "Analyze done" in out
+
+
+def test_analyze_both_empty_returns_error(capsys):
     outs = gradio_app.analyze("", "", True, False)
     assert "Error" in outs[0]
     assert "Provide Hashnode Markdown or a target" in outs[0]
     # Primary panels carry the same error (no silent success)
     assert "Error" in outs[1]
+    logged = capsys.readouterr().out
+    assert "[aeo] Analyze clicked" in logged
+    assert "Analyze error (content source)" in logged
 
 
 def test_fetch_markdown_from_url_prefers_md_suffix(monkeypatch):
@@ -185,15 +237,39 @@ def test_build_app_scroll_config_and_css():
     css = demo.css or ""
     assert "aeo-md-scroll" in css
     assert "overflow-y" in css
+    assert "aeo-analyze-status" in css
 
     code_components = [
         c
         for c in demo.blocks.values()
         if isinstance(c, gr.Code)
     ]
-    assert len(code_components) >= 3
+    assert len(code_components) >= 4
+    labels = {getattr(c, "label", None) for c in code_components}
+    assert "SUMMARY.md" in labels
     for c in code_components:
         classes = c.elem_classes or []
         assert "aeo-md-scroll" in classes
         assert c.lines is not None and c.lines >= 16
         assert c.max_lines is not None and c.max_lines >= 16
+
+    status = next(
+        c
+        for c in demo.blocks.values()
+        if getattr(c, "elem_id", None) == "aeo-analyze-status"
+    )
+    assert "aeo-analyze-status" in (status.elem_classes or [])
+
+    # Progress must stay on status next to Analyze — not on far-below outputs.
+    analyze_fns = [
+        fn
+        for fn in demo.fns.values()
+        if getattr(fn, "fn", None) is gradio_app.analyze
+        or getattr(fn, "fn", None) == gradio_app.analyze
+    ]
+    assert analyze_fns, "expected Analyze click handler wired to analyze()"
+    fn = analyze_fns[0]
+    assert getattr(fn, "show_progress", None) == "full"
+    progress_on = list(getattr(fn, "show_progress_on", None) or [])
+    assert status in progress_on
+    assert len(progress_on) == 1
