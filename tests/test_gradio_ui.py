@@ -187,6 +187,7 @@ def test_build_app_scroll_config_and_css():
     css = demo.css or ""
     assert "aeo-md-scroll" in css
     assert "overflow-y" in css
+    assert "aeo-analyze-status" in css
 
     code_components = [
         c
@@ -201,3 +202,24 @@ def test_build_app_scroll_config_and_css():
         assert "aeo-md-scroll" in classes
         assert c.lines is not None and c.lines >= 16
         assert c.max_lines is not None and c.max_lines >= 16
+
+    status = next(
+        c
+        for c in demo.blocks.values()
+        if getattr(c, "elem_id", None) == "aeo-analyze-status"
+    )
+    assert "aeo-analyze-status" in (status.elem_classes or [])
+
+    # Progress must stay on status next to Analyze — not on far-below outputs.
+    analyze_fns = [
+        fn
+        for fn in demo.fns.values()
+        if getattr(fn, "fn", None) is gradio_app.analyze
+        or getattr(fn, "fn", None) == gradio_app.analyze
+    ]
+    assert analyze_fns, "expected Analyze click handler wired to analyze()"
+    fn = analyze_fns[0]
+    assert getattr(fn, "show_progress", None) == "full"
+    progress_on = list(getattr(fn, "show_progress_on", None) or [])
+    assert status in progress_on
+    assert len(progress_on) == 1

@@ -36,6 +36,10 @@ _CSS = """
 .aeo-md-scroll .cm-content {
   overflow-wrap: anywhere;
 }
+/* Keep Analyze progress visible next to the button (not only on far outputs) */
+.aeo-analyze-status {
+  min-height: 2.75rem;
+}
 """
 
 
@@ -364,7 +368,13 @@ def build_app() -> gr.Blocks:
                 )
                 skip_eval = gr.Checkbox(label="Skip quality evaluation", value=False)
                 run_btn = gr.Button("Analyze", variant="primary")
-                status_out = gr.Markdown()
+                # Progress animation is pinned here (see show_progress_on below)
+                # so users see loading next to Analyze without scrolling.
+                status_out = gr.Markdown(
+                    value="",
+                    elem_id="aeo-analyze-status",
+                    elem_classes=["aeo-analyze-status"],
+                )
 
         gr.Markdown("## ARTICLE")
         article_out = gr.Markdown()
@@ -424,6 +434,8 @@ def build_app() -> gr.Blocks:
                 summary_out,
                 qual_out,
             ],
+            show_progress="full",
+            show_progress_on=status_out,
         )
     return demo
 
