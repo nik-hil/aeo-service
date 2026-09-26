@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,11 @@ from aeo_mvp.queries import QuerySet, discover_queries
 from aeo_mvp.recommendations import RecommendationBundle, generate_recommendations
 from aeo_mvp.summary import build_summary_markdown
 from aeo_mvp.visibility import VisibilityReport, measure_visibility
+
+
+def _pipeline_log(message: str) -> None:
+    """Stage progress for CLI / Gradio terminal observers."""
+    print(f"[aeo] {message}", file=sys.stdout, flush=True)
 
 
 @dataclass
@@ -106,19 +112,29 @@ def run_pipeline(
     settings = get_settings()
     llm = client or LLMClient()
 
+    _pipeline_log("pipeline: load article")
     article = load_hashnode_markdown(
         path,
         text=text,
         target_domain=target_domain,
         brand_tokens=brand_tokens,
     )
+    _pipeline_log("pipeline: questions (LLM)")
     queries = discover_queries(article, client=llm)
+    if dry_run:
+        _pipeline_log("pipeline: visibility (dry — skip paid web_search)")
+    else:
+        _pipeline_log("pipeline: visibility (live web_search)")
     visibility = measure_visibility(article, queries, client=llm, dry_run=dry_run)
+    _pipeline_log("pipeline: recommendations (LLM)")
     bundle = generate_recommendations(article, queries, visibility, client=llm)
 
     quality: QualityEvaluation | None = None
     if not skip_quality_eval:
+        _pipeline_log("pipeline: quality eval (LLM)")
         quality = evaluate_quality(article, queries, bundle, client=llm)
+    else:
+        _pipeline_log("pipeline: quality eval skipped")
 
     current = article.markdown
     recommended = bundle.recommended_markdown
@@ -151,5 +167,7 @@ def run_pipeline(
             json.dumps(result.to_dict(), indent=2),
             encoding="utf-8",
         )
+        _pipeline_log(f"pipeline: wrote artifacts → {out}")
 
+    _pipeline_log("pipeline: finished")
     return result

@@ -147,12 +147,30 @@ def test_analyze_markdown_only_still_works():
     assert pipeline.call_args.kwargs["target_domain"] is None
 
 
-def test_analyze_both_empty_returns_error():
+def test_analyze_logs_progress_to_stdout(capsys):
+    pipeline = MagicMock(return_value=_fake_report(title="Paste Title"))
+    paste = "# Only paste\n\nBody.\n"
+
+    gradio_app.analyze(paste, "", True, True, pipeline_fn=pipeline)
+
+    out = capsys.readouterr().out
+    assert "[aeo] Analyze clicked" in out
+    assert "content source resolved" in out
+    assert "STATUS_MARKDOWN" not in out  # log human status text, not constant name
+    assert "Using Hashnode Markdown paste" in out
+    assert "pipeline starting" in out
+    assert "Analyze done" in out
+
+
+def test_analyze_both_empty_returns_error(capsys):
     outs = gradio_app.analyze("", "", True, False)
     assert "Error" in outs[0]
     assert "Provide Hashnode Markdown or a target" in outs[0]
     # Primary panels carry the same error (no silent success)
     assert "Error" in outs[1]
+    logged = capsys.readouterr().out
+    assert "[aeo] Analyze clicked" in logged
+    assert "Analyze error (content source)" in logged
 
 
 def test_fetch_markdown_from_url_prefers_md_suffix(monkeypatch):

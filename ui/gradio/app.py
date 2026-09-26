@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -21,6 +22,11 @@ STATUS_MARKDOWN = "Using Hashnode Markdown paste."
 STATUS_DOMAIN_AND_MARKDOWN = (
     "Using Hashnode Markdown paste; target domain used for visibility only."
 )
+
+
+def _log(message: str) -> None:
+    """Progress lines for the terminal running ``python ui/gradio/app.py``."""
+    print(f"[aeo] {message}", file=sys.stdout, flush=True)
 
 _CSS = """
 /* Fixed-height CURRENT / RECOMMENDED / DIFF panes with vertical scroll */
@@ -80,6 +86,7 @@ def fetch_markdown_from_url(
     if not _is_absolute_http_url(cleaned):
         raise ValueError("Target must be an absolute http(s) URL to fetch Markdown.")
 
+    _log(f"fetch start: {cleaned}")
     own_client = client is None
     http = client or httpx.Client(timeout=_FETCH_TIMEOUT_S, follow_redirects=True)
     try:
@@ -98,16 +105,19 @@ def fetch_markdown_from_url(
                 resp = http.get(candidate, headers=headers)
             except httpx.HTTPError as exc:
                 last_error = f"Failed to fetch target URL: {exc}"
+                _log(f"fetch fail: {candidate} ({exc})")
                 continue
             if resp.status_code >= 400:
                 last_error = (
                     f"Failed to fetch target URL "
                     f"({resp.status_code} for {candidate})."
                 )
+                _log(f"fetch fail: {candidate} status={resp.status_code}")
                 continue
             text = (resp.text or "").strip()
             if not text:
                 last_error = f"Target URL returned empty Markdown ({candidate})."
+                _log(f"fetch fail: {candidate} status={resp.status_code} empty body")
                 continue
             content_type = (resp.headers.get("content-type") or "").lower()
             # Prefer explicit markdown / plain text; reject obvious HTML shells.
@@ -119,8 +129,17 @@ def fetch_markdown_from_url(
                         "Target URL returned HTML, not Markdown. "
                         "Use a Hashnode article URL or …/slug.md."
                     )
+                    _log(
+                        f"fetch fail: {candidate} status={resp.status_code} "
+                        f"html content-type={content_type or '—'}"
+                    )
                     continue
+            _log(
+                f"fetch success: {candidate} status={resp.status_code} "
+                f"chars={len(text)}"
+            )
             return text
+        _log(f"fetch fail: {last_error}")
         raise ValueError(last_error)
     finally:
         if own_client:
@@ -310,15 +329,31 @@ def analyze(
     Absolute target URLs are fetched and used as Markdown; paste is ignored for
     that run. Bare domains keep legacy paste + visibility identity behavior.
     """
+    _log(
+        "Analyze clicked "
+        f"(dry_run={bool(dry_run)}, skip_quality_eval={bool(skip_eval)}, "
+        f"target={((target or '').strip() or '—')!r})"
+    )
     try:
         md, target_domain, status = resolve_content_source(
             markdown, target, fetch_fn=fetch_fn
         )
     except ValueError as exc:
+        _log(f"Analyze error (content source): {exc}")
         return _error_outputs(str(exc))
+
+    _log(
+        f"content source resolved: {status} "
+        f"(chars={len(md)}, target_domain={target_domain or '—'})"
+    )
 
     run = pipeline_fn or run_pipeline
     try:
+        _log(
+            "pipeline starting "
+            f"(visibility={'dry' if dry_run else 'live web_search'}, "
+            f"quality_eval={'skip' if skip_eval else 'on'})"
+        )
         result = run(
             text=md,
             target_domain=target_domain,
@@ -326,7 +361,17 @@ def analyze(
             skip_quality_eval=skip_eval,
         )
     except LLMError as exc:
+        _log(f"Analyze error (pipeline): {exc}")
         return _error_outputs(str(exc))
+    except Exception as exc:  # noqa: BLE001 — surface unexpected failures in terminal
+        _log(f"Analyze error (unexpected): {exc}")
+        return _error_outputs(str(exc))
+
+    _log(
+        "Analyze done "
+        f"(title={getattr(result.article, 'title', '')!r}, "
+        f"llm_used={result.llm_used}, retrieval_used={result.retrieval_used})"
+    )
     return (
         status,
         _article_md(result),
