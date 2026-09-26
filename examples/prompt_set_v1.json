@@ -1,0 +1,31 @@
+{
+  "version": "1",
+  "notes": "Example frozen prompt set for measurement spine demos (DigitalOcean web_search only).",
+  "prompts": [
+    {
+      "id": "loop",
+      "text": "What is an agent loop for tool calling?",
+      "kind": "factual"
+    },
+    {
+      "id": "schemas",
+      "text": "How does tool calling use schemas?",
+      "kind": "factual"
+    },
+    {
+      "id": "harness",
+      "text": "Which tools belong in a minimal agent harness?",
+      "kind": "general"
+    },
+    {
+      "id": "failures",
+      "text": "What failure modes appear in agent tool loops?",
+      "kind": "factual"
+    },
+    {
+      "id": "brand",
+      "text": "Does the Agents Zero to Hero guide explain tool calling basics?",
+      "kind": "branded"
+    }
+  ]
+}

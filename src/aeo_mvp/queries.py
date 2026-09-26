@@ -32,7 +32,9 @@ class Query:
     importance: str = "medium"
     reason: str = ""
     article_topics_or_evidence: str = ""
-    source: str = "llm_generated"  # always LLM-generated here
+    source: str = "llm_generated"  # llm_generated | frozen_prompt_set
+    kind: str = "general"  # general | branded | factual (frozen sets)
+    prompt_id: str | None = None
 
 
 @dataclass

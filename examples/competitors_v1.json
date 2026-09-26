@@ -1,0 +1,6 @@
+{
+  "competitors": [
+    {"name": "LangChain", "domain": "langchain.com"},
+    {"name": "LlamaIndex", "domain": "llamaindex.ai"}
+  ]
+}

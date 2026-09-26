@@ -5,10 +5,13 @@
 ```python
 article = load_hashnode_markdown(...)
 queries = discover_queries(article)          # LLM + LLM quality pass
+#   OR frozen prompt set (--prompts-file / Gradio) skips rediscovery
 visibility = measure_visibility(...)         # DO web_search plumbing (OBSERVED)
+#   + optional competitor share
+accuracy = evaluate_accuracy(...)            # LLM flags vs CURRENT (branded/factual)
 bundle = generate_recommendations(...)       # LLM full-document opportunities + MD
 quality = evaluate_quality(...)              # LLM pass/fail
-return report(... CURRENT / RECOMMENDED / DIFF / SUMMARY ...)
+return report(... CURRENT / RECOMMENDED / DIFF / SUMMARY / VISIBILITY ...)
 ```
 
 ## Ownership

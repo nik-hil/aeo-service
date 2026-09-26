@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from aeo_mvp.article import Article
+from aeo_mvp.competitors import Competitor
 from aeo_mvp.llm import LLMClient, LLMError, domain_in_urls, mention_in_text
 from aeo_mvp.queries import Query, QuerySet
 
@@ -77,6 +78,46 @@ def target_page_in_urls(target_url: str | None, urls: list[str]) -> bool:
 
 
 @dataclass
+class CompetitorObservation:
+    """Per-prompt OBSERVED competitor mention/citation flags (plumbing)."""
+
+    name: str
+    domain: str | None
+    mentioned: bool
+    cited: bool
+    domain_in_sources: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "domain": self.domain,
+            "mentioned": self.mentioned,
+            "cited": self.cited,
+            "domain_in_sources": self.domain_in_sources,
+        }
+
+
+@dataclass
+class CompetitorShare:
+    """Aggregate OBSERVED rates for one competitor across successful probes."""
+
+    name: str
+    domain: str | None
+    mention_rate: float = 0.0
+    citation_rate: float = 0.0
+    domain_in_sources_rate: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "domain": self.domain,
+            "mention_rate": self.mention_rate,
+            "citation_rate": self.citation_rate,
+            "domain_in_sources_rate": self.domain_in_sources_rate,
+        }
+
+
+@dataclass
 class VisibilityObservation:
     query: str
     answer: str
@@ -92,6 +133,7 @@ class VisibilityObservation:
     error: str | None = None
     measures_consumer_ui: bool = False
     provenance: str = "api_observation"  # OBSERVED — not LLM-generated judgment
+    competitors: list[CompetitorObservation] = field(default_factory=list)
 
 
 @dataclass
@@ -109,6 +151,8 @@ class VisibilityReport:
         "OBSERVED via DigitalOcean Inference Responses API + web_search. "
         "API observation only — does NOT measure consumer ChatGPT/Gemini/Perplexity UI."
     )
+    competitors_configured: list[Competitor] = field(default_factory=list)
+    competitor_share: list[CompetitorShare] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +165,8 @@ class VisibilityReport:
             "target_page_in_sources_rate": self.target_page_in_sources_rate,
             "target_page_citation_rate": self.target_page_citation_rate,
             "query_coverage": self.query_coverage,
+            "competitors_configured": [c.to_dict() for c in self.competitors_configured],
+            "competitor_share": [s.to_dict() for s in self.competitor_share],
             "observations": [
                 {
                     "query": o.query,
@@ -137,6 +183,7 @@ class VisibilityReport:
                     "error": o.error,
                     "measures_consumer_ui": o.measures_consumer_ui,
                     "provenance": o.provenance,
+                    "competitors": [c.to_dict() for c in o.competitors],
                 }
                 for o in self.observations
             ],
@@ -185,12 +232,78 @@ def _page_flags(
     return page_in_sources, page_cited
 
 
+def _competitor_hits(
+    competitors: list[Competitor],
+    answer_text: str,
+    source_urls: list[str],
+    citation_urls: list[str],
+) -> list[CompetitorObservation]:
+    hits: list[CompetitorObservation] = []
+    for c in competitors:
+        in_sources = domain_in_urls(c.domain, source_urls) or domain_in_urls(
+            c.domain, citation_urls
+        )
+        cited = domain_in_urls(c.domain, citation_urls)
+        mentioned = mention_in_text(answer_text, [c.name]) or in_sources
+        hits.append(
+            CompetitorObservation(
+                name=c.name,
+                domain=c.domain,
+                mentioned=mentioned,
+                cited=cited,
+                domain_in_sources=in_sources,
+            )
+        )
+    return hits
+
+
+def _competitor_share_rates(
+    competitors: list[Competitor],
+    observations: list[VisibilityObservation],
+) -> list[CompetitorShare]:
+    ok = [o for o in observations if o.error is None]
+    if not competitors:
+        return []
+    n = len(ok)
+    shares: list[CompetitorShare] = []
+    for c in competitors:
+        if n == 0:
+            shares.append(
+                CompetitorShare(name=c.name, domain=c.domain)
+            )
+            continue
+        mention_n = 0
+        cite_n = 0
+        domain_n = 0
+        for o in ok:
+            hit = next((h for h in o.competitors if h.name == c.name), None)
+            if hit is None:
+                continue
+            if hit.mentioned:
+                mention_n += 1
+            if hit.cited:
+                cite_n += 1
+            if hit.domain_in_sources:
+                domain_n += 1
+        shares.append(
+            CompetitorShare(
+                name=c.name,
+                domain=c.domain,
+                mention_rate=mention_n / n,
+                citation_rate=cite_n / n,
+                domain_in_sources_rate=domain_n / n,
+            )
+        )
+    return shares
+
+
 def measure_visibility(
     article: Article,
     queries: QuerySet | list[Query] | list[str],
     *,
     client: SupportsRespond | None = None,
     dry_run: bool = False,
+    competitors: list[Competitor] | None = None,
 ) -> VisibilityReport:
     """Run AI-search visibility probes for each selected query (plumbing only)."""
     if isinstance(queries, QuerySet):
@@ -198,6 +311,7 @@ def measure_visibility(
     else:
         q_list = [q if isinstance(q, str) else q.text for q in queries]
 
+    competitor_list = list(competitors or [])
     llm: SupportsRespond = client or LLMClient()
     if dry_run or not llm.available():
         return VisibilityReport(
@@ -207,6 +321,8 @@ def measure_visibility(
                 "Skipped live visibility: dry_run=True or AEO_LLM_API_KEY missing. "
                 "No fabricated AI-search results. OBSERVED metrics unavailable."
             ),
+            competitors_configured=competitor_list,
+            competitor_share=_competitor_share_rates(competitor_list, []),
         )
 
     brand = list(article.brand_tokens)
@@ -242,6 +358,7 @@ def measure_visibility(
                     target_page_in_sources=page_in,
                     target_page_cited=page_cited,
                     error=str(exc),
+                    competitors=_competitor_hits(competitor_list, "", [], []),
                 )
             )
             continue
@@ -259,6 +376,12 @@ def measure_visibility(
         page_in, page_cited = _page_flags(
             target_url, list(result.source_urls), citation_urls
         )
+        comp_hits = _competitor_hits(
+            competitor_list,
+            result.text,
+            list(result.source_urls),
+            citation_urls,
+        )
 
         observations.append(
             VisibilityObservation(
@@ -273,6 +396,7 @@ def measure_visibility(
                 citations=list(result.citations),
                 search_queries=list(result.search_queries),
                 had_web_search_call=result.had_web_search_call,
+                competitors=comp_hits,
             )
         )
 
@@ -287,4 +411,6 @@ def measure_visibility(
         target_page_citation_rate=page_cite_rate,
         query_coverage=coverage,
         model=getattr(llm, "model", "") or "",
+        competitors_configured=competitor_list,
+        competitor_share=_competitor_share_rates(competitor_list, observations),
     )
