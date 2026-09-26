@@ -7,7 +7,7 @@ alwaysApply: false
 # Gradio UI
 
 - Consume existing pipeline outputs only. No AEO scoring, crawl, or optimization logic inside UI components.
-- Keep honest section labels: ARTICLE · AI VISIBILITY (OBSERVED) · QUESTIONS (LLM-GENERATED) · OPPORTUNITIES · CURRENT vs RECOMMENDED · DIFF · QUALITY EVALUATION.
+- Keep honest section labels: ARTICLE · AI VISIBILITY (OBSERVED) · QUESTIONS (LLM-GENERATED) · OPPORTUNITIES · CURRENT vs RECOMMENDED · DIFF · SUMMARY.md · QUALITY EVALUATION.
 - Prefer URL vs Markdown exclusivity and scrollable CURRENT/RECOMMENDED/DIFF panes when both exist.
 - Never inject untrusted HTML into Gradio.
 - UI acceptance requires the **user** to run Gradio locally and look. Agent text, tests, and chat summaries alone are not visual acceptance.

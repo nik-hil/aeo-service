@@ -130,10 +130,16 @@ def test_pipeline_e2e_mock_writes_artifacts(tmp_path):
     assert (tmp_path / "CURRENT.md").is_file()
     assert (tmp_path / "RECOMMENDED.md").is_file()
     assert (tmp_path / "DIFF.patch").is_file()
+    assert (tmp_path / "SUMMARY.md").is_file()
     assert (tmp_path / "report.json").is_file()
+    summary = (tmp_path / "SUMMARY.md").read_text(encoding="utf-8")
+    assert report.summary_markdown == summary
+    assert "## What RECOMMENDED fixes" in summary
+    assert "Clarified agent loop wording." in summary
     d = report.to_dict()
     assert d["model"] == "mock-e2e"
     assert d["auto_publish"] is False
+    assert "summary_preview" in d
     assert "How does Repository work?" not in d["queries_selected"]
 
 

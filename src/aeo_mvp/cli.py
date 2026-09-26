@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--out",
         default=None,
-        help="Write CURRENT.md, RECOMMENDED.md, DIFF.patch, report.json",
+        help="Write CURRENT.md, RECOMMENDED.md, DIFF.patch, SUMMARY.md, report.json",
     )
     p.add_argument(
         "--skip-quality-eval",

@@ -44,6 +44,7 @@ def _fake_report(*, title: str = "Fetched Title"):
         current_markdown="# CURRENT from pipeline\n",
         recommended_markdown="# RECOMMENDED from pipeline\n",
         diff="(no diff)",
+        summary_markdown="# Publish pack SUMMARY\n\nMock SUMMARY.\n",
         model="gpt",
         llm_used=False,
         retrieval_used=False,
@@ -122,6 +123,7 @@ def test_analyze_url_with_leftover_markdown_uses_fetch_not_paste():
 
     assert outs[0] == gradio_app.STATUS_URL_IGNORES_PASTE
     assert "From URL" in outs[1]
+    assert "Mock SUMMARY" in outs[8]
     pipeline.assert_called_once()
     kwargs = pipeline.call_args.kwargs
     assert kwargs["text"] == fetched.strip()
@@ -191,7 +193,9 @@ def test_build_app_scroll_config_and_css():
         for c in demo.blocks.values()
         if isinstance(c, gr.Code)
     ]
-    assert len(code_components) >= 3
+    assert len(code_components) >= 4
+    labels = {getattr(c, "label", None) for c in code_components}
+    assert "SUMMARY.md" in labels
     for c in code_components:
         classes = c.elem_classes or []
         assert "aeo-md-scroll" in classes

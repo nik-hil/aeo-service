@@ -8,7 +8,7 @@ queries = discover_queries(article)          # LLM + LLM quality pass
 visibility = measure_visibility(...)         # DO web_search plumbing (OBSERVED)
 bundle = generate_recommendations(...)       # LLM full-document opportunities + MD
 quality = evaluate_quality(...)              # LLM pass/fail
-return report(... CURRENT / RECOMMENDED / DIFF ...)
+return report(... CURRENT / RECOMMENDED / DIFF / SUMMARY ...)
 ```
 
 ## Ownership

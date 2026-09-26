@@ -5,7 +5,7 @@ Small **Answer Engine Optimization** proof of concept for **Hashnode Markdown**.
 **Core principle:** the LLM owns semantic intelligence (questions, full-document
 question→section opportunities, recommended Markdown, quality eval). Python owns
 plumbing (Markdown parse, JSON/schema validation, DO `web_search` visibility
-metrics, DIFF, safety). The introduction is not the default edit target.
+metrics, DIFF, SUMMARY, safety). The introduction is not the default edit target.
 
 ```text
 Hashnode Markdown
@@ -13,7 +13,7 @@ Hashnode Markdown
   → OBSERVED AI-search visibility (DigitalOcean Responses + web_search)
   → LLM opportunities + full RECOMMENDED.md
   → LLM quality evaluation
-  → CURRENT.md / RECOMMENDED.md / DIFF / report.json
+  → CURRENT.md / RECOMMENDED.md / DIFF / SUMMARY.md / report.json
   → Gradio report
 ```
 
@@ -59,7 +59,14 @@ python -m aeo_mvp.cli path/to/article.md \
   --out docs/live-run/
 ```
 
-Writes `CURRENT.md`, `RECOMMENDED.md`, `DIFF.patch`, `report.json` (`llm_used`, `retrieval_used`, `model`, questions, opportunities, quality_eval). `auto_publish` is always false.
+Writes `CURRENT.md`, `RECOMMENDED.md`, `DIFF.patch`, `SUMMARY.md`, `report.json`
+(`llm_used`, `retrieval_used`, `model`, questions, opportunities, quality_eval).
+`auto_publish` is always false.
+
+`SUMMARY.md` is the human-skimmable publish-pack review for a **real** pipeline
+run: what was weak, what RECOMMENDED fixes, patch at a glance, and
+ready-to-publish vs review-first guidance. Grounded in that same run’s artifacts
+— open it first, then verify claims against CURRENT / RECOMMENDED / DIFF.
 
 Dry visibility (still needs LLM for questions/recs):
 
@@ -74,7 +81,7 @@ python ui/gradio/app.py
 ```
 
 Sections: ARTICLE · AI VISIBILITY (OBSERVED) · QUESTIONS (LLM-GENERATED) ·
-OPPORTUNITIES · CURRENT vs RECOMMENDED · DIFF · QUALITY EVALUATION.
+OPPORTUNITIES · CURRENT vs RECOMMENDED · DIFF · SUMMARY.md · QUALITY EVALUATION.
 
 ## Tests
 

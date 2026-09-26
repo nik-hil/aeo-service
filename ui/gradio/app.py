@@ -289,7 +289,7 @@ def _quality_md(report) -> str:
 
 def _error_outputs(message: str):
     err = f"**Error:** {message}"
-    return err, err, err, err, err, "", "", "", err
+    return err, err, err, err, err, "", "", "", "", err
 
 
 def analyze(
@@ -332,6 +332,7 @@ def analyze(
         result.current_markdown,
         result.recommended_markdown,
         result.diff or "(no diff)",
+        getattr(result, "summary_markdown", None) or "(no SUMMARY.md)",
         _quality_md(result),
     )
 
@@ -397,6 +398,14 @@ def build_app() -> gr.Blocks:
             max_lines=16,
             elem_classes=["aeo-md-scroll"],
         )
+        gr.Markdown("## SUMMARY.md *(publish review)*")
+        summary_out = gr.Code(
+            label="SUMMARY.md",
+            language="markdown",
+            lines=16,
+            max_lines=16,
+            elem_classes=["aeo-md-scroll"],
+        )
         gr.Markdown("## QUALITY EVALUATION *(LLM-GENERATED)*")
         qual_out = gr.Markdown()
 
@@ -412,6 +421,7 @@ def build_app() -> gr.Blocks:
                 current_out,
                 recommended_out,
                 diff_out,
+                summary_out,
                 qual_out,
             ],
         )

@@ -7,7 +7,7 @@ description: Use when changing Gradio under ui/gradio/ or demo UX for aeo-servic
 ## Do
 - Wire to existing pipeline outputs only (`ui/gradio/app.py`).
 - Keep OBSERVED vs LLM-GENERATED labeling.
-- Preserve scrollable CURRENT / RECOMMENDED / DIFF when showing packs.
+- Preserve scrollable CURRENT / RECOMMENDED / DIFF / SUMMARY when showing packs.
 - Add/adjust Gradio tests when behavior changes.
 
 ## Don't

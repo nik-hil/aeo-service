@@ -14,6 +14,7 @@ from aeo_mvp.evaluation import QualityEvaluation, evaluate_quality
 from aeo_mvp.llm import LLMClient, llm_used, reset_execution_flags, retrieval_used
 from aeo_mvp.queries import QuerySet, discover_queries
 from aeo_mvp.recommendations import RecommendationBundle, generate_recommendations
+from aeo_mvp.summary import build_summary_markdown
 from aeo_mvp.visibility import VisibilityReport, measure_visibility
 
 
@@ -27,6 +28,7 @@ class AEOReport:
     current_markdown: str
     recommended_markdown: str
     diff: str
+    summary_markdown: str = ""
     llm_used: bool = False
     retrieval_used: bool = False
     model: str = ""
@@ -63,6 +65,7 @@ class AEOReport:
             "retrieval_used": self.retrieval_used,
             "auto_publish": self.auto_publish,
             "diff_preview": self.diff[:4000],
+            "summary_preview": (self.summary_markdown or "")[:4000],
         }
 
 
@@ -133,6 +136,7 @@ def run_pipeline(
         model=getattr(llm, "model", None) or settings.llm_model,
         auto_publish=False,
     )
+    result.summary_markdown = build_summary_markdown(result)
 
     if write_artifacts_dir is not None:
         out = Path(write_artifacts_dir)
@@ -142,6 +146,7 @@ def run_pipeline(
             result.recommended_markdown, encoding="utf-8"
         )
         (out / "DIFF.patch").write_text(result.diff, encoding="utf-8")
+        (out / "SUMMARY.md").write_text(result.summary_markdown, encoding="utf-8")
         (out / "report.json").write_text(
             json.dumps(result.to_dict(), indent=2),
             encoding="utf-8",
