@@ -118,6 +118,21 @@ def build_summary_markdown(report: AEOReport) -> str:
                 "",
             ]
         )
+        if v.competitor_share:
+            lines.append("Competitor share (OBSERVED) — see VISIBILITY.md for detail:")
+            for s in v.competitor_share:
+                lines.append(
+                    f"- {s.name}: mention={_pct(s.mention_rate)}, "
+                    f"citation={_pct(s.citation_rate)}"
+                )
+            lines.append("")
+        accuracy = getattr(report, "accuracy", None)
+        if accuracy is not None and accuracy.conflicts:
+            lines.append(
+                f"**LLM-GENERATED** accuracy conflicts: {len(accuracy.conflicts)} "
+                "(see VISIBILITY.md)."
+            )
+            lines.append("")
         weak_obs = [
             o
             for o in v.observations
@@ -227,9 +242,11 @@ def build_summary_markdown(report: AEOReport) -> str:
             "- `RECOMMENDED.md`",
             "- `DIFF.patch`",
             "- `report.json`",
+            "- `VISIBILITY.md` (OBSERVED rates, competitor share, accuracy flags)",
             "- `SUMMARY.md` (this file)",
             "",
-            "Open CURRENT / RECOMMENDED / DIFF to verify every claim before publishing.",
+            "Open CURRENT / RECOMMENDED / DIFF / VISIBILITY to verify every claim "
+            "before publishing.",
             "",
         ]
     )

@@ -33,6 +33,14 @@ def _fake_report(*, title: str = "Fetched Title"):
             target_in_sources_rate=0.0,
             query_coverage=0.0,
             observations=[],
+            competitors_configured=[],
+            competitor_share=[],
+        ),
+        visibility_markdown="# VISIBILITY (measurement pack)\n\nOBSERVED mock.\n",
+        accuracy=SimpleNamespace(
+            notes="none",
+            conflicts=[],
+            checks=[],
         ),
         recommendations=SimpleNamespace(
             opportunities=[],
@@ -49,6 +57,7 @@ def _fake_report(*, title: str = "Fetched Title"):
         llm_used=False,
         retrieval_used=False,
         auto_publish=False,
+        prompt_set_version=None,
     )
 
 
@@ -155,7 +164,7 @@ def test_analyze_url_with_leftover_markdown_uses_fetch_not_paste():
 
     assert outs[0] == gradio_app.STATUS_URL_IGNORES_PASTE
     assert "From URL" in outs[1]
-    assert "Mock SUMMARY" in outs[8]
+    assert "Mock SUMMARY" in outs[9]
     pipeline.assert_called_once()
     kwargs = pipeline.call_args.kwargs
     assert kwargs["text"] == fetched.strip()
@@ -163,6 +172,27 @@ def test_analyze_url_with_leftover_markdown_uses_fetch_not_paste():
     assert kwargs["target_domain"] == "https://example.hashnode.dev/post"
     assert kwargs["dry_run"] is True
     assert kwargs["skip_quality_eval"] is True
+
+
+def test_analyze_passes_prompts_and_competitors():
+    pipeline = MagicMock(return_value=_fake_report(title="Paste Title"))
+    paste = "# Only paste\n\nBody.\n"
+    outs = gradio_app.analyze(
+        paste,
+        "",
+        True,
+        True,
+        "examples/prompt_set_v1.json",
+        "",
+        "Acme|acme.com",
+        pipeline_fn=pipeline,
+    )
+    assert outs[0] == gradio_app.STATUS_MARKDOWN
+    assert "VISIBILITY" in outs[2]
+    kwargs = pipeline.call_args.kwargs
+    assert kwargs["prompts_file"] == "examples/prompt_set_v1.json"
+    assert kwargs["competitors"] == "Acme|acme.com"
+    assert kwargs["prompts_text"] is None
 
 
 def test_analyze_markdown_only_still_works():

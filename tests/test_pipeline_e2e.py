@@ -131,16 +131,115 @@ def test_pipeline_e2e_mock_writes_artifacts(tmp_path):
     assert (tmp_path / "RECOMMENDED.md").is_file()
     assert (tmp_path / "DIFF.patch").is_file()
     assert (tmp_path / "SUMMARY.md").is_file()
+    assert (tmp_path / "VISIBILITY.md").is_file()
     assert (tmp_path / "report.json").is_file()
     summary = (tmp_path / "SUMMARY.md").read_text(encoding="utf-8")
     assert report.summary_markdown == summary
     assert "## What RECOMMENDED fixes" in summary
     assert "Clarified agent loop wording." in summary
+    assert "VISIBILITY.md" in summary
+    vis_md = (tmp_path / "VISIBILITY.md").read_text(encoding="utf-8")
+    assert "OBSERVED" in vis_md
+    assert report.visibility_markdown == vis_md
     d = report.to_dict()
     assert d["model"] == "mock-e2e"
     assert d["auto_publish"] is False
     assert "summary_preview" in d
+    assert "visibility_preview" in d
+    assert "accuracy" in d
     assert "How does Repository work?" not in d["queries_selected"]
+
+
+def test_pipeline_frozen_prompts_skips_rediscovery(tmp_path):
+    """Frozen prompt set replaces LLM rediscovery; recs/eval still mock LLM."""
+    reset_execution_flags()
+    prompts = (
+        Path(__file__).resolve().parents[1] / "examples" / "prompt_set_v1.json"
+    )
+
+    class RecEvalMock:
+        def __init__(self):
+            self.model = "mock-frozen"
+            self.step = 0
+
+        def available(self) -> bool:
+            return True
+
+        def respond(self, *a, **k):
+            raise AssertionError("visibility dry — no respond")
+
+        def respond_json(self, prompt: str, *, max_output_tokens: int = 4096):
+            import aeo_mvp.llm as llm_mod
+
+            llm_mod._LLM_CALLS += 1
+            self.step += 1
+            if self.step == 1:
+                md = Path(FIXTURE).read_text(encoding="utf-8")
+                if md.lstrip().startswith("---"):
+                    parts = md.split("---", 2)
+                    if len(parts) >= 3:
+                        md = parts[2].lstrip("\n")
+                from aeo_mvp.markdown import parse_sections
+
+                loop = next(
+                    s
+                    for s in parse_sections(md)
+                    if s.heading == "What is an agent loop?"
+                )
+                replacement = (
+                    loop.body.rstrip()
+                    + "\n\nIt keeps invoking tools until the task is finished."
+                )
+                evidence = (
+                    "The agent loop is the control flow that lets a model call tools, "
+                    "see results, and decide whether to continue."
+                )
+                return {
+                    "opportunities": [
+                        {
+                            "question": "What is an agent loop for tool calling?",
+                            "gap": "Could state the loop more directly.",
+                            "evidence_quote": evidence,
+                            "target_heading": "What is an agent loop?",
+                            "recommended_change": "Clarify the lead definition.",
+                            "answerability": "weak",
+                        }
+                    ],
+                    "section_edits": [
+                        {
+                            "target_heading": "What is an agent loop?",
+                            "replacement_body": replacement,
+                        }
+                    ],
+                    "change_explanations": ["Clarified agent loop wording."],
+                }
+            return {
+                "passed": True,
+                "summary": "ok",
+                "question_feedback": [],
+                "recommendation_feedback": [],
+                "unsupported_claims": [],
+                "unnecessary_changes": [],
+                "explanations": [],
+            }
+
+    report = run_pipeline(
+        FIXTURE,
+        dry_run=True,
+        write_artifacts_dir=tmp_path,
+        client=RecEvalMock(),  # type: ignore[arg-type]
+        prompts_file=prompts,
+        competitors="LangChain|langchain.com",
+        skip_accuracy=False,
+    )
+    assert report.prompt_set_version == "1"
+    assert all(q.source == "frozen_prompt_set" for q in report.queries.selected)
+    assert len(report.queries.selected) == 5
+    assert report.visibility.competitors_configured[0].name == "LangChain"
+    assert (tmp_path / "VISIBILITY.md").is_file()
+    d = report.to_dict()
+    assert d["prompt_set_version"] == "1"
+    assert d["visibility"]["competitors_configured"][0]["domain"] == "langchain.com"
 
 
 def test_flags_false_until_called():

@@ -226,6 +226,10 @@ def _article_md(report) -> str:
 
 
 def _visibility_md(report) -> str:
+    """Prefer pack VISIBILITY.md when present; else compact OBSERVED summary."""
+    pack = getattr(report, "visibility_markdown", None) or ""
+    if pack.strip():
+        return pack
     v = report.visibility
     lines = [
         f"**Label:** OBSERVED (API) — not consumer ChatGPT/Gemini UI",
@@ -260,9 +264,44 @@ def _visibility_md(report) -> str:
     return "\n".join(lines)
 
 
-def _questions_md(report) -> str:
+def _accuracy_md(report) -> str:
+    acc = getattr(report, "accuracy", None)
+    if acc is None:
+        return "_Accuracy pass not run._"
     lines = [
-        "**Label:** LLM-GENERATED (then LLM quality-validated)",
+        "**Label:** LLM-GENERATED flags over OBSERVED answers vs CURRENT.md",
+        f"**Notes:** {acc.notes}",
+        f"**Conflicts:** {len(acc.conflicts)}",
+        "",
+    ]
+    if acc.conflicts:
+        for c in acc.conflicts:
+            lines.extend(
+                [
+                    f"### {c.query}",
+                    f"- severity: {c.severity}",
+                    f"- claim (OBSERVED): {c.claim_from_observed_answer}",
+                    f"- evidence (CURRENT): {c.evidence_quote_from_current}",
+                    f"- note: {c.note or '—'}",
+                    "",
+                ]
+            )
+    else:
+        lines.append("_No conflicts flagged._")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _questions_md(report) -> str:
+    sources = {getattr(q, "source", "") for q in report.queries.selected}
+    if sources == {"frozen_prompt_set"}:
+        label = "Frozen prompt set (LLM rediscovery skipped)"
+    elif "frozen_prompt_set" in sources:
+        label = "Mixed frozen + LLM-GENERATED"
+    else:
+        label = "LLM-GENERATED (then LLM quality-validated)"
+    lines = [
+        f"**Label:** {label}",
         f"**Count:** {len(report.queries.selected)} "
         f"(from {len(report.queries.candidates)} candidates)",
         f"**Notes:** {report.queries.quality_notes or '—'}",
@@ -274,6 +313,9 @@ def _questions_md(report) -> str:
         lines.append(f"- reason: {q.reason or '—'}")
         lines.append(f"- article_topics_or_evidence: {q.article_topics_or_evidence or '—'}")
         lines.append(f"- source: `{q.source}`")
+        kind = getattr(q, "kind", None)
+        if kind:
+            lines.append(f"- kind: `{kind}`")
         lines.append("")
     return "\n".join(lines)
 
@@ -307,6 +349,7 @@ def _quality_md(report) -> str:
     qe = report.quality_eval
     if qe is None:
         return "_Quality evaluation skipped._"
+
     def bullets(items: list[str]) -> list[str]:
         return [f"- {x}" for x in items] if items else ["- —"]
 
@@ -335,7 +378,7 @@ def _quality_md(report) -> str:
 
 def _error_outputs(message: str):
     err = f"**Error:** {message}"
-    return err, err, err, err, err, "", "", "", "", err
+    return err, err, err, err, err, err, "", "", "", "", err
 
 
 def analyze(
@@ -343,6 +386,9 @@ def analyze(
     target: str,
     dry_run: bool,
     skip_eval: bool,
+    prompts_file: str = "",
+    prompts_paste: str = "",
+    competitors_text: str = "",
     *,
     fetch_fn=None,
     pipeline_fn=None,
@@ -351,11 +397,15 @@ def analyze(
 
     Absolute target URLs are fetched and used as Markdown; paste is ignored for
     that run. Bare domains keep legacy paste + visibility identity behavior.
+    Frozen prompts (file or paste) replace LLM rediscovery for this run.
     """
     _log(
         "Analyze clicked "
         f"(dry_run={bool(dry_run)}, skip_quality_eval={bool(skip_eval)}, "
-        f"target={((target or '').strip() or '—')!r})"
+        f"target={((target or '').strip() or '—')!r}, "
+        f"prompts_file={((prompts_file or '').strip() or '—')!r}, "
+        f"prompts_paste_chars={len((prompts_paste or '').strip())}, "
+        f"competitors_chars={len((competitors_text or '').strip())})"
     )
     try:
         md, target_domain, status = resolve_content_source(
@@ -371,17 +421,24 @@ def analyze(
     )
 
     run = pipeline_fn or run_pipeline
+    pf = (prompts_file or "").strip() or None
+    pp = (prompts_paste or "").strip() or None
+    comps = (competitors_text or "").strip() or None
     try:
         _log(
             "pipeline starting "
             f"(visibility={'dry' if dry_run else 'live web_search'}, "
-            f"quality_eval={'skip' if skip_eval else 'on'})"
+            f"quality_eval={'skip' if skip_eval else 'on'}, "
+            f"frozen_prompts={'file' if pf else ('paste' if pp else 'off')})"
         )
         result = run(
             text=md,
             target_domain=target_domain,
             dry_run=dry_run,
             skip_quality_eval=skip_eval,
+            prompts_file=pf,
+            prompts_text=pp,
+            competitors=comps,
         )
     except LLMError as exc:
         _log(f"Analyze error (pipeline): {exc}")
@@ -401,6 +458,7 @@ def analyze(
         _visibility_md(result),
         _questions_md(result),
         _opportunities_md(result),
+        _accuracy_md(result),
         result.current_markdown,
         result.recommended_markdown,
         result.diff or "(no diff)",
@@ -420,7 +478,10 @@ def build_app() -> gr.Blocks:
             "**Input rule:** a full target article URL is fetched and used as the "
             "content source (Markdown paste ignored). If the URL field is empty, "
             "pasted Hashnode Markdown is used. A bare domain alone is visibility "
-            "identity only and still needs Markdown paste."
+            "identity only and still needs Markdown paste.\n\n"
+            "**Measurement (PR A):** optional frozen prompt set replaces LLM "
+            "rediscovery; optional competitors feed OBSERVED share rates. "
+            "Visibility is DigitalOcean `web_search` only — not ChatGPT UI."
         )
         with gr.Row():
             md_in = gr.Textbox(label="Hashnode Markdown", lines=20, value=load_example())
@@ -429,6 +490,25 @@ def build_app() -> gr.Blocks:
                     label="Target article URL / domain (optional)",
                     placeholder="https://example.hashnode.dev/my-article or example.com",
                     lines=1,
+                )
+                prompts_file_in = gr.Textbox(
+                    label="Frozen prompts file path (optional)",
+                    placeholder="examples/prompt_set_v1.json",
+                    lines=1,
+                )
+                prompts_paste_in = gr.Textbox(
+                    label="Frozen prompts paste (optional; ignored if file set)",
+                    placeholder=(
+                        'JSON {"version":"1","prompts":[...]} or one prompt per line\n'
+                        "factual: What is an agent loop?\n"
+                        "branded: Does Example Blog cover tool calling?"
+                    ),
+                    lines=6,
+                )
+                competitors_in = gr.Textbox(
+                    label="Competitors (optional)",
+                    placeholder="Acme|acme.com\nBeta:beta.io",
+                    lines=3,
                 )
                 dry = gr.Checkbox(
                     label="Dry run (skip paid DO web_search; LLM still required)",
@@ -446,12 +526,14 @@ def build_app() -> gr.Blocks:
 
         gr.Markdown("## ARTICLE")
         article_out = gr.Markdown()
-        gr.Markdown("## AI VISIBILITY *(OBSERVED)*")
+        gr.Markdown("## AI VISIBILITY *(OBSERVED)* · pack VISIBILITY.md")
         vis_out = gr.Markdown()
-        gr.Markdown("## QUESTIONS *(LLM-GENERATED)*")
+        gr.Markdown("## QUESTIONS *(LLM-GENERATED or frozen prompt set)*")
         q_out = gr.Markdown()
         gr.Markdown("## OPPORTUNITIES *(LLM-GENERATED)*")
         opp_out = gr.Markdown()
+        gr.Markdown("## BRAND-FACT / ACCURACY *(LLM-GENERATED over OBSERVED)*")
+        accuracy_out = gr.Markdown()
         gr.Markdown("## CURRENT vs RECOMMENDED")
         with gr.Row():
             current_out = gr.Code(
@@ -489,13 +571,22 @@ def build_app() -> gr.Blocks:
 
         run_btn.click(
             fn=analyze,
-            inputs=[md_in, target_in, dry, skip_eval],
+            inputs=[
+                md_in,
+                target_in,
+                dry,
+                skip_eval,
+                prompts_file_in,
+                prompts_paste_in,
+                competitors_in,
+            ],
             outputs=[
                 status_out,
                 article_out,
                 vis_out,
                 q_out,
                 opp_out,
+                accuracy_out,
                 current_out,
                 recommended_out,
                 diff_out,

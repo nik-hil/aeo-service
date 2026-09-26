@@ -95,6 +95,7 @@ def test_summary_sections_and_grounding():
     assert "ready_to_publish" in text
     assert "auto_publish" in text.lower()
     assert "SUMMARY.md" in text
+    assert "VISIBILITY.md" in text
     # No invented live visibility claims when retrieval was off
     assert "No OBSERVED visibility rows" in text
     assert "mention_rate: 100%" not in text
