@@ -94,6 +94,38 @@ def test_resolve_url_without_paste():
     assert status == gradio_app.STATUS_URL
 
 
+def test_resolve_url_fetch_failure_tells_user_to_paste_markdown():
+    def boom(_url: str) -> str:
+        raise ValueError("Failed to fetch target URL (403 for https://x.md).")
+
+    with pytest.raises(ValueError, match="Unable to fetch Markdown") as excinfo:
+        gradio_app.resolve_content_source(
+            "",
+            "https://example.hashnode.dev/post.md",
+            fetch_fn=boom,
+        )
+    msg = str(excinfo.value)
+    assert "Paste the Hashnode Markdown" in msg
+    assert "clear the full article URL" in msg
+    assert "403" in msg
+
+
+def test_analyze_url_fetch_failure_surfaces_paste_guidance():
+    def boom(_url: str) -> str:
+        raise ValueError("Failed to fetch target URL (403 for https://x.md).")
+
+    outs = gradio_app.analyze(
+        "",
+        "https://example.hashnode.dev/post.md",
+        True,
+        True,
+        fetch_fn=boom,
+    )
+    assert "Unable to fetch Markdown" in outs[0]
+    assert "Paste the Hashnode Markdown" in outs[0]
+    assert "clear the full article URL" in outs[0]
+
+
 def test_resolve_bare_domain_uses_paste():
     md, target, status = gradio_app.resolve_content_source(
         "# Paste\n", "example.com"

@@ -23,10 +23,25 @@ STATUS_DOMAIN_AND_MARKDOWN = (
     "Using Hashnode Markdown paste; target domain used for visibility only."
 )
 
+# Shown when a full article URL cannot be fetched (403 / network / non-200 / empty).
+UNABLE_TO_FETCH_PASTE_MARKDOWN = (
+    "Unable to fetch Markdown from the article URL. "
+    "Paste the Hashnode Markdown into the Markdown box, and clear the full "
+    "article URL (leave empty, or use a bare domain only for visibility)."
+)
+
 
 def _log(message: str) -> None:
     """Progress lines for the terminal running ``python ui/gradio/app.py``."""
     print(f"[aeo] {message}", file=sys.stdout, flush=True)
+
+
+def _unable_to_fetch_message(detail: str | None = None) -> str:
+    """User-facing fetch failure: paste Markdown; keep optional detail."""
+    detail = (detail or "").strip()
+    if not detail:
+        return UNABLE_TO_FETCH_PASTE_MARKDOWN
+    return f"{UNABLE_TO_FETCH_PASTE_MARKDOWN} Details: {detail}"
 
 _CSS = """
 /* Fixed-height CURRENT / RECOMMENDED / DIFF panes with vertical scroll */
@@ -140,7 +155,7 @@ def fetch_markdown_from_url(
             )
             return text
         _log(f"fetch fail: {last_error}")
-        raise ValueError(last_error)
+        raise ValueError(_unable_to_fetch_message(last_error))
     finally:
         if own_client:
             http.close()
@@ -167,9 +182,17 @@ def resolve_content_source(
     fetcher = fetch_fn or fetch_markdown_from_url
 
     if tgt and _is_absolute_http_url(tgt):
-        fetched = fetcher(tgt).strip()
+        try:
+            fetched = fetcher(tgt).strip()
+        except ValueError as exc:
+            detail = str(exc).strip()
+            if UNABLE_TO_FETCH_PASTE_MARKDOWN in detail:
+                raise
+            raise ValueError(_unable_to_fetch_message(detail)) from exc
         if not fetched:
-            raise ValueError("Target URL returned empty Markdown.")
+            raise ValueError(
+                _unable_to_fetch_message("Target URL returned empty Markdown.")
+            )
         note = STATUS_URL_IGNORES_PASTE if md else STATUS_URL
         return fetched, _canonical_article_url(tgt), note
 
